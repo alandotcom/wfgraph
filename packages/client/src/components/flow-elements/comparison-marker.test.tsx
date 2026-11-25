@@ -6,7 +6,7 @@ describe("ComparisonMarker", () => {
   it("keeps the visual letter out of the accessibility tree", () => {
     const view = render(<ComparisonMarker comparison={{ kind: "added" }} />);
 
-    expect(view.getByTitle("Added in comparison").getAttribute("aria-hidden")).toBe(
+    expect(view.getByTitle("Added").getAttribute("aria-hidden")).toBe(
       "true"
     );
     expect(view.queryByRole("img")).toBeNull();

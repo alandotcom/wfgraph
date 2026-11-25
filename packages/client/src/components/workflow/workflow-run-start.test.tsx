@@ -211,7 +211,7 @@ async function renderWithOpenRun(search: WorkflowRouteSearch) {
     validateSearch: (input: WorkflowRouteSearch & SearchSchemaInput) =>
       authorizedWorkflowSearch(input, {
         canOpenRuns: true,
-        canOpenComparison: true,
+        canReview: true,
       }),
     component: () => (
       <>

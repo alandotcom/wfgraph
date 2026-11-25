@@ -9,6 +9,7 @@ import {
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
+import { ReviewSheet } from "#src/components/workflow/review/review-sheet";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync";
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
@@ -34,7 +35,7 @@ const workflowRouteApi = getRouteApi("/workflows/$workflowId");
 
 /**
  * The tab title names the workflow and the workspace view, so Back and the
- * browser's history menu tell Draft, Runs and Changes apart.
+ * browser's history menu tell Draft and Runs apart.
  */
 function useEditorDocumentTitle(workflowNotFound: boolean): void {
   const workflowName = useAtomValue(currentWorkflowNameAtom);
@@ -176,6 +177,9 @@ const WorkflowEditor = () => {
               {/* Below `md` the Draft inspector is a sequence of sheets over
                 the same canvas box. */}
               <MobileReveal />
+              {/* The review sheet takes Canvas Reveal's place while it is
+                open, and covers the screen below `md`. */}
+              <ReviewSheet />
             </div>
             <WorkflowStatusStrip workflowId={currentWorkflowId ?? undefined} />
           </div>

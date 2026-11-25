@@ -73,15 +73,13 @@ import {
 } from "#src/lib/workflow-graph-types";
 import { savedWorkflow, unreadableDraft } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
+import { reviewHighlightAtom } from "#src/lib/workflow-review-store";
 import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import {
-  beginWorkflowComparisonRequestAtom,
-  installWorkflowComparisonAtom,
-} from "#src/lib/workflow-comparison-store";
-import {
   beginPublicationReviewAtom,
+  clearPublicationReviewAtom,
   installPublicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
@@ -187,14 +185,19 @@ const comparisonPayload: WorkflowComparisonPayload = {
   edgeChanges: [],
 };
 
+/** Open the review sheet on `payload`, as Publish does for the draft. */
 function openComparison(
   store: Store,
   payload: WorkflowComparisonPayload = comparisonPayload
 ) {
-  const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
-  store.set(installWorkflowComparisonAtom, {
+  const epoch = store.set(beginPublicationReviewAtom, "workflow_1");
+  store.set(installPublicationReviewAtom, {
     workflowId: "workflow_1",
-    epoch,
+    epoch: epoch ?? 0,
+    pending: false,
+    graph: payload.draftGraph,
+    expectedDraftRevision: 1,
+    expectedPublishedVersionId: null,
     payload,
   });
 }
@@ -786,7 +789,7 @@ describe("clearWorkflowAtom", () => {
 describe("hydrateWorkflowAtom", () => {
   it("returns a different workflow to Draft", () => {
     const store = createGraphStore(...standardGraph());
-    showWorkspaceRoute(store, { view: "changes" });
+    showWorkspaceRoute(store, { view: "runs" });
 
     store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2"));
 
@@ -1047,10 +1050,12 @@ describe("installRemoteWorkflowAtom", () => {
       graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
       expectedDraftRevision: 1,
       expectedPublishedVersionId: null,
-      review: {
+      payload: {
+        baseVersion: null,
         proposedVersion: 1,
         baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
         draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        hasChanges: true,
         nodeChanges: [],
         edgeChanges: [],
       },
@@ -1381,7 +1386,7 @@ describe("displayNodesAtom memoization", () => {
 
   it("lets only the active workspace view choose the displayed graph", () => {
     const store = createGraphStore([actionNode("draft")]);
-    showWorkspaceRoute(store, { view: "changes" });
+    showWorkspaceRoute(store, {});
     openComparison(store);
     store.set(executionOverlayGraphAtom, {
       nodes: [actionNode("run")],
@@ -1396,10 +1401,37 @@ describe("displayNodesAtom memoization", () => {
     showWorkspaceRoute(store, { view: "runs" });
     expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual(["run"]);
 
+    // Closing the review sheet returns the Draft canvas to the draft.
+    store.set(clearPublicationReviewAtom, "workflow_1");
     showWorkspaceRoute(store, {});
     expect(store.get(displayNodesAtom).map((node) => node.id)).toEqual([
       "draft",
     ]);
+  });
+
+  it("puts the halo on the step the review sheet points at and on its Group's card", () => {
+    const nodes = [groupNode("group"), groupedChild("member", "group")];
+    const store = createGraphStore([...nodes, actionNode("selected")]);
+    showWorkspaceRoute(store, {});
+    store.set(selectOnlyNodeAtom, "selected");
+    openComparison(store, {
+      ...comparisonPayload,
+      baseGraph: createSerializedWorkflowGraph({ nodes, edges: [] }),
+      draftGraph: createSerializedWorkflowGraph({ nodes, edges: [] }),
+      nodeChanges: [{ nodeId: "member", kind: "modified", fields: [] }],
+    });
+    const haloed = () =>
+      store
+        .get(displayNodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id);
+
+    // The draft's own selection does not show while the sheet is open.
+    expect(haloed()).toEqual([]);
+    store.set(reviewHighlightAtom, "member");
+    expect(haloed()).toEqual(["group", "member"]);
+    store.set(reviewHighlightAtom, null);
+    expect(haloed()).toEqual([]);
   });
 });
 
@@ -1426,7 +1458,7 @@ describe("displayNodesAtom keeps what the stored node already carries", () => {
 
   it("paints no enabled state onto a frame whose members are all disabled", () => {
     const store = createGraphStore(...standardGraph());
-    showWorkspaceRoute(store, { view: "changes" });
+    showWorkspaceRoute(store, {});
     const child: WorkflowNode = {
       ...groupedChild("a", "g"),
       data: { label: "a", type: "action", enabled: false },
@@ -1452,16 +1484,19 @@ describe("displayNodesAtom keeps what the stored node already carries", () => {
 });
 
 describe("canvasEditingLockedAtom", () => {
-  it("locks Runs and Changes even before their display graph loads", () => {
+  it("locks Runs before its display graph loads, and Draft while Publish prepares the review", () => {
     const store = createGraphStore(...standardGraph());
 
     showWorkspaceRoute(store, { view: "runs" });
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
 
-    showWorkspaceRoute(store, { view: "changes" });
+    showWorkspaceRoute(store, {});
+    expect(store.get(canvasEditingLockedAtom)).toBe(false);
+
+    store.set(beginPublicationReviewAtom, "workflow_1");
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
 
-    showWorkspaceRoute(store, {});
+    store.set(clearPublicationReviewAtom, "workflow_1");
     expect(store.get(canvasEditingLockedAtom)).toBe(false);
   });
 });

@@ -19,13 +19,14 @@ function searchString(search: unknown, key: string): string | undefined {
 
 /**
  * The editor route search the viewer may open. A value that is not a
- * non-empty string is dropped. A run belongs to `view=runs` and a comparison
- * base to `view=changes`; a view the viewer cannot open falls back to Draft
- * along with the run or comparison it named.
+ * non-empty string is dropped. A run belongs to `view=runs`, and a view the
+ * viewer cannot open falls back to Draft along with the run it named. A link
+ * naming `view=changes`, or `review=true`, asks Draft to open the review sheet
+ * for a viewer who may review and publish.
  */
 export function authorizedWorkflowSearch(
   search: unknown,
-  access: { canOpenRuns: boolean; canOpenComparison: boolean }
+  access: { canOpenRuns: boolean; canReview: boolean }
 ): WorkflowRouteSearch {
   const view = searchString(search, "view");
   const group = searchString(search, "group");
@@ -36,17 +37,25 @@ export function authorizedWorkflowSearch(
     if (executionId !== undefined) {
       result.executionId = executionId;
     }
-  } else if (view === "changes" && access.canOpenComparison) {
-    result.view = "changes";
-    const compare = searchString(search, "compare");
-    if (compare !== undefined) {
-      result.compare = compare;
-    }
+  } else if (
+    access.canReview &&
+    (view === "changes" || searchFlag(search, "review"))
+  ) {
+    result.review = true;
   }
   if (group !== undefined) {
     result.group = group;
   }
   return result;
+}
+
+/** Whether `key` holds true, or the text "true" a typed URL carries. */
+function searchFlag(search: unknown, key: string): boolean {
+  if (typeof search !== "object" || search === null || !(key in search)) {
+    return false;
+  }
+  const value: unknown = Reflect.get(search, key);
+  return value === true || value === "true";
 }
 
 /** Whether a request failed because the thing it named does not exist. */

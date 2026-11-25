@@ -19,7 +19,7 @@ function commandInput(
       canRunDraft: true,
       canRunPublished: true,
       canSave: true,
-      canViewChanges: true,
+      canViewVersionHistory: true,
       canViewRuns: true,
       canPublish: true,
       canAddStep: true,
@@ -65,7 +65,7 @@ function commandInput(
       runDraft: vi.fn(),
       runPublished: vi.fn(),
       save: vi.fn(),
-      showChanges: vi.fn(),
+      showVersionHistory: vi.fn(),
       showRuns: vi.fn(),
       undo: vi.fn(),
     },
@@ -78,18 +78,26 @@ describe("workflowCommands", () => {
     const commands = workflowCommands(input);
 
     expect(commands.map((command) => command.id)).toEqual(
-      expect.arrayContaining(["save", "show-runs", "show-changes", "publish"])
+      expect.arrayContaining([
+        "save",
+        "show-runs",
+        "review-changes",
+        "version-history",
+        "publish",
+      ])
     );
 
     commands.find((command) => command.id === "save")?.execute();
     commands.find((command) => command.id === "show-runs")?.execute();
-    commands.find((command) => command.id === "show-changes")?.execute();
+    commands.find((command) => command.id === "version-history")?.execute();
+    commands.find((command) => command.id === "review-changes")?.execute();
     commands.find((command) => command.id === "publish")?.execute();
 
     expect(input.callbacks.save).toHaveBeenCalledOnce();
     expect(input.callbacks.showRuns).toHaveBeenCalledOnce();
-    expect(input.callbacks.showChanges).toHaveBeenCalledOnce();
-    expect(input.callbacks.publish).toHaveBeenCalledOnce();
+    expect(input.callbacks.showVersionHistory).toHaveBeenCalledOnce();
+    // Review changes opens the sheet Publish opens.
+    expect(input.callbacks.publish).toHaveBeenCalledTimes(2);
   });
 
   it("includes every canvas shortcut action", () => {
@@ -210,9 +218,10 @@ describe("workflowCommands", () => {
     );
   });
 
-  // The toolbar's run control already offers both runs, so the Actions menu
-  // skips them and the palette is where they are searched for by name.
-  it("marks both run commands as belonging to the palette alone", () => {
+  // The toolbar's run control already offers both runs, and Publish opens the
+  // sheet the Actions menu reaches as Review changes, so the menu skips all
+  // three and the palette is where they are searched for by name.
+  it("marks both run commands and Publish as belonging to the palette alone", () => {
     const commands = workflowCommands(commandInput());
 
     expect(
@@ -223,6 +232,9 @@ describe("workflowCommands", () => {
     ).toBe(true);
     expect(
       commands.find((command) => command.id === "publish")?.paletteOnly
+    ).toBe(true);
+    expect(
+      commands.find((command) => command.id === "review-changes")?.paletteOnly
     ).toBe(undefined);
   });
 
@@ -313,7 +325,8 @@ describe("workflowCommands", () => {
     );
 
     expect(labels.get("show-runs")).toBe("Switch to Runs");
-    expect(labels.get("show-changes")).toBe("Switch to Changes");
+    expect(labels.get("review-changes")).toBe("Review changes");
+    expect(labels.get("version-history")).toBe("Version history");
     expect(labels.get("publish")).toBe("Publish v8");
     expect(
       workflowCommands(commandInput({ publishedVersion: undefined })).find(
@@ -407,9 +420,9 @@ describe("draftViewReason", () => {
     expect(draftViewReason("draft", "publish")).toBeNull();
   });
 
-  it("sends the reader to Draft from Runs and Changes", () => {
+  it("sends the reader to Draft from Runs", () => {
     expect(draftViewReason("runs", "run")).toBe("Switch to Draft to run.");
-    expect(draftViewReason("changes", "publish")).toBe(
+    expect(draftViewReason("runs", "publish")).toBe(
       "Switch to Draft to publish."
     );
   });

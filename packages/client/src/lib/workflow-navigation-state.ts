@@ -19,29 +19,25 @@ import {
   type MobileScopePresentation,
 } from "#src/lib/mobile-sheet-navigation";
 
-export type WorkspaceView = "draft" | "runs" | "changes";
+export type WorkspaceView = "draft" | "runs";
 
 /**
- * The editor route search. `view` names Runs or Changes, and an absent `view`
- * is Draft. `executionId` belongs to Runs, `compare` (a base version id) to
- * Changes, and `group` names the Group any workspace is focused on.
+ * The editor route search. `view` names Runs, and an absent `view` is Draft.
+ * `executionId` belongs to Runs, and `group` names the Group any workspace is
+ * focused on. `review` asks Draft to open the review sheet once, which the
+ * editor answers and then drops from the route.
  */
 export type WorkflowRouteSearch = {
-  view?: "runs" | "changes" | undefined;
+  view?: "runs" | undefined;
   executionId?: string | undefined;
-  compare?: string | undefined;
   group?: string | undefined;
+  review?: true | undefined;
 };
 
-/**
- * Draft, the run list or one run, or the comparison against one base version.
- * A null `executionId` is the run list. A null `baseVersionId` is a
- * comparison whose base the route does not name yet, or a first publication.
- */
+/** Draft, or the run list or one run. A null `executionId` is the run list. */
 export type WorkspaceKey =
   | { workspace: "draft" }
-  | { workspace: "runs"; executionId: string | null }
-  | { workspace: "changes"; baseVersionId: string | null };
+  | { workspace: "runs"; executionId: string | null };
 
 export type WorkspaceScope =
   | { kind: "overview" }
@@ -69,7 +65,7 @@ export type OpenRevealLevel = Exclude<RevealLevel, "closed">;
 
 /**
  * Whether a selection opens and closes Canvas Reveal in a workspace. Draft
- * follows its selection, and a Draft address starts closed. Runs and Changes
+ * follows its selection, and a Draft address starts closed. Runs
  * open and close at the level a person last chose, which a cookie keeps.
  */
 export function revealFollowsSelection(workspace: WorkspaceView): boolean {
@@ -175,10 +171,7 @@ export type NavigationGraph = {
   edges: ReadonlyArray<{ id: string; target: string }>;
 };
 
-/**
- * How many run keys, and separately how many comparison keys, one workflow
- * retains besides the run Runs reopens and the comparison Changes reopens.
- */
+/** How many run keys one workflow retains besides the run Runs reopens. */
 export const RETAINED_KEYS_PER_VIEW = 10;
 
 const OVERVIEW_SCOPE: WorkspaceScope = { kind: "overview" };
@@ -208,25 +201,13 @@ export const EMPTY_WORKFLOW_NAVIGATION: WorkflowNavigation = {
 };
 
 const DRAFT_KEY_ID = "draft";
-const COMPARISON_KEY_ID_PREFIX = "comparison:";
 
 /** A stable string for a workspace key. Ids cannot collide across kinds. */
 export function workspaceKeyId(key: WorkspaceKey): string {
   if (key.workspace === "draft") {
     return DRAFT_KEY_ID;
   }
-  if (key.workspace === "runs") {
-    return key.executionId === null ? "runs" : `run:${key.executionId}`;
-  }
-  return `${COMPARISON_KEY_ID_PREFIX}${key.baseVersionId ?? ""}`;
-}
-
-/**
- * Whether a workspace key presents the Draft graph or a comparison diffed
- * against it. A run key presents the graph its run pinned.
- */
-function keyIdPresentsDraft(keyId: string): boolean {
-  return keyId === DRAFT_KEY_ID || keyId.startsWith(COMPARISON_KEY_ID_PREFIX);
+  return key.executionId === null ? "runs" : `run:${key.executionId}`;
 }
 
 export function scopeId(scope: WorkspaceScope): string {
@@ -245,9 +226,7 @@ export function workspaceAddressFromSearch(
   const key: WorkspaceKey =
     search.view === "runs"
       ? { workspace: "runs", executionId: search.executionId ?? null }
-      : search.view === "changes"
-        ? { workspace: "changes", baseVersionId: search.compare ?? null }
-        : { workspace: "draft" };
+      : { workspace: "draft" };
   const scope: WorkspaceScope =
     search.group === undefined
       ? OVERVIEW_SCOPE
@@ -267,12 +246,6 @@ export function workspaceRouteSearch(
       search.executionId = key.executionId;
     }
   }
-  if (key.workspace === "changes") {
-    search.view = "changes";
-    if (key.baseVersionId !== null) {
-      search.compare = key.baseVersionId;
-    }
-  }
   if (scope.kind === "group") {
     search.group = scope.groupId;
   }
@@ -286,8 +259,8 @@ export function sameRouteSearch(
   return (
     left.view === right.view &&
     left.executionId === right.executionId &&
-    left.compare === right.compare &&
-    left.group === right.group
+    left.group === right.group &&
+    left.review === right.review
   );
 }
 
@@ -310,9 +283,8 @@ export function scopeNavigationAt(
 
 /**
  * Apply `update` to the navigation of one address. A written key moves to the
- * end of the recency order. Run keys and comparison keys past
- * `RETAINED_KEYS_PER_VIEW` are dropped oldest first, keeping the ones Runs and
- * Changes reopen. Writing a Group scope other than
+ * end of the recency order. Run keys past `RETAINED_KEYS_PER_VIEW` are dropped
+ * oldest first, keeping the one Runs reopens. Writing a Group scope other than
  * the retained one replaces it, since a key holds at most one Group scope.
  */
 export function updateScopeNavigation(
@@ -347,31 +319,24 @@ export function updateScopeNavigation(
 }
 
 /**
- * Drop the oldest run keys and comparison keys past the retained count. The
- * key each view's remembered search names is kept whatever its age.
+ * Drop the oldest run keys past the retained count. The key Runs' remembered
+ * search names is kept whatever its age.
  */
 function evictOldKeys(
   workspaces: Map<string, WorkspaceNavigation>,
   searches: WorkflowNavigation["searches"]
 ): Map<string, WorkspaceNavigation> {
-  const reopened = new Set(
-    (["runs", "changes"] as const).flatMap((view) => {
-      const search = searches[view];
-      return search
-        ? [workspaceKeyId(workspaceAddressFromSearch("", search).key)]
-        : [];
-    })
+  const reopened = searches.runs
+    ? workspaceKeyId(workspaceAddressFromSearch("", searches.runs).key)
+    : null;
+  const evictable = [...workspaces.keys()].filter(
+    (keyId) => keyId.startsWith("run:") && keyId !== reopened
   );
-  for (const prefix of ["run:", "comparison:"]) {
-    const evictable = [...workspaces.keys()].filter(
-      (keyId) => keyId.startsWith(prefix) && !reopened.has(keyId)
-    );
-    for (const keyId of evictable.slice(
-      0,
-      Math.max(0, evictable.length - RETAINED_KEYS_PER_VIEW)
-    )) {
-      workspaces.delete(keyId);
-    }
+  for (const keyId of evictable.slice(
+    0,
+    Math.max(0, evictable.length - RETAINED_KEYS_PER_VIEW)
+  )) {
+    workspaces.delete(keyId);
   }
   return workspaces;
 }
@@ -468,9 +433,8 @@ export function selectionInGraph(
 }
 
 /**
- * The navigation with the selection emptied in every scope of the Draft key
- * and of each comparison key, which are the keys a Draft graph load replaces
- * the graph of. Run keys keep their selections, and every key keeps its
+ * The navigation with the selection emptied in every scope of the Draft key,
+ * the key a Draft graph load replaces the graph of. Run keys keep their selections, and every key keeps its
  * cameras, Reveal levels, remembered searches, and order.
  */
 export function withoutDraftSelections(
@@ -479,7 +443,7 @@ export function withoutDraftSelections(
   const entries = [...navigation.workspaces];
   const cleared = mapOrSame(entries, (item): [string, WorkspaceNavigation] => {
     const [keyId, entry] = item;
-    if (!keyIdPresentsDraft(keyId)) {
+    if (keyId !== DRAFT_KEY_ID) {
       return item;
     }
     const next = workspaceWithoutSelections(entry);
@@ -687,18 +651,13 @@ export function withCamera(
 /**
  * The route search recovery settles on for what the editor could open.
  *
- * `groupMissing` drops the Group, `runMissing` returns Runs to the run list,
- * and a `missingComparisonBaseId` equal to the named base returns Changes to
- * the current publication. A
- * Changes route that names no base takes the base of the installed comparison,
- * so the route carries the exact comparison identity.
+ * `groupMissing` drops the Group, and `runMissing` returns Runs to the run
+ * list.
  */
 export function recoveredRouteSearch(input: {
   search: WorkflowRouteSearch;
   groupMissing: boolean;
   runMissing: boolean;
-  missingComparisonBaseId: string | null;
-  installedComparisonBaseId: string | null | undefined;
 }): WorkflowRouteSearch {
   const { search } = input;
   const next: WorkflowRouteSearch = { ...search };
@@ -712,20 +671,6 @@ export function recoveredRouteSearch(input: {
   ) {
     delete next.executionId;
     delete next.group;
-  }
-  if (search.view === "changes") {
-    if (
-      search.compare !== undefined &&
-      input.missingComparisonBaseId === search.compare
-    ) {
-      delete next.compare;
-      delete next.group;
-    } else if (
-      search.compare === undefined &&
-      typeof input.installedComparisonBaseId === "string"
-    ) {
-      next.compare = input.installedComparisonBaseId;
-    }
   }
   return sameRouteSearch(next, search) ? search : next;
 }

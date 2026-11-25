@@ -1,13 +1,9 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import type { Store } from "jotai";
 import { beforeEach, describe, expect, it } from "vitest";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { useWorkflowNodeInspection } from "#src/components/workflow/use-workflow-node-inspection";
-import {
-  beginWorkflowComparisonRequestAtom,
-  installWorkflowComparisonAtom,
-} from "#src/lib/workflow-comparison-store";
 import {
   canvasEdgesAtom,
   displayNodesAtom,
@@ -18,8 +14,6 @@ import {
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import {
   activeDesktopRevealLevelAtom,
@@ -114,7 +108,7 @@ function selectionState(store: Store) {
 /** The read-only node is the only selection, and Draft kept its own. */
 function assertReadOnlySelection(
   store: Store,
-  view: { search: { view: "runs" | "changes" } }
+  view: { search: { view: "runs" } }
 ) {
   const readOnly = { nodeIds: ["readonly_b"], edgeIds: [] };
   expect(store.get(selectedNodeAtom)).toBe("readonly_b");
@@ -197,35 +191,5 @@ describe("useWorkflowNodeInspection", () => {
     fireEvent.click(view.getByRole("button", { name: /Inspect/ }));
 
     assertReadOnlySelection(store, { search: { view: "runs" } });
-  });
-
-  it("clears a stale edge selection when clicking a node in Changes", () => {
-    const store = selectionStore();
-    const comparison: WorkflowComparisonPayload = {
-      baseVersion: null,
-      proposedVersion: 1,
-      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-      draftGraph: createSerializedWorkflowGraph({
-        nodes: [READ_ONLY_NODE],
-        edges: [],
-      }),
-      hasChanges: true,
-      nodeChanges: [{ nodeId: "readonly_b", kind: "added", fields: [] }],
-      edgeChanges: [],
-    };
-    const epoch = store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
-    store.set(installWorkflowComparisonAtom, {
-      workflowId: "workflow_1",
-      epoch,
-      payload: comparison,
-    });
-    showWorkspaceRoute(store, { view: "changes" });
-    const view = renderInspector(store);
-
-    act(() => {
-      fireEvent.click(view.getByRole("button", { name: /Inspect/ }));
-    });
-
-    assertReadOnlySelection(store, { search: { view: "changes" } });
   });
 });

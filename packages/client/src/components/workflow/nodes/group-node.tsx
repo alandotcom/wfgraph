@@ -1,13 +1,7 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { useAtomValue } from "jotai";
 import { ArrowRight, Group } from "lucide-react";
-import {
-  createContext,
-  memo,
-  type ReactNode,
-  useContext,
-  useMemo,
-} from "react";
+import { memo, useMemo } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { groupMemberCountAtom } from "#src/lib/workflow-graph-presentation-store";
@@ -33,21 +27,6 @@ import {
   groupRunStatusLabel,
 } from "@wfgraph/shared/graph/group-run-status";
 
-/** What a collapsed Group card hands the control for its changed steps. */
-export type GroupChangedStepsControlProps = {
-  groupLabel: string;
-  changedMemberIds: readonly string[];
-};
-
-/**
- * The control a canvas supplies for the changed steps inside a Group. A Group
- * card on a comparison canvas draws it beside the step count, and a card under
- * no provider draws none.
- */
-export const GroupChangedStepsSlot = createContext<
-  ((props: GroupChangedStepsControlProps) => ReactNode) | null
->(null);
-
 type GroupNodeProps = NodeProps & {
   data?: WorkflowNodeData;
   id: string;
@@ -57,13 +36,12 @@ type GroupNodeProps = NodeProps & {
  * A Group on the overview: one collapsed card naming the Group and how many
  * steps it holds, or on a run's canvas its run status and member counts. Its
  * members show only on the focused Group canvas, which the card's Enter group
- * button opens. On a comparison canvas the card also counts its changed steps
- * and leads to the first one.
+ * button opens. While the review sheet is open the card also counts its
+ * changed steps.
  */
 export const GroupNode = memo(
   ({ data, selected, id, isConnectable }: GroupNodeProps) => {
     const { enterGroup } = useGroupScopeNavigation();
-    const renderChangedSteps = useContext(GroupChangedStepsSlot);
     const memberCount = useAtomValue(
       useMemo(() => groupMemberCountAtom(id), [id])
     );
@@ -159,11 +137,16 @@ export const GroupNode = memo(
               <dt className="text-muted-foreground">Steps</dt>
               <dd className="font-medium tabular-nums">{memberCount}</dd>
             </dl>
-            {/* On a comparison canvas the card counts the changed steps inside
-              the Group, which show only once the Group is entered. */}
-            {changedMemberIds && renderChangedSteps
-              ? renderChangedSteps({ changedMemberIds, groupLabel: label })
-              : null}
+            {/* While the review sheet is open the card counts the changed
+              steps inside the Group, which show only once it is entered. */}
+            {changedMemberIds ? (
+              <span
+                className="shrink-0 font-medium"
+                data-testid={`group-changed-steps-${id}`}
+              >
+                {changedMemberIds.length} changed
+              </span>
+            ) : null}
           </div>
         )}
         {/* One outlet for the whole Group. The canvas paints every edge

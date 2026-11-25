@@ -1,13 +1,14 @@
 /**
- * The workflow-level menu actions: save, clear, delete, duplicate, and the
- * publish review. The run pipeline lives in `workflow-run-handlers`; chrome
- * components live beside this file.
+ * The workflow-level menu actions: save, clear, delete, duplicate, and opening
+ * the review sheet that Publish starts. The sheet's own decision lives in
+ * `review/use-publish-review`, the run pipeline in `workflow-run-handlers`, and
+ * chrome components beside this file.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import {
@@ -22,37 +23,21 @@ import {
   useWorkflowIssuePreflight,
 } from "#src/hooks/use-workflow-issue-preflight";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
-import { publishWarningMessage } from "#src/lib/publish-warnings";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import {
-  cacheWorkflowPublication,
-  orpcQuery,
-  refreshWorkflowList,
-  refreshWorkflowPublication,
-  refreshWorkflowVersionHistory,
-} from "#src/lib/rpc-query";
+import { orpcQuery, refreshWorkflowList } from "#src/lib/rpc-query";
 import type { WorkflowRunGraph } from "#src/lib/workflow-run-labels";
+import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
+import { toSerializedGraph } from "#src/lib/rpc-client";
 import {
-  recordLoadedDraftRevisionAtom,
-  saveWorkflowAtom,
-} from "#src/lib/workflow-save-store";
-import { ApiError, toSerializedGraph } from "#src/lib/rpc-client";
-import {
-  DRAFT_CONFLICT_CODE,
-  isPublicationConflictCode,
-  PUBLICATION_CONFLICT_CODES,
-  type PublicationConflictCode,
-} from "@wfgraph/shared/rpc/error-codes";
-import { publicationReviewFromComparison } from "#src/components/workflow/publish-review-dialog";
+  reportNothingToPublish,
+  useIsPublishing,
+} from "#src/components/workflow/review/use-publish-review";
 import {
   beginPublicationReviewAtom,
   clearPublicationReviewAtom,
   installPublicationReviewAtom,
   isPublicationReviewActiveAtom,
-  isPublicationReviewPendingAtom,
-  publicationReviewAtom,
   publicationReviewSessionAtom,
-  type ReadyPublicationReview,
 } from "#src/lib/workflow-publication-review-store";
 import {
   groupWorkflowIssuesForOverlay,
@@ -63,23 +48,6 @@ import {
   PREFLIGHT_TOAST_ID,
   useWorkflowHandlers,
 } from "#src/components/workflow/workflow-run-handlers";
-
-/**
- * Which conflict a refused publish is, read off the failure's code: one of the
- * two publication conflicts, or the draft revision the review pinned no longer
- * being the stored one.
- *
- * The message beside the code is written for a person and may be reworded, so
- * nothing here looks at it.
- */
-function publicationConflictCode(
-  error: unknown
-): PublicationConflictCode | typeof DRAFT_CONFLICT_CODE | undefined {
-  const code = error instanceof ApiError ? error.code : undefined;
-  return isPublicationConflictCode(code) || code === DRAFT_CONFLICT_CODE
-    ? code
-    : undefined;
-}
 
 /**
  * What the toolbar chrome, the overflow menu, and the command palette call.
@@ -95,14 +63,14 @@ export type WorkflowToolbarActions = {
   loadWorkflows: () => Promise<void>;
   handleDuplicate: () => void;
   isDuplicating: boolean;
+  /**
+   * Save, check, and compare the draft, then open the review sheet on it.
+   * "Review changes" runs the same path.
+   */
   handlePublish: () => Promise<void>;
-  confirmPublish: () => void;
   isPublishing: boolean;
   isComparing: boolean;
   isPreflighting: boolean;
-  /** The review a publish is waiting on, null while no review is open. */
-  publishReview: ReadyPublicationReview | null;
-  setPublishReviewOpen: (open: boolean) => void;
 };
 
 export function useWorkflowActions(
@@ -114,14 +82,11 @@ export function useWorkflowActions(
   const store = useStore();
   const deleteWorkflow = useDeleteWorkflow();
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
-  const recordLoadedDraftRevision = useSetAtom(recordLoadedDraftRevisionAtom);
-  const publishReview = useAtomValue(publicationReviewAtom);
   const publicationReviewActive = useAtomValue(isPublicationReviewActiveAtom);
-  const publicationReviewPending = useAtomValue(isPublicationReviewPendingAtom);
   const beginPublicationReview = useSetAtom(beginPublicationReviewAtom);
   const installPublicationReview = useSetAtom(installPublicationReviewAtom);
   const clearPublicationReview = useSetAtom(clearPublicationReviewAtom);
-  const publishingReviewRef = useRef<string | null>(null);
+  const isPublishing = useIsPublishing();
   // Only the fields this hook's own bodies read. The run and issue handlers
   // take the whole state and destructure it themselves.
   const {
@@ -261,39 +226,9 @@ export function useWorkflowActions(
     })
   );
 
-  // Per-call callbacks run from the click that began this preflight. The hook
-  // itself therefore remains a plain RPC declaration during render.
-  const publishWorkflow = useMutation(
-    orpcQuery.workflow.publish.mutationOptions({
-      // The three coded conflicts are answered below in the operator's terms,
-      // so the cache's own toast would say it a second time. Only those three
-      // are claimed: a per-mutate onError is skipped once the
-      // component that called mutate has unmounted, and a generic failure the
-      // operator has navigated away from must still reach a toast.
-      meta: {
-        errorShownByCaller: (error) =>
-          publicationConflictCode(error) !== undefined,
-      },
-    })
-  );
   const compareWorkflowVersion = useMutation(
     orpcQuery.workflow.compareVersion.mutationOptions()
   );
-
-  /**
-   * Close the publication badge and say the draft is already published.
-   *
-   * Both the comparison finding no changes and the server refusing the publish
-   * for the same reason land here, so the operator reads one sentence either
-   * way and the badge stops claiming unpublished changes.
-   */
-  const reportNothingToPublish = (workflowId: string) => {
-    cacheWorkflowPublication(queryClient, {
-      id: workflowId,
-      hasUnpublishedChanges: false,
-    });
-    toast.info("No changes to publish");
-  };
 
   const handleDuplicate = () => {
     if (!currentWorkflowId || !canDuplicate) {
@@ -383,7 +318,7 @@ export function useWorkflowActions(
           ) {
             return;
           }
-          reportNothingToPublish(comparisonInput.workflowId);
+          reportNothingToPublish(queryClient, comparisonInput.workflowId);
           return;
         }
 
@@ -391,10 +326,10 @@ export function useWorkflowActions(
           workflowId: comparisonInput.workflowId,
           epoch,
           pending: false,
-          graph: comparisonInput.draftGraph,
+          graph,
           expectedDraftRevision: saved.workflow.draftRevision,
           expectedPublishedVersionId: comparison.baseVersion?.id ?? null,
-          review: publicationReviewFromComparison(comparison),
+          payload: comparison,
         });
       },
       onSettled: (comparison, _error, comparisonInput) => {
@@ -408,144 +343,6 @@ export function useWorkflowActions(
     });
   };
 
-  const confirmPublish = () => {
-    if (!publishReview || publicationReviewPending || !canPublish) {
-      return;
-    }
-    if (
-      publishReview.workflowId !== currentWorkflowId ||
-      !publicationReviewActive
-    ) {
-      clearPublicationReview({
-        workflowId: publishReview.workflowId,
-        epoch: publishReview.epoch,
-      });
-      return;
-    }
-    const publishingKey = `${publishReview.workflowId}:${publishReview.epoch}`;
-    if (publishingReviewRef.current === publishingKey) {
-      return;
-    }
-
-    publishingReviewRef.current = publishingKey;
-    publishWorkflow.mutate(
-      {
-        workflowId: publishReview.workflowId,
-        graph: publishReview.graph,
-        expectedPublishedVersionId: publishReview.expectedPublishedVersionId,
-        expectedDraftRevision: publishReview.expectedDraftRevision,
-      },
-      {
-        onSuccess: (payload) => {
-          // The version exists whether or not the review that asked for it is
-          // still open, and any route load ends every review. Only closing
-          // the review is held to its epoch.
-          toast.success(`Published v${payload.publishedVersion}`);
-          // A warning never stops a publish, so each one follows the success.
-          for (const warning of payload.warnings) {
-            const message = publishWarningMessage(warning);
-            toast.warning(message.title, { description: message.description });
-          }
-          recordLoadedDraftRevision({
-            workflowId: payload.id,
-            draftRevision: payload.draftRevision,
-          });
-          cacheWorkflowPublication(queryClient, payload);
-          void loadWorkflows();
-          void refreshWorkflowVersionHistory(queryClient);
-          clearPublicationReview({
-            workflowId: payload.id,
-            epoch: publishReview.epoch,
-          });
-        },
-        onError: (error) => {
-          const conflict = publicationConflictCode(error);
-          if (!conflict) {
-            // Anything else keeps what a failed write has always done: the
-            // mutation cache says what the server said, and the review stays
-            // open to try again.
-            return;
-          }
-
-          // Every coded conflict ends the review this attempt was built on. The
-          // epoch is what stops a late answer from closing a review the
-          // operator has opened since, exactly as the success path is held.
-          if (
-            !clearPublicationReview({
-              workflowId: publishReview.workflowId,
-              epoch: publishReview.epoch,
-            })
-          ) {
-            return;
-          }
-
-          if (conflict === DRAFT_CONFLICT_CODE) {
-            // The draft was saved elsewhere after the review pinned its
-            // revision, so retrying this review can never succeed. Ending it
-            // releases the editing lock, which lets the draft sync install the
-            // newer draft on a clean canvas or report it as a conflict beside
-            // unsaved edits.
-            toast.error(
-              "The draft changed while you were reviewing. Publish again to review the current draft."
-            );
-            return;
-          }
-
-          if (conflict === PUBLICATION_CONFLICT_CODES.stale) {
-            // The version this draft was compared against is no longer the
-            // current one, so the changes the operator approved no longer
-            // describe what publishing would do. Read the publication state
-            // back and leave them to review again; the canvas keeps the draft
-            // it has.
-            void refreshWorkflowPublication(
-              queryClient,
-              publishReview.workflowId
-            );
-            void refreshWorkflowVersionHistory(queryClient);
-            toast.error(
-              "Someone published a newer version while you were reviewing. Publish again to compare against it."
-            );
-            return;
-          }
-
-          reportNothingToPublish(publishReview.workflowId);
-        },
-        onSettled: (_payload, _error, _publishInput) => {
-          if (publishingReviewRef.current === publishingKey) {
-            publishingReviewRef.current = null;
-          }
-        },
-      }
-    );
-  };
-
-  /**
-   * The publish review dialog's open state. Opening does nothing, because
-   * `handlePublish` opens a review.
-   *
-   * Closing ends the review by workflow and epoch, so a late answer cannot end
-   * a review the operator opened since. A dialog closing while the review is
-   * still pending has no review to name, so the open workflow's id ends that
-   * session instead.
-   */
-  const setPublishReviewOpen = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        const workflowId =
-          publishReview?.workflowId ?? currentWorkflowId ?? undefined;
-        if (publishReview) {
-          clearPublicationReview({
-            workflowId: publishReview.workflowId,
-            epoch: publishReview.epoch,
-          });
-        } else {
-          clearPublicationReview(workflowId);
-        }
-      }
-    },
-    [clearPublicationReview, currentWorkflowId, publishReview]
-  );
-
   return {
     handleSave,
     handleExecute,
@@ -555,11 +352,8 @@ export function useWorkflowActions(
     handleDuplicate,
     isDuplicating: duplicateWorkflow.isPending,
     handlePublish,
-    confirmPublish,
-    isPublishing: publishWorkflow.isPending,
+    isPublishing,
     isComparing: compareWorkflowVersion.isPending,
     isPreflighting,
-    publishReview,
-    setPublishReviewOpen,
   };
 }

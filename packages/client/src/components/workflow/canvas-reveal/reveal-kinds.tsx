@@ -12,14 +12,12 @@ import {
   useNodeConfigTitle,
 } from "#src/components/workflow/node-config-panel";
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
-import { setComparisonSubviewAtom } from "#src/lib/workflow-comparison-store";
 import { groupLabel, type WorkflowNode } from "#src/lib/workflow-graph-types";
 import type {
   OpenRevealLevel,
   WorkflowRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { groupIssues } from "#src/lib/workflow-issues-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   findAction,
   type ExtensionCatalog,
@@ -34,9 +32,6 @@ import { compact } from "es-toolkit/array";
 import type { Getter } from "jotai";
 import type { Store } from "jotai";
 import { activeChosenExecutionAtom } from "#src/lib/workflow-workspace-navigation";
-import { ChangesBrowse, ChangesHeader } from "./changes-browse";
-import { ChangesMobileBody, ChangesMobileHeader } from "./changes-mobile";
-import { comparisonRevealContextAtom } from "./changes-summary";
 import { ConditionBrowse, ConditionFocus } from "./condition-reveal";
 import { EventSplitBrowse } from "./event-split-reveal";
 import { GroupBrowse, GroupFocusSections } from "./group-browse";
@@ -50,7 +45,6 @@ import {
   type RevealHeaderModel,
 } from "./reveal-header";
 import {
-  matchChangesSubject,
   matchConditionSubject,
   matchEventSplitSubject,
   matchGroupSubject,
@@ -354,20 +348,6 @@ function PanelHeader({ level, controls }: RevealKindHeaderProps) {
   );
 }
 
-/**
- * One step back in Changes: from version history to the change list, and from
- * the change list to Closed.
- */
-function unwindChanges({ store, unwindLevel }: Parameters<RevealUnwind>[0]) {
-  const comparison = store.get(comparisonRevealContextAtom);
-  const workflowId = store.get(currentWorkflowIdAtom);
-  if ("payload" in comparison && comparison.showsHistory && workflowId) {
-    store.set(setComparisonSubviewAtom, { workflowId, subview: "review" });
-    return;
-  }
-  unwindLevel();
-}
-
 /** A Draft ordinary step: a summary in Browse and its complete form in Focus. */
 const STEP_KIND: RevealKind = {
   id: "step",
@@ -471,30 +451,6 @@ const RUNS_KIND: RevealKind = {
 };
 
 /**
- * The Changes workspace: the comparison summary, the change list whose rows
- * open in place to show each object's differences, and version history, all
- * in Browse under a header naming the comparison. The body keeps its own
- * scroll. On mobile the summary and the change list are address sheets and
- * version history an address inspector, each scrolled by the shell.
- */
-const CHANGES_KIND: RevealKind = {
-  id: "changes",
-  match: matchChangesSubject,
-  regionLabel: "Changes inspector",
-  header: { owner: "kind", Header: ChangesHeader },
-  Browse: ChangesBrowse,
-  Focus: null,
-  unwind: unwindChanges,
-  mobile: {
-    Header: ChangesMobileHeader,
-    Body: ChangesMobileBody,
-    shellOwnsScroll: true,
-  },
-  focusReturnTarget: canvasNodeElement,
-  shellOwnsScroll: false,
-};
-
-/**
  * The node config panel at Browse, for every Draft selection no other kind
  * shows. It scrolls inside its own body.
  */
@@ -517,7 +473,6 @@ const REVEAL_KINDS: readonly RevealKind[] = [
   EVENT_SPLIT_KIND,
   LIFECYCLE_KIND,
   RUNS_KIND,
-  CHANGES_KIND,
   PANEL_KIND,
 ];
 
@@ -528,7 +483,6 @@ const REVEAL_KINDS_BY_ID: Readonly<Record<RevealKindId, RevealKind>> = {
   eventSplit: EVENT_SPLIT_KIND,
   lifecycle: LIFECYCLE_KIND,
   runs: RUNS_KIND,
-  changes: CHANGES_KIND,
   panel: PANEL_KIND,
 };
 

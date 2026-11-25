@@ -46,11 +46,17 @@ function pushToken(runs: DiffRun[], kind: DiffRun["kind"], token: string) {
 }
 
 /**
- * The runs that turn `before` into `after`, in reading order. Inside a changed
- * stretch the removed run comes before the added one. Tokens are compared
- * exactly, so a change of case or spacing is a change.
+ * The runs that turn `before` into `after`, in reading order, shaped for a
+ * reader as `readableRuns` describes. Inside a changed stretch the removed run
+ * comes before the added one. Tokens are compared exactly, so a change of case
+ * or spacing is a change.
  */
 export function diffText(before: string, after: string): DiffRun[] {
+  return readableRuns(tokenRuns(before, after));
+}
+
+/** The token-level runs that turn `before` into `after`. */
+function tokenRuns(before: string, after: string): DiffRun[] {
   const left = textTokens(before);
   const right = textTokens(after);
   let prefix = 0;
@@ -136,13 +142,126 @@ function middleOperations(
   return operations;
 }
 
+function isWhitespace(token: string): boolean {
+  return /^\s+$/u.test(token);
+}
+
 /**
- * One piece of a side as shown: text both strings share, text this side alone
- * holds, or a fold standing for unchanged text left out.
+ * One stretch of a difference: tokens both strings share, or a change that
+ * replaces `removed` with `added`, either of which may be empty.
  */
-export type ShownPiece =
-  | { kind: "same" | "changed"; text: string }
-  | { kind: "fold" };
+type Stretch =
+  | { kind: "same"; tokens: string[] }
+  | { kind: "change"; removed: string[]; added: string[] };
+
+/**
+ * Reshapes token-level runs so each change reads as whole words.
+ *
+ * A replacement, a change that both removes and adds, takes in the shared
+ * characters that touch it with no whitespace between, so "$50" to "$75"
+ * reads as the whole of "$50" replaced by the whole of "$75". Changes kept
+ * apart only by whitespace join into one, so alternating removed and added
+ * words read as one removed phrase followed by one added phrase. A pure
+ * insertion or removal keeps its exact place, such as a comma added after a
+ * word.
+ */
+function readableRuns(runs: readonly DiffRun[]): DiffRun[] {
+  const stretches: Stretch[] = [];
+  for (const run of runs) {
+    const last = stretches.at(-1);
+    if (run.kind === "same") {
+      stretches.push({ kind: "same", tokens: [...run.tokens] });
+    } else if (last?.kind === "change") {
+      last[run.kind].push(...run.tokens);
+    } else {
+      stretches.push({
+        kind: "change",
+        removed: run.kind === "removed" ? [...run.tokens] : [],
+        added: run.kind === "added" ? [...run.tokens] : [],
+      });
+    }
+  }
+  // Each pass applies one reshaping and starts again, until none applies.
+  while (reshapeOnce(stretches)) {
+    // `reshapeOnce` changed `stretches` in place.
+  }
+  return stretches.flatMap((stretch): DiffRun[] => {
+    if (stretch.kind === "same") {
+      return stretch.tokens.length > 0
+        ? [{ kind: "same", tokens: stretch.tokens }]
+        : [];
+    }
+    return [
+      ...(stretch.removed.length > 0
+        ? [{ kind: "removed" as const, tokens: stretch.removed }]
+        : []),
+      ...(stretch.added.length > 0
+        ? [{ kind: "added" as const, tokens: stretch.added }]
+        : []),
+    ];
+  });
+}
+
+function isReplacement(stretch: Stretch | undefined): boolean {
+  return (
+    stretch?.kind === "change" &&
+    stretch.removed.length > 0 &&
+    stretch.added.length > 0
+  );
+}
+
+/** Applies the first reshaping that fits, and answers whether one did. */
+function reshapeOnce(stretches: Stretch[]): boolean {
+  for (const [index, stretch] of stretches.entries()) {
+    if (stretch.kind !== "change") continue;
+    const previous = stretches[index - 1];
+    const next = stretches[index + 1];
+    const afterNext = stretches[index + 2];
+    // Two changes with only whitespace between them become one, the
+    // whitespace standing in both the removed and the added text.
+    if (
+      next?.kind === "same" &&
+      afterNext?.kind === "change" &&
+      next.tokens.every(isWhitespace) &&
+      (isReplacement(stretch) || isReplacement(afterNext))
+    ) {
+      const removedGap =
+        stretch.removed.length > 0 && afterNext.removed.length > 0;
+      const addedGap = stretch.added.length > 0 && afterNext.added.length > 0;
+      stretch.removed.push(
+        ...(removedGap ? next.tokens : []),
+        ...afterNext.removed
+      );
+      stretch.added.push(...(addedGap ? next.tokens : []), ...afterNext.added);
+      stretches.splice(index + 1, 2);
+      return true;
+    }
+    if (!isReplacement(stretch)) continue;
+    // A replacement takes in the shared characters touching it.
+    const before =
+      previous?.kind === "same" ? previous.tokens.at(-1) : undefined;
+    if (
+      previous?.kind === "same" &&
+      before !== undefined &&
+      !isWhitespace(before)
+    ) {
+      previous.tokens.pop();
+      stretch.removed.unshift(before);
+      stretch.added.unshift(before);
+      if (previous.tokens.length === 0) stretches.splice(index - 1, 1);
+      return true;
+    }
+    const after = next?.kind === "same" ? next.tokens[0] : undefined;
+    if (next?.kind === "same" && after !== undefined && !isWhitespace(after)) {
+      next.tokens.shift();
+      stretch.removed.push(after);
+      stretch.added.push(after);
+      if (next.tokens.length === 0) stretches.splice(index + 1, 1);
+      return true;
+    }
+  }
+  return false;
+}
 
 /** How many unchanged tokens stay in view on each side of a change. */
 const FOLD_CONTEXT = 12;
@@ -150,25 +269,34 @@ const FOLD_CONTEXT = 12;
 const MIN_FOLDED = 6;
 
 /**
- * The pieces one side of `runs` shows. `before` shows the shared runs and the
- * removed ones, and `after` the shared runs and the added ones. With `fold`, a
- * shared run keeps `FOLD_CONTEXT` tokens next to each change and the rest of it
- * becomes one fold, so both sides fold the same text. A comparison with no
- * change folds nothing.
+ * One piece of a difference read as one flow: text both strings share, text
+ * only the first holds, text only the second holds, or a fold standing for
+ * unchanged text left out.
  */
-export function sidePieces(
+export type UnifiedPiece =
+  | { kind: "same" | "removed" | "added"; text: string }
+  | { kind: "fold" }
+  | { kind: "gap" };
+
+/**
+ * The pieces of `runs` in reading order, each removed run before the added
+ * run that replaces it, with a `gap` between the two that a reader sees as one
+ * space. With `fold`, a shared run keeps `FOLD_CONTEXT` tokens next to each
+ * change and the rest of it becomes one fold, which leaves out at least
+ * `MIN_FOLDED` tokens. A difference with no change folds nothing.
+ */
+export function unifiedPieces(
   runs: readonly DiffRun[],
-  side: "before" | "after",
   options: { fold: boolean }
-): ShownPiece[] {
-  const own = side === "before" ? "removed" : "added";
+): UnifiedPiece[] {
   const changed = runs.map((run) => run.kind !== "same");
   const anyChange = changed.includes(true);
-  return runs.flatMap((run, index): ShownPiece[] => {
-    if (run.kind === own)
-      return [{ kind: "changed", text: run.tokens.join("") }];
-    if (run.kind !== "same") return [];
+  return runs.flatMap((run, index): UnifiedPiece[] => {
     const text = run.tokens.join("");
+    if (run.kind === "added" && runs[index - 1]?.kind === "removed") {
+      return [{ kind: "gap" }, { kind: "added", text }];
+    }
+    if (run.kind !== "same") return [{ kind: run.kind, text }];
     if (!options.fold || !anyChange) return [{ kind: "same", text }];
     const keepStart = changed.slice(0, index).includes(true) ? FOLD_CONTEXT : 0;
     const keepEnd = changed.slice(index + 1).includes(true) ? FOLD_CONTEXT : 0;

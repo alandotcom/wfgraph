@@ -145,7 +145,7 @@ function renderPanel({
   edges?: WorkflowEdge[];
   selected?: string | null;
   hasPublishedVersion?: boolean;
-  workspaceView?: "draft" | "runs" | "changes";
+  workspaceView?: "draft" | "runs";
 } = {}) {
   const store = createStore();
   store.set(autosaveDelayAtom, autosaveDelay);
@@ -483,14 +483,13 @@ describe("NodeConfigPanel workspace inspector", () => {
     await view.findByText("Select a step on the canvas to configure it.");
     expect(view.queryByRole("tablist")).toBeNull();
     expect(view.queryByRole("tab", { name: "Runs" })).toBeNull();
-    expect(view.queryByRole("tab", { name: "Changes" })).toBeNull();
   });
 
-  it("follows the active workspace view, and leaves Changes to its own inspector", async () => {
+  it("follows the active workspace view, and leaves Runs to its own inspector", async () => {
     const { view, store } = renderPanel({ hasPublishedVersion: true });
     await view.findByText("Select a step on the canvas to configure it.");
 
-    act(() => showWorkspaceRoute(store, { view: "changes" }));
+    act(() => showWorkspaceRoute(store, { view: "runs" }));
     expect(view.getByTestId("properties-panel").textContent).toBe("");
 
     act(() => showWorkspaceRoute(store, {}));

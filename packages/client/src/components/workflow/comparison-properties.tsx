@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { compact, partition } from "es-toolkit/array";
+import { partition } from "es-toolkit/array";
 import { Fragment, type ReactNode, useState } from "react";
 import {
   findAction,
@@ -8,7 +8,6 @@ import {
 import {
   fieldChangeCategory,
   isGroupFrameChange,
-  isGroupMembershipPath,
   type WorkflowChangeCategory,
 } from "@wfgraph/shared/graph/change-classification";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
@@ -20,7 +19,6 @@ import type {
 import { ACTION_TYPE_CONFIG_KEY } from "@wfgraph/shared/graph/node-config";
 import { TEST_PAYLOADS_CONFIG_KEY } from "@wfgraph/shared/lifecycle/test-payloads";
 import { compareText, isBlank } from "@wfgraph/shared/types/string";
-import { cn } from "@wfgraph/shared/utils";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import {
@@ -32,7 +30,6 @@ import {
   configFieldLabel,
   GENERIC_LABELS,
   groupConfigFieldLabel,
-  groupMembershipTitle,
   isConditionRuleKey,
   isHiddenComparisonValue,
   readableConditionRules,
@@ -46,10 +43,9 @@ import {
   type DiffRun,
   diffText,
   leadingTokens,
-  sidePieces,
   textTokens,
+  unifiedPieces,
 } from "#src/lib/word-diff";
-import { comparisonNodeTitle } from "#src/lib/workflow-graph-types";
 
 /**
  * One property row of a comparison. `before` is the published version's value
@@ -68,13 +64,6 @@ export type ComparisonField = {
    */
   category?: WorkflowChangeCategory | undefined;
 };
-
-/**
- * Which sides of a comparison hold values for an object: both for a modified
- * or unchanged object, the published version alone for a removed one, and the
- * draft alone for an added one.
- */
-export type ComparisonSides = "both" | "before" | "after";
 
 /** The two graphs a comparison compares, which is all most of this file reads. */
 export type ComparisonGraphs = Pick<
@@ -254,13 +243,6 @@ export function comparisonNodeSnapshots(
   };
 }
 
-/** The sides that hold values for a change of `kind`. */
-export function comparisonSides(
-  kind: WorkflowNodeChange["kind"] | "unchanged"
-): ComparisonSides {
-  return kind === "added" ? "after" : kind === "removed" ? "before" : "both";
-}
-
 /**
  * Whether `path`, a field path of the node `nodeId`, holds that node's
  * Condition rules, read from whichever side of `payload` holds the node.
@@ -387,37 +369,6 @@ export function comparisonFields(
 }
 
 /**
- * The Group a modified step sits in on each side of `payload`, by title, or
- * null when `change` records no Group membership change. Each side's title is
- * read from that side's own graph, so a Group renamed in the draft keeps its
- * published title on the published side, as the step's field table shows it.
- */
-export function comparisonGroupMembership(
-  catalog: ExtensionCatalog,
-  payload: WorkflowComparisonPayload,
-  change: WorkflowNodeChange
-): { before: string | null; after: string | null } | null {
-  const field =
-    change.kind === "modified"
-      ? change.fields.find((item) => isGroupMembershipPath(item.path))
-      : undefined;
-  if (!field) return null;
-  const index = payloadIndex(payload);
-  return {
-    before: groupMembershipTitle({
-      catalog,
-      groupId: field.before,
-      nodes: index.baseNodes,
-    }),
-    after: groupMembershipTitle({
-      catalog,
-      groupId: field.after,
-      nodes: index.draftNodes,
-    }),
-  };
-}
-
-/**
  * Whether the comparison holds the values a change needs: the draft's node for
  * an added node, the published node for a removed one, and either node or a
  * recorded property change for a modified one.
@@ -471,23 +422,6 @@ export function comparisonMetadataNotice(input: {
   return (node ?? baseNode ?? draftNode)?.data.type === "lifecycle"
     ? "Some Lifecycle settings have no name in this editor, so they show general names."
     : "Some settings are not described by this step's action, so they show general names.";
-}
-
-/**
- * The title of the node a change names, read from the published graph for a
- * removed node and from the draft for any other.
- */
-export function changedNodeTitle(
-  catalog: ExtensionCatalog,
-  payload: ComparisonGraphs,
-  change: WorkflowNodeChange
-): string {
-  const { baseNode, draftNode } = comparisonNodeSnapshots(
-    payload,
-    change.nodeId
-  );
-  const node = change.kind === "removed" ? baseNode : draftNode;
-  return node ? comparisonNodeTitle(node.data, catalog) : "Unavailable action";
 }
 
 /**
@@ -620,27 +554,31 @@ function textDifference(field: ComparisonField): DiffRun[] | null {
 }
 
 /**
- * One side of a word-level difference: shared text plain, this side's own
- * words marked, removed words struck through on a red tint and added words on
- * a green tint, and a fold where unchanged text is left out. Template
- * references draw as badges named from `nodes`.
+ * A text value's difference read as one flow: shared text plain, removed
+ * words struck through on a red tint, and added words on a green tint, each
+ * removal before the addition that replaces it. Template references draw as
+ * badges, named from the published side's nodes for removed text and from
+ * the newer side's nodes for the rest. A long difference folds the unchanged
+ * text around its changes until the reader shows all of it.
  */
-function DiffSide({
+function UnifiedDifference({
   runs,
-  side,
-  folded,
   nodes,
+  long,
 }: {
   runs: readonly DiffRun[];
-  side: "before" | "after";
-  folded: boolean;
-  nodes: readonly ComparisonNode[];
+  nodes: ComparisonSideNodes;
+  long: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const folds =
+    long &&
+    unifiedPieces(runs, { fold: true }).some((piece) => piece.kind === "fold");
   // Each piece is keyed by its kind and the count of characters shown before
   // it, which stays the same for the same value.
   let shown = 0;
   const parts: ReactNode[] = [];
-  for (const piece of sidePieces(runs, side, { fold: folded })) {
+  for (const piece of unifiedPieces(runs, { fold: folds && !expanded })) {
     const key = `${piece.kind}:${shown}`;
     if (piece.kind === "fold") {
       parts.push(
@@ -655,93 +593,93 @@ function DiffSide({
       );
       continue;
     }
+    if (piece.kind === "gap") {
+      // The space between removed text and the text that replaces it.
+      parts.push(<Fragment key={key}> </Fragment>);
+      continue;
+    }
     shown += piece.text.length;
-    const text = <TemplateText nodes={nodes} text={piece.text} />;
     if (piece.kind === "same") {
-      parts.push(<Fragment key={key}>{text}</Fragment>);
-    } else if (side === "before") {
+      parts.push(
+        <Fragment key={key}>
+          <TemplateText nodes={nodes.after} text={piece.text} />
+        </Fragment>
+      );
+    } else if (piece.kind === "removed") {
       parts.push(
         <del
           className="rounded-sm bg-destructive/15 decoration-destructive"
           key={key}
         >
-          {text}
+          <TemplateText nodes={nodes.before} text={piece.text} />
         </del>
       );
     } else {
       parts.push(
         <ins className="rounded-sm bg-success/15 no-underline" key={key}>
-          {text}
+          <TemplateText nodes={nodes.after} text={piece.text} />
         </ins>
       );
     }
   }
   return (
-    <span className="whitespace-pre-wrap" data-slot="comparison-diff">
-      {parts}
+    <span className="flex flex-col items-start gap-1">
+      <span className="whitespace-pre-wrap" data-slot="comparison-diff">
+        {parts}
+      </span>
+      {folds ? (
+        <ExpandToggle expanded={expanded} onToggle={setExpanded} />
+      ) : null}
     </span>
   );
 }
 
 /**
- * The cells of one property row: a word-level difference when both values are
- * text that shares words, and otherwise each side's value on its own. A long
- * difference folds the unchanged text around its changes, and one control for
- * the row shows all of both values.
+ * What one changed setting reads as. Text that shares words with its earlier
+ * value is one flow with the changed words marked. Any other value reads as
+ * the earlier value struck through above the newer one, each with its label,
+ * which is how a Condition's rules and a Wait's settings read in words.
  */
-function useRowValues(input: {
+export function FieldDifference({
+  field,
+  nodes,
+}: {
   field: ComparisonField;
-  showsBefore: boolean;
-  showsAfter: boolean;
   nodes: ComparisonSideNodes;
-}): {
-  before: ReactNode;
-  after: ReactNode;
-  toggle: ReactNode;
-} {
-  const { field, showsBefore, showsAfter, nodes } = input;
+}) {
   const catalog = useExtensionCatalog();
-  const [expanded, setExpanded] = useState(false);
-  const runs = showsBefore && showsAfter ? textDifference(field) : null;
-  if (runs === null) {
-    return {
-      before: <ComparisonValue nodes={nodes.before} value={field.before} />,
-      after: <ComparisonValue nodes={nodes.after} value={field.after} />,
-      toggle: null,
-    };
-  }
-  const long = [
-    { text: field.before, sideNodes: nodes.before },
-    { text: field.after, sideNodes: nodes.after },
-  ].some(
-    ({ text, sideNodes }) =>
-      typeof text === "string" &&
-      isLongComparisonValue(
-        currentTemplateDisplayText(text, sideNodes, catalog)
-      )
-  );
-  const folds =
-    long &&
-    sidePieces(runs, "before", { fold: true }).some(
-      (piece) => piece.kind === "fold"
+  const runs = textDifference(field);
+  if (runs !== null) {
+    const long = [
+      { text: field.before, sideNodes: nodes.before },
+      { text: field.after, sideNodes: nodes.after },
+    ].some(
+      ({ text, sideNodes }) =>
+        typeof text === "string" &&
+        isLongComparisonValue(
+          currentTemplateDisplayText(text, sideNodes, catalog)
+        )
     );
-  const folded = folds && !expanded;
-  return {
-    before: (
-      <DiffSide
-        folded={folded}
-        nodes={nodes.before}
-        runs={runs}
-        side="before"
-      />
-    ),
-    after: (
-      <DiffSide folded={folded} nodes={nodes.after} runs={runs} side="after" />
-    ),
-    toggle: folds ? (
-      <ExpandToggle expanded={expanded} onToggle={setExpanded} />
-    ) : null,
-  };
+    return <UnifiedDifference long={long} nodes={nodes} runs={runs} />;
+  }
+  return (
+    <dl className="space-y-1">
+      {field.before === undefined ? null : (
+        <div className="min-w-0 break-words" data-side="before">
+          <dt className="text-muted-foreground">Before</dt>
+          <dd className="line-through decoration-destructive">
+            <ComparisonValue nodes={nodes.before} value={field.before} />
+          </dd>
+        </div>
+      )}
+      <div className="min-w-0 break-words" data-side="after">
+        <dt className="text-muted-foreground">Now</dt>
+        <dd>
+          <ComparisonValue nodes={nodes.after} value={field.after} />
+        </dd>
+      </div>
+    </dl>
+  );
 }
 
 /**
@@ -756,152 +694,31 @@ export function useCachedConnections():
 }
 
 /**
- * How property rows are laid out: `columns` puts each side's value in a column
- * beside the property, and `stacked` lists each side's value under the
- * property, for a phone's width.
+ * Settings as a list of labels and values, each value read the way the Draft
+ * editor shows it. `nodes` names the template references in the values.
  */
-export type ComparisonLayout = "columns" | "stacked";
-
-/**
- * Property rows as a table: a row per property, with a column for each side
- * `sides` names, headed `beforeLabel` and `afterLabel`. In the `stacked`
- * layout each property is a group of its own that names each side's value.
- * `nodes` names the template references in each side's values.
- */
-export function ComparisonFieldTable({
+export function SettingsList({
   fields,
-  sides,
-  beforeLabel,
-  afterLabel,
-  caption,
-  layout,
+  side,
   nodes,
+  label,
 }: {
   fields: readonly ComparisonField[];
-  sides: ComparisonSides;
-  beforeLabel: string;
-  afterLabel: string;
-  /** The table's accessible name. */
-  caption: string;
-  layout: ComparisonLayout;
-  nodes: ComparisonSideNodes;
+  side: "before" | "after";
+  nodes: readonly ComparisonNode[];
+  /** The list's accessible name. */
+  label: string;
 }) {
-  const showsBefore = sides !== "after";
-  const showsAfter = sides !== "before";
-  const row = { showsBefore, showsAfter, beforeLabel, afterLabel, nodes };
-  if (layout === "stacked") {
-    return (
-      <div
-        aria-label={caption}
-        className="divide-y text-xs"
-        data-layout="stacked"
-        role="list"
-      >
-        {fields.map((field) => (
-          <StackedRow field={field} key={field.key} {...row} />
-        ))}
-      </div>
-    );
-  }
-  const cell = "min-w-0 px-2 py-1.5 align-top break-words";
   return (
-    <table className="w-full table-fixed border-collapse text-xs">
-      <caption className="sr-only">{caption}</caption>
-      <thead>
-        <tr className="text-left text-muted-foreground">
-          <th
-            className={cn(
-              cell,
-              "font-medium",
-              sides === "both" ? "w-1/4" : "w-1/3"
-            )}
-            scope="col"
-          >
-            Setting
-          </th>
-          {showsBefore ? (
-            <th className={cn(cell, "font-medium")} scope="col">
-              {beforeLabel}
-            </th>
-          ) : null}
-          {showsAfter ? (
-            <th className={cn(cell, "font-medium")} scope="col">
-              {afterLabel}
-            </th>
-          ) : null}
-        </tr>
-      </thead>
-      <tbody>
-        {fields.map((field) => (
-          <ColumnsRow cell={cell} field={field} key={field.key} {...row} />
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-type RowProps = {
-  field: ComparisonField;
-  showsBefore: boolean;
-  showsAfter: boolean;
-  beforeLabel: string;
-  afterLabel: string;
-  nodes: ComparisonSideNodes;
-};
-
-/**
- * One property as a table row. A row that folds a long difference holds its
- * one Show full value control under the property's name.
- */
-function ColumnsRow({
-  field,
-  showsBefore,
-  showsAfter,
-  nodes,
-  cell,
-}: RowProps & { cell: string }) {
-  const values = useRowValues({ field, showsBefore, showsAfter, nodes });
-  return (
-    <tr className="border-t">
-      <th
-        className={cn(cell, "text-left font-medium text-muted-foreground")}
-        scope="row"
-      >
-        {field.label}
-        {values.toggle ? <span className="block">{values.toggle}</span> : null}
-      </th>
-      {showsBefore ? <td className={cell}>{values.before}</td> : null}
-      {showsAfter ? <td className={cell}>{values.after}</td> : null}
-    </tr>
-  );
-}
-
-/** One property as a group naming each side's value under it, for a phone. */
-function StackedRow({
-  field,
-  showsBefore,
-  showsAfter,
-  beforeLabel,
-  afterLabel,
-  nodes,
-}: RowProps) {
-  const values = useRowValues({ field, showsBefore, showsAfter, nodes });
-  const shown = compact([
-    showsBefore ? { label: beforeLabel, value: values.before } : null,
-    showsAfter ? { label: afterLabel, value: values.after } : null,
-  ]);
-  return (
-    <div aria-label={field.label} className="space-y-1 py-2" role="listitem">
-      <p className="font-medium text-muted-foreground">{field.label}</p>
-      <dl className="space-y-1">
-        {shown.map((side) => (
-          <div className="min-w-0 break-words" key={side.label}>
-            <dt className="text-muted-foreground">{side.label}</dt>
-            <dd>{side.value}</dd>
-          </div>
-        ))}
-      </dl>
-      {values.toggle}
-    </div>
+    <dl aria-label={label} className="divide-y">
+      {fields.map((field) => (
+        <div className="min-w-0 space-y-0.5 py-1.5 break-words" key={field.key}>
+          <dt className="text-muted-foreground">{field.label}</dt>
+          <dd>
+            <ComparisonValue nodes={nodes} value={field[side]} />
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

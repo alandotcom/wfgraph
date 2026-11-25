@@ -43,7 +43,7 @@ import {
   historyAtom,
   nodesStateAtom,
 } from "#src/lib/workflow-graph-cells";
-import { clearWorkflowComparisonAtom } from "#src/lib/workflow-comparison-store";
+import { clearReviewPagesAtom } from "#src/lib/workflow-review-store";
 import { resetNodeStatusesAtom as resetPresentationNodeStatusesAtom } from "#src/lib/workflow-graph-presentation-store";
 import { NO_ISSUES, workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import { clearDraftSelectionsAtom } from "#src/lib/workflow-workspace-navigation";
@@ -152,7 +152,7 @@ export const loadWorkflowGraphAtom = atom(
   (get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
     const workflowId = get(currentWorkflowIdAtom);
     if (workflowId) {
-      set(clearWorkflowComparisonAtom, workflowId);
+      set(clearReviewPagesAtom, workflowId);
     }
     // With no open workflow the active address belongs to the empty id.
     set(clearDraftSelectionsAtom, workflowId ?? "");
@@ -197,7 +197,7 @@ export const hydrateWorkflowAtom = atom(
       return;
     }
 
-    set(clearWorkflowComparisonAtom, workflow.id);
+    set(clearReviewPagesAtom, workflow.id);
     set(clearPublicationReviewAtom);
     const switchingWorkflow = get(currentWorkflowIdAtom) !== workflow.id;
     const clientIsAheadOfServer =

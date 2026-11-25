@@ -66,7 +66,6 @@ import { CommandPalette } from "#src/components/workflow/command-palette";
 import { useSetWorkflowPaused } from "#src/hooks/use-set-workflow-paused";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import { PublishReviewDialog } from "#src/components/workflow/publish-review-dialog";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useWorkflowCommands } from "#src/components/workflow/use-workflow-commands";
@@ -784,16 +783,6 @@ export function ToolbarPublishControls({
             <Settings2 className="size-4" />
           </Button>
         </ControlTooltip>
-      ) : null}
-      {actions.publishReview ? (
-        <PublishReviewDialog
-          isPublishing={actions.isPublishing}
-          mode={state.workflowMode}
-          onConfirm={actions.confirmPublish}
-          onOpenChange={actions.setPublishReviewOpen}
-          open
-          review={actions.publishReview.review}
-        />
       ) : null}
     </>
   );

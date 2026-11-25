@@ -81,9 +81,6 @@ function SwitcherHost() {
       <button onClick={navigation.showRuns} type="button">
         Runs
       </button>
-      <button onClick={navigation.showChanges} type="button">
-        Changes
-      </button>
     </>
   );
 }
@@ -111,7 +108,7 @@ async function renderSwitcher(initialEntry: string) {
         validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
           authorizedWorkflowSearch(search, {
             canOpenRuns: true,
-            canOpenComparison: true,
+            canReview: true,
           }),
         component: SwitcherHost,
       }),
@@ -221,7 +218,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
   describe("below md", () => {
     afterEach(() => setViewportWidth(1440));
 
-    it("opens the Runs and Changes address sheets over a Draft sheet, and shows the Draft sheet again on return to Draft", async () => {
+    it("opens the Runs address sheet over a Draft sheet, and shows the Draft sheet again on return to Draft", async () => {
       setViewportWidth(390);
       const { store, router, click, view } = await renderSwitcher(
         "/workflows/workflow_1"
@@ -247,17 +244,6 @@ describe("useWorkflowWorkspaceNavigation", () => {
         },
       ]);
 
-      click("Changes");
-      await waitFor(() =>
-        expect(store.get(workflowWorkspaceViewAtom)).toBe("changes")
-      );
-      await waitFor(() =>
-        expect(store.get(activeMobileSheetsAtom)).toMatchObject([
-          { level: "summary", inspected: null, section: null },
-        ])
-      );
-      expect(configurationSheet()).toBeNull();
-
       click("Draft");
       await waitFor(() => expect(router.state.location.search).toEqual({}));
       expect(configurationSheet()).toBeNull();
@@ -267,7 +253,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
       ).toEqual(["summary"]);
     });
 
-    it("closes the configuration sheet of a Draft with nothing selected when the view becomes Changes, where the comparison summary sheet shows", async () => {
+    it("closes the configuration sheet of a Draft with nothing selected when the view becomes Runs, where the run list sheet shows", async () => {
       setViewportWidth(390);
       const { store, click, view } = await renderSwitcher(
         "/workflows/workflow_1"
@@ -278,9 +264,9 @@ describe("useWorkflowWorkspaceNavigation", () => {
       click("Configuration");
       await waitFor(() => expect(configurationSheet()).not.toBeNull());
 
-      click("Changes");
+      click("Runs");
       await waitFor(() =>
-        expect(store.get(workflowWorkspaceViewAtom)).toBe("changes")
+        expect(store.get(workflowWorkspaceViewAtom)).toBe("runs")
       );
       await waitFor(() => expect(configurationSheet()).toBeNull());
       expect(

@@ -1,7 +1,7 @@
 /**
- * Builds the read-only graph shown while reviewing a publication comparison.
- * The server decides semantic changes; this module adds editor-only annotations
- * and a temporary location for historical nodes that a reviewer repositions.
+ * Builds the read-only graph the Draft canvas draws while the review sheet is
+ * open. The server decides semantic changes; this module adds the editor-only
+ * annotations, and draws each removed step where the published version held it.
  */
 
 import { omit } from "es-toolkit/object";
@@ -26,8 +26,6 @@ export type ComparisonDisplayGraph = {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 };
-
-export type ComparisonPositionOverrides = Readonly<Record<string, XYPosition>>;
 
 function absoluteBasePosition(
   node: WorkflowNode,
@@ -66,51 +64,8 @@ function allocateRemovedEdgeId(
 
 const displayGraphCache = new WeakMap<
   WorkflowComparisonPayload,
-  {
-    positionOverrides: ComparisonPositionOverrides;
-    removedNodeIndexes: ReadonlyMap<
-      string,
-      { index: number; defaultPosition: XYPosition }
-    >;
-    staticGraph: ComparisonDisplayGraph;
-    graph: ComparisonDisplayGraph;
-  }
+  ComparisonDisplayGraph
 >();
-
-function applyPositionOverrides(
-  cached: NonNullable<ReturnType<typeof displayGraphCache.get>>,
-  positionOverrides: ComparisonPositionOverrides
-): ComparisonDisplayGraph {
-  let nodes = cached.graph.nodes;
-  for (const [
-    nodeId,
-    { index, defaultPosition },
-  ] of cached.removedNodeIndexes) {
-    const position = positionOverrides[nodeId] ?? defaultPosition;
-    const current = cached.graph.nodes[index];
-    if (
-      current &&
-      (current.position.x !== position.x || current.position.y !== position.y)
-    ) {
-      if (nodes === cached.graph.nodes) {
-        nodes = nodes.slice();
-      }
-      const staticNode = cached.staticGraph.nodes[index];
-      if (staticNode) {
-        nodes[index] =
-          position.x === defaultPosition.x && position.y === defaultPosition.y
-            ? staticNode
-            : { ...staticNode, position };
-      }
-    }
-  }
-
-  cached.positionOverrides = positionOverrides;
-  if (nodes !== cached.graph.nodes) {
-    cached.graph = { nodes, edges: cached.staticGraph.edges };
-  }
-  return cached.graph;
-}
 
 /**
  * Annotates each Group frame with the changed nodes drawn inside it, in the
@@ -151,15 +106,11 @@ function withChangedMembers(
  * `nodeChanges` and `edgeChanges`, which keeps a position-only draft clean.
  */
 export function buildComparisonDisplayGraph(
-  payload: WorkflowComparisonPayload,
-  positionOverrides: ComparisonPositionOverrides = {}
+  payload: WorkflowComparisonPayload
 ): ComparisonDisplayGraph {
   const cached = displayGraphCache.get(payload);
-  if (cached?.positionOverrides === positionOverrides) {
-    return cached.graph;
-  }
   if (cached) {
-    return applyPositionOverrides(cached, positionOverrides);
+    return cached;
   }
 
   const base = toWorkflowGraphData(payload.baseGraph);
@@ -200,12 +151,10 @@ export function buildComparisonDisplayGraph(
         const position = historicalParentDeleted
           ? node.position
           : absoluteBasePosition(node, baseNodesById);
-        // A removed node leaves `draggable` unset, so the canvas's
-        // `nodesDraggable` decides whether it moves: on desktop it can be
-        // dragged clear of the draft, and on a phone it cannot.
         const historical: WorkflowNode = {
-          ...omit(node, ["parentId", "extent", "draggable"]),
+          ...omit(node, ["parentId", "extent"]),
           position,
+          draggable: false,
           connectable: false,
           focusable: true,
           deletable: false,
@@ -284,28 +233,10 @@ export function buildComparisonDisplayGraph(
     });
   }
 
-  const staticGraph: ComparisonDisplayGraph = {
+  const graph: ComparisonDisplayGraph = {
     nodes: withChangedMembers(comparisonNodes, payload),
     edges: comparisonEdges,
   };
-  const removedNodeIndexes = new Map<
-    string,
-    { index: number; defaultPosition: XYPosition }
-  >();
-  for (const [index, node] of comparisonNodes.entries()) {
-    if (!draftNodeIds.has(node.id)) {
-      removedNodeIndexes.set(node.id, {
-        index,
-        defaultPosition: node.position,
-      });
-    }
-  }
-  const entry = {
-    positionOverrides: {},
-    removedNodeIndexes,
-    staticGraph,
-    graph: staticGraph,
-  };
-  displayGraphCache.set(payload, entry);
-  return applyPositionOverrides(entry, positionOverrides);
+  displayGraphCache.set(payload, graph);
+  return graph;
 }

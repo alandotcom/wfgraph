@@ -168,9 +168,9 @@ describe("applyAgentGraphAtom", () => {
     ).toEqual(["a", "run_only"]);
   });
 
-  it("writes the Draft while Changes is open", () => {
+  it("writes the Draft while Runs is open", () => {
     const store = createGraphStore([actionNode("a")]);
-    showWorkspaceRoute(store, { view: "changes" });
+    showWorkspaceRoute(store, { view: "runs" });
 
     store.set(applyAgentGraphAtom, {
       workflowId: "workflow_1",

@@ -32,9 +32,9 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
 import {
-  beginWorkflowComparisonRequestAtom,
-  installWorkflowComparisonAtom,
-} from "#src/lib/workflow-comparison-store";
+  beginPublicationReviewAtom,
+  installPublicationReviewAtom,
+} from "#src/lib/workflow-publication-review-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
@@ -132,12 +132,9 @@ function baseActions(): WorkflowToolbarActions {
     handleDuplicate: vi.fn(),
     isDuplicating: false,
     handlePublish: vi.fn(),
-    confirmPublish: vi.fn(),
     isPublishing: false,
     isComparing: false,
     isPreflighting: false,
-    publishReview: null,
-    setPublishReviewOpen: vi.fn(),
   };
 }
 
@@ -155,7 +152,10 @@ export function renderChrome(
     overlayGraph?: { nodes: WorkflowToolbarState["nodes"]; edges: [] };
     /** Draft edges paired with `graph` for a selection-focused test. */
     edges?: readonly WorkflowEdge[];
-    /** A Changes workspace graph that must remain separate from the Draft. */
+    /**
+     * The comparison of a draft's review open in the review sheet, which
+     * locks the Draft while it is open.
+     */
     comparison?: WorkflowComparisonPayload;
     generating?: boolean;
     graph?: WorkflowToolbarState["nodes"];
@@ -217,13 +217,18 @@ export function renderChrome(
   if (lock.comparison) {
     const workflowId = "workflowId" in lock ? lock.workflowId : "workflow_1";
     if (workflowId) {
-      const epoch = store.set(beginWorkflowComparisonRequestAtom, workflowId);
-      store.set(installWorkflowComparisonAtom, {
-        workflowId,
-        epoch,
-        payload: lock.comparison,
-      });
-      showWorkspaceRoute(store, { view: "changes" });
+      const epoch = store.set(beginPublicationReviewAtom, workflowId);
+      if (epoch !== null) {
+        store.set(installPublicationReviewAtom, {
+          workflowId,
+          epoch,
+          pending: false,
+          graph: lock.comparison.draftGraph,
+          expectedDraftRevision: 1,
+          expectedPublishedVersionId: null,
+          payload: lock.comparison,
+        });
+      }
     }
   }
 

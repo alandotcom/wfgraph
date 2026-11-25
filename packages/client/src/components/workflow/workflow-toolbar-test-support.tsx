@@ -34,6 +34,8 @@ import {
   useOverlay,
 } from "#src/components/overlays/overlay-provider";
 import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import { usePublishReview } from "#src/components/workflow/review/use-publish-review";
+import { publicationReviewAtom } from "#src/lib/workflow-publication-review-store";
 import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import { mutationErrorToast } from "#src/lib/query-client";
 import { toSerializedGraph } from "#src/lib/rpc-client";
@@ -171,6 +173,8 @@ export function PublishProbe({
   workflowState?: WorkflowToolbarState;
 }) {
   const actions = useWorkflowActions(workflowState);
+  const review = usePublishReview();
+  const publishReview = useAtomValue(publicationReviewAtom);
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const { stack } = useOverlay();
   return (
@@ -181,13 +185,13 @@ export function PublishProbe({
       <button onClick={() => void actions.handleExecute("draft")} type="button">
         Run draft
       </button>
-      <button onClick={actions.confirmPublish} type="button">
+      <button onClick={review.confirmPublish} type="button">
         Confirm publish
       </button>
-      <button onClick={() => actions.setPublishReviewOpen(false)} type="button">
+      <button onClick={review.keepEditing} type="button">
         Cancel review
       </button>
-      <output>{actions.publishReview ? "ready" : "idle"}</output>
+      <output>{publishReview ? "ready" : "idle"}</output>
       <output aria-label="editing lock">{String(editingLocked)}</output>
       <output aria-label="provider preflight">
         {String(actions.isPreflighting)}
@@ -219,7 +223,7 @@ export function renderProbe({
     validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
       authorizedWorkflowSearch(search, {
         canOpenRuns: true,
-        canOpenComparison: true,
+        canReview: true,
       }),
     component: () => null,
   });

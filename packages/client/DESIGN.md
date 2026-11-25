@@ -138,7 +138,7 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 
 ### Tertiary (signals)
 
-Each signal is one token carrying both the fill and the text form. As text, every light-mode value clears the 4.5:1 body floor on Paper, Panel and Graphite Wash: Red 5.08, 4.86 and 4.66:1, Green 5.01, 4.80 and 4.59:1, Amber 5.05, 4.84 and 4.63:1, Slate 5.51, 5.28 and 5.06:1, Blue 6.72, 6.44 and 6.17:1. In dark, the lowest is Red at 4.75:1 on the card step. A signal's text never sits on that signal's own tint, where it measured about 4:1. A status either sets a signal dot or icon beside a word in foreground text, or sets the word itself in the signal color on a neutral ground. The Workflows table's State column, the All Runs status and a node's status chip use the first form. A run row uses the second. A tinted band, such as a failed run's error or a Waiting notice, keeps its tint, border and icon in the signal and sets its words in foreground text. A solid signal disc carries its glyph in the signal's foreground token: the comparison marker and the blocking issue badge measure at least 4.80:1 in light and 5.49:1 in dark.
+Each signal is one token carrying both the fill and the text form. As text, every light-mode value clears the 4.5:1 body floor on Paper, Panel and Graphite Wash: Red 5.08, 4.86 and 4.66:1, Green 5.01, 4.80 and 4.59:1, Amber 5.05, 4.84 and 4.63:1, Slate 5.51, 5.28 and 5.06:1, Blue 6.72, 6.44 and 6.17:1. In dark, the lowest is Red at 4.75:1 on the card step. A signal's text never sits on that signal's own tint, where it measured about 4:1. A status either sets a signal dot or icon beside a word in foreground text, or sets the word itself in the signal color on a neutral ground. The Workflows table's State column, the All Runs status and a node's status chip use the first form. A run row uses the second. A tinted band, such as a failed run's error or a Waiting notice, keeps its tint, border and icon in the signal and sets its words in foreground text. A solid signal disc carries its glyph in the signal's foreground token: the change marker and the blocking issue badge measure at least 4.80:1 in light and 5.49:1 in dark.
 
 - **Signal Red** (oklch(0.555 0.245 27.325)): Destructive actions and failed runs. `--destructive`.
 - **Signal Green** (oklch(0.526 0.148 149.58)): Successful runs. `--success`.
@@ -273,7 +273,7 @@ The focused Group canvas shows its members at their stored positions relative to
 
 Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas are 24px on desktop and 44px on touch. Those sizes are divided by `--rf-zoom`, the live canvas scale the viewport transform applies, because a flat pixel size inside that transform shrinks with the zoom and delivered 24.6px on a phone.
 
-Edges leave the bottom handle, travel in a rounded orthogonal step, and enter the top handle of the next node. The dash is the wire, 2px of Canvas Line and Graphite Ink when selected; a label sits on the horizontal span when the outlet has a name. The dash holds still on a Draft, a comparison and an ended run, and marches only on the canvas of a run in progress, along an edge the run may still take, so motion on the canvas always means work in progress. An edge landing where the run cannot go widens its dash gap, keeping a legible stroke rather than fading toward the background.
+Edges leave the bottom handle, travel in a rounded orthogonal step, and enter the top handle of the next node. The dash is the wire, 2px of Canvas Line and Graphite Ink when selected; a label sits on the horizontal span when the outlet has a name. The dash holds still on a Draft, under the review sheet and on an ended run, and marches only on the canvas of a run in progress, along an edge the run may still take, so motion on the canvas always means work in progress. An edge landing where the run cannot go widens its dash gap, keeping a legible stroke rather than fading toward the background.
 
 A run's canvas shows the path the run took, read from its recorded executions. A Condition leaves by the branch its answer names, an Event Split by the outlet of the Event it recorded, and any other step by each edge whose target the run reached. An edge the run took is a solid 2px Graphite Ink line that does not march, and is drawn above the others. An edge it did not take wears the unreachable face: Canvas Line Muted, the wider dash gap, and no march. While the run is in progress, an edge it may still take keeps the live marching dash. The outlet label of a branch the run took, on the edge or under the card, inverts to Graphite Ink with Paper text and leads with a check, so it reads without color; the label of one it did not take drops to 70% opacity. A Group card's edge is taken when any edge it stands for was, and on a focused Group canvas the edges to and from stubs follow the same rule. A Draft canvas shows no path.
 
@@ -286,9 +286,9 @@ floating over the canvas, shows details for the active workspace view. The
 selected workspace uses a Graphite Ink fill with Paper text. Tone, rather than an
 accent stripe, marks the active workflow.
 
-The workflow workspace has three views: **Draft**, **Runs**, and **Changes**. A
+The workflow workspace has two views: **Draft** and **Runs**. A
 segmented control precedes the Run split button and **Publish** at desktop
-widths. Below `md` the three views sit at the top of the toolbar's overflow
+widths. Below `md` the two views sit at the top of the toolbar's overflow
 menu, the active one checked, above the run commands and **Publish**. The control
 remains available when the inspector is closed. The canvas,
 inspector, editing lock, and status strip always follow the same active view.
@@ -306,8 +306,9 @@ only when the next presentation is ready.
 
 **Draft** owns the editable workflow and its properties. **Runs** resolves its
 initial load directly to the newest run, and owns the run list, run details, and
-run-node inspection. **Changes** owns publication review, comparison properties,
-and version history. Entering **Runs** or **Changes** opens the inspector.
+run-node inspection. Reviewing a change before publishing it, and reading what a
+past version changed, happen in the review sheet, described under Publication
+review. Entering **Runs** opens the inspector.
 Closing the inspector doesn't change the active view.
 
 Canvas Reveal has three levels: Closed, Browse, and Focus. It floats 8px inside
@@ -347,8 +348,8 @@ zoom controls titled **What this workflow does**. Collapsed, it shows the first
 sentence of what starts a run. Expanded, it lists in Caption type what starts a
 run, each step in order with its branches, and what stops a run. A branch nested
 more than two levels deep reads as one phrase with its step count. The card
-hides while Reveal or the build agent's panel is open, and Runs and Changes
-show the zoom cue in its place. On a phone the collapsed card is its title row
+hides while Reveal, the review sheet, or the build agent's panel is open, and
+Runs shows the zoom cue in its place. On a phone the collapsed card is its title row
 alone, and the zoom controls sit in a row along the bottom edge. The zoom
 controls and the **Agent** button draw on the card surface, so the graph never
 shows through them.
@@ -379,8 +380,7 @@ Entering and leaving a Group each add a browser history entry, so Back leaves a
 Group and Forward enters it again. On a focused Group canvas, selecting a step
 opens that step's own inspector. A connection and a multiple selection show
 their panel at the shared width, under a header holding the panel's title and
-**Close**. **Runs** and **Changes** each have a Browse of their own, and
-**Changes** is described under Publication review.
+**Close**. **Runs** has a Browse of its own.
 
 Selecting the Lifecycle node opens Browse with the workflow's lifecycle policy:
 an editable label, the Start Events with each payload Start Filter, the
@@ -530,8 +530,8 @@ opened Browse. Closing keeps the canvas selection. Selecting a step again, or
 the chevron on the canvas's right edge, reopens the level Reveal was closed
 from. Cmd+B opens and closes Canvas Reveal from anywhere but a text field. The level, the inspected step, the
 inspector's scroll position, and the Lifecycle Focus section are remembered
-separately for Draft, each Group view, the run list, each run, and each
-comparison. Levels add no browser history.
+separately for Draft, each Group view, the run list, and each run. Levels add
+no browser history.
 
 Opening or changing Reveal moves the camera and nothing else: it never runs
 layout, moves a node, or marks the draft changed. The camera keeps its zoom when
@@ -539,8 +539,8 @@ the selected step fits the usable canvas, the part left after Reveal, the canvas
 controls, the MiniMap, and the docked agent card, and zooms out only as far as
 fitting it needs. It then moves the least distance that keeps the step and 64px
 of its neighbors inside the usable canvas, so a long horizontal or vertical workflow
-keeps its direction. **Runs** and **Changes** place their selected node the same
-way, or the whole graph when no single node is selected. The MiniMap sits beside
+keeps its direction. **Runs** places its selected node the same way, or the
+whole graph when no single node is selected. The MiniMap sits beside
 open Reveal. The camera moves once per change and only when Reveal would cover
 the step or its 64px of neighbors: a step already in the usable canvas stays
 where it is. Opening Reveal and selecting another step can each move it. Closing Reveal by
@@ -585,8 +585,7 @@ nothing selected, and moving to another workspace closes it.
 Below `md`, **Runs** uses the same sequence of sheets. A sheet has one of two
 shapes: a summary sheet over the bottom of the canvas, or an inspector that
 covers it. A Draft sheet is about one object, a Runs sheet is about the
-address itself or about one object, and a **Changes** sheet is about the
-address; **Changes** is described under Publication review. Entering Runs, or **Configuration** in Runs,
+address itself or about one object. Entering Runs, or **Configuration** in Runs,
 opens the run list or the open run as a summary sheet, and the first visit opens
 the newest run. A run row opens that run's summary sheet, which holds its
 status, **Cancel**, active waits with **Resume now**, exit details, the failure
@@ -616,25 +615,19 @@ sheet, its scroll position, the overview's camera, and focus on **Enter group**.
 Browser Forward returns to the Group with its sheets, their scroll positions,
 and the Group's camera.
 
-Runs and **Changes** use the same Group sequence on a phone. In Runs, a Group
+Runs uses the same Group sequence on a phone. A Group
 card shows the Group's run summary in the run's sheet, with its run status, its
 member counts, and each step with its status. A step in that summary, or a
 journey entry for a step inside a collapsed Group, opens the Group's focused
 canvas with the step's evidence as the inspector over the run's sheet, and
-**Enter group** opens the focused canvas with the run's sheet still open. In
-**Changes**, a Group card opens the change list with the Group's row open: the
-Group's own settings, whether execution behavior changed, the changed steps
-inside it, and **Enter group**, at every width. A changed step in that row, a
-step's name in the change list, and the Group card's **N changed** control each
-open the focused canvas of the Group that holds the step, with the change list
-carried over and the step's row open.
-Inside a Group, Draft, Runs, and **Changes** give the first sheet the same Back
+**Enter group** opens the focused canvas with the run's sheet still open.
+Inside a Group, Draft and Runs give the first sheet the same Back
 control named for the Group. Back and Escape on that sheet remove it and leave
 the focused canvas showing. **Workflow** or browser Back returns to the
-overview with the sheets it last showed, such as the Group's run summary or the
-change list. Runs and **Changes** draw every focused Group top to
-bottom and offer no topology authoring. Switching between Draft, Runs, and **Changes** returns each
-workspace to the Group it showed, with its sheets, selection, and camera.
+overview with the sheets it last showed, such as the Group's run summary.
+Runs draws every focused Group top to bottom and offers no topology authoring.
+Switching between Draft and Runs returns each workspace to the Group it
+showed, with its sheets, selection, and camera.
 
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
 hairline top border, and one line that never wraps. While the draft is on
@@ -645,7 +638,7 @@ there because the badge beside it already names the version the mode governs.
 Before the first publish the button reads "Live on publish" or "Test on
 publish". While the workflow is paused, the strip reads Paused after the mode,
 with **Resume** beside it.
-The strip also identifies **Runs** and **Changes**, explains that editing is
+The strip also identifies **Runs**, explains that editing is
 off, and provides **Back to draft**. With a read-only view on the canvas, the
 strip tints toward `--info`. Its height remains constant because the strip and
 graph share the column height.
@@ -662,7 +655,7 @@ split button's face is **Run draft**, which always sends to test recipients. Its
 menu holds the run of the published version, labelled with that version number
 and the Published mode. Below `md` the workspace control, both run commands and
 **Publish** collapse into one overflow menu, each disabled for the reason its
-desktop control is disabled. In Runs and Changes, disabled Run and Publish
+desktop control is disabled. In Runs, disabled Run and Publish
 controls say "Switch to Draft to run." or "Switch to Draft to publish." in a
 tooltip, and their menu rows say it in a detail line. A paused workflow starts
 no run, so in Draft both run commands are disabled and say "Resume the workflow
@@ -686,7 +679,7 @@ Settings menu's **Connections** and **Theme**. Its rows draw shortcuts as `Kbd`
 keycaps. The Actions menu's **Canvas** submenu holds the canvas commands, and its
 **Keyboard shortcuts** row, the palette row of that name, and "?" outside a text
 field open one searchable reference of every shortcut. Cmd+Enter submits Run
-draft and the Publish review from any field in them.
+draft from any field in it, and publishes from anywhere in the review sheet.
 
 The Workflows page opens its own palette on Cmd+K: a workflow by name, **New
 workflow**, and the Settings rows. The Workflows table and the All Runs list are
@@ -695,141 +688,113 @@ Space ticks a workflow's checkbox, and Shift+F10 opens its actions menu.
 
 ### Publication review
 
-The toolbar shows **Changes** after the first publication. **Changes** compares
-the selected published version with the exact draft that was visible when the
-view opened. Its Canvas Reveal header names the comparison as "Version N →
-proposed version M" and keeps that title while the comparison refreshes. Browse
-holds **Refresh comparison**, **Version history**, and **Exit comparison**, and
-counts changes under **Behavior** and **Organization**. Behavior counts the
-added, modified, and removed steps whose execution changed and the changed
-connections. Organization appears when Groups changed and counts the added,
-modified, and removed Groups and the steps whose Group membership changed. A
-Group's label, description, creation, and removal, and a step's Group
-membership, are Organization; a step's settings, its enabled state, and every
-connection are Behavior. A comparison whose only changes are Organization shows
-"Execution behavior is unchanged. Only how steps are organized in Groups
-differs." in place of the Behavior counts. Changes has
-one level. Its header holds the comparison's title and **Close**, and no
-control in it acts on the selection.
+**Publish** opens the review sheet. It saves the draft, checks it for blocking
+issues, and compares the exact draft on screen with the current publication.
+A draft with blocking issues lists them instead, and a draft with no change
+says "No changes to publish" and opens nothing. **Review changes**, in the
+command palette and the Actions menu, runs the same path. **Version history**
+in the Actions menu opens the sheet on the list of versions.
 
-Under the counts, the change list is the review, read top to bottom: each
-changed Group, then each changed step, then each changed connection. A row
-shows its marker, its name, and one line saying what changed: "Added",
-"Removed", one changed setting by name as "Body changed", several as "2
-settings changed", or a step's Group as "Moved into Pre-visit reminders". A
-Group or step row is a disclosure. Opened, it shows that object's differences
-beneath it, and pressing anywhere on the row's header outside the name opens or
-closes it. Each row's chevron and name are separate stops in the Tab order, and
-Enter or Space on the chevron opens or closes the row. Modified Groups and steps
-start open, and added and removed ones start closed. A list of more than eight
-changed objects starts with only its first modified row open. The open rows are
-kept for the comparison while the editor stays open, through version history,
-a Group's view, and a visit to another workspace. A connection row is one
-control and does not open.
+The sheet takes Canvas Reveal's place and its shared width, at the same 8px
+inset. Reveal keeps its level and subject beneath it and returns as it was when
+the sheet closes. The sheet's header holds its title, one line of counts,
+**Version history** on the draft's review, and **Close**; a page opened over
+another leads with **Back**. Its footer holds the decision. The body between
+them scrolls as one surface, and nothing else in the sheet stays pinned.
 
-Pressing a row's name, or a connection row, selects that object on the canvas
-and places it once, entering its Group when it sits inside one. Selecting a
-changed object anywhere, on the canvas or from a Group card's count, opens its
-row and scrolls the row's header to the top of the list when it is out of view.
-Opening or closing a row never moves the camera or the selection. A collapsed
-Group card on the comparison canvas counts the changed steps inside it, as "2
-changed"; pressing that count enters the Group, selects the first of those
-steps, and opens Browse when Reveal is closed.
-Collapse, camera, Group depth, selection, Reveal state, and scroll never enter
-a comparison.
-The Publish confirmation shows the same Behavior and Organization counts, and
-the same sentence for a version whose only changes are Organization. Under the
-counts it lists each changed step by name with the settings that changed, and it
-says how many active runs stay on older versions, with **Show version usage**
-opening version history.
-While a different comparison is loading or has failed, Browse shows that state
-and never the comparison it replaces, and the canvas shows the draft without
-change markers until the comparison the route names arrives. Version history opens inside Browse with focus
-on its heading. Choosing a version there opens that comparison's change list in
-Browse, and a comparison against a version other than the current publication
-offers **Restore version N as draft** above its list. **Back to changes** or Escape returns to the list with its
-selection, open rows, and scroll, and focus on **Version history**; Escape from
-the list closes Reveal. **Reset comparison layout** also hands focus to
-**Version history**.
+The title is the decision: "Publish v3". The line under it counts the edits
+that change what runs and the changes that do not, as "3 edits change what
+runs. 1 does not." The body lists the edits in the order a run reaches them,
+True before False and Started before Canceled. An edit is one added, modified,
+or removed step. A connection that exists only because a step was added or
+removed belongs to that step's edit. A connection that changed between two
+steps that both still exist is an edit of the step it leaves, reading "Now
+continues to Send intake form", or "On False, now continues to Release the
+slot" for a Condition or Event Split outlet.
 
-An open row starts with a sentence saying which versions hold the object and
-what differs. A table then lists each setting under readable names, with a
-column for the published version ("Version N") and one for **Current draft**:
-both columns for a modified step, the draft column alone for an added one, and
-the published column alone for a removed one. When both columns hold text that
-shares words, removed words are struck through on a red tint, added words sit on
-a green tint, and long unchanged text folds around each change until the row's
-**Show full value**. Any other long value starts shortened with its length and
-**Show full value**, and a value the server redacted or masked reads "Hidden
-for security". A template reference reads as the badge the Draft editor draws. A Lifecycle rule keyed by Event names that Event,
-as "Start filter › Appointment booked", a Start or Cancel Filter reads as its
-rules or "Filter changed" when it cannot be read, a Condition's rules read as
-sentences under "Continue when" or "Rules changed", a Wait's settings use its
-form's labels, and a Connection reads as its name or "Connection changed". The row says so when a step's action is missing from
-the catalog and its settings show general names, and when the comparison lacks
-a side's values. A changed step lists the changed connections that touch it,
-each selecting that connection. A changed Group lists its own settings, the
-changed steps inside it, each entering the Group and opening that step's row,
-and **Enter group** as an outline button at the end of the row. It says execution
-behavior is unchanged when none of those steps changed behavior, and otherwise
-says that the Group's own change does not affect execution. A step whose Group changed shows a **Group membership** table
-naming each version's Group or "Not in a Group", and its sentence names the
-Groups it moved between. A changed step also shows how the editor's issue
-checks differ between the two versions, and says validation is unknown for a
-version whose action is missing from the catalog. A step with no issue in any
-version shows no Validation section. A changed step inside a
-collapsed Group is selected on that Group's focused canvas, which adds a
-browser history entry, and the list keeps its scroll there. A route or a
-remembered state that names the Focus level of a comparison shows Browse, with
-the selected object's row open. Restore always says "Restore version N as
-draft" and requires confirmation that the published version remains unchanged.
+Each edit's header shows its marker, the step's name, one line saying what
+changed, and **Show on canvas**. The line reads "New step", "Removed", one
+changed setting by name as "Body changed", several as "2 settings changed",
+"Rules changed" for a Condition, or "Turned off" and "Turned on". The header
+sticks to the top of the body while the edit's difference scrolls under it.
+Under the header a strip says where the step sits, using step labels and outlet
+names and never an id: "In Pre-visit reminders: Wait until 24 hours before →
+Send 24-hour reminder → Wait until 2 hours before". A branch name follows the
+step it leaves, and "path ends" stands for no next step.
 
-Version history starts with **In use** when the viewer can inspect version
-usage. Its count names versions, not runs: the current publication remains
-listed even with no active runs, alongside every version an active run pins.
-Each row keeps its active-run status visible, opens to its action ids, and marks
-catalog drift as a warning without implying that a draft snapshot was published.
+The difference follows the strip, in one column. A changed text setting reads
+as one flow: removed words struck through on a red tint, a space, then the added words
+that replace them on a green tint. A replacement covers whole words, so "$50"
+to "$75" reads as all of "$50" struck before "$75", and changes kept apart
+only by spaces read as one removed phrase followed by one added phrase. A template reference reads as the badge the
+Draft editor draws, and long unchanged text folds around each change until
+**Show full value**. Any other changed setting shows its earlier value struck
+through under "Before" above its value under "Now". A Condition's rules read as
+sentences, a Wait's settings use its form's labels, a Start or Cancel Filter
+reads as its rules, and a Connection reads as its name. A value the server
+redacted or masked reads "Hidden for security". A new step shows what its
+action does and its longest text setting, with **Show all settings** for the
+rest. A removed step shows its strip, with its own name struck through, and its
+one line. The edit says so when
+the step's action is missing from the catalog and its settings show general
+names. Field labels come from the extension catalog, and machine paths never
+appear as labels.
 
-The **Migrate active runs** command sits in the **In use** section, because that
-section is where a builder reads how many runs sit on older versions. The
+Changes that leave every run the same sit last, collapsed under **Does not
+change what runs**: a Group added, removed, renamed, or given a new
+description, and a step moved into, out of, or between Groups with its
+connections unchanged. They start open when no edit changes what runs.
+
+The footer states the consequence in one line beside the Published mode dot
+the status strip uses: "Live. New runs use v3 and reach real recipients. 1
+active run stays on v1." It then offers **Keep editing** and the filled
+**Publish v3**. Cmd+Enter anywhere in the sheet publishes, and Escape takes the
+sheet back one page or keeps editing. Publish sends the exact draft the sheet
+reviewed. A refusal because the draft or the publication changed meanwhile
+ends the review and says why in a notice.
+
+While the sheet is open, the Draft canvas draws the comparison and refuses
+every edit. Changed cards wear the `A`, `M`, or `D` marker and the same one
+line the sheet uses, and a collapsed Group card counts its changed steps, as "2
+changed". The canvas holds no selection. Pointing at or focusing an edit puts
+the selection halo on its card, and on its Group's card when the step sits in
+a collapsed Group, with no camera move. **Show on canvas** places the step
+once beside the sheet, entering its Group when it sits inside one. Pressing a
+changed card scrolls the sheet to its edit, and pressing a Group card scrolls
+to the first changed step inside it. **Keep editing**, **Close**, or Escape
+return the canvas to editing. Opening or closing the sheet never moves the
+camera, runs layout, moves a node, or marks the draft changed. A link naming
+the Changes view the editor once had, or `review=true`, opens Draft and runs the Publish path once the draft is
+loaded, its publication is read, and no save or check is running.
+
+**Version history** lists the published versions, newest first, under **In
+use** when the viewer can inspect version usage. In use counts versions, not
+runs: the current publication remains listed even with no active runs,
+alongside every version an active run pins. Each of its rows keeps its
+active-run status visible, opens to its action ids, and marks catalog drift as
+a warning without implying that a draft snapshot was published. Choosing a
+version opens "What v2 changed" in the same form, read-only, comparing v2 with
+the version published before it, and v1 with an empty workflow. The canvas
+draws that comparison. Where Publish sits, the footer offers **Restore v2 as
+draft**, which asks for confirmation that the published version stays the
+same. The version published now says "v2 is the current version." and offers
+no restore.
+
+The **Migrate active runs** command sits in the **In use** section, because
+that section is where a builder reads how many runs sit on older versions. The
 toolbar's trailing group holds **Run** and **Publish**, the commands a builder
 uses on every visit, and a Migration is a rare action taken after reading the
 version usage it acts on.
 
-Comparison marks nodes with `A`, `M`, or `D` in addition to signal color. Added
-nodes use Signal Green, modified nodes use Signal Amber, and deleted nodes use
-Signal Red. The marker is a solid signal disc with a 12px letter, and on the
-canvas it grows as the zoom drops so the letter stays 12px on screen. Deleted edges use a distinct dotted treatment. Node position,
-dimensions, and measured geometry never create a change marker.
+Added nodes use Signal Green, modified nodes use Signal Amber, and deleted
+nodes use Signal Red, each with its letter. The marker is a solid signal disc
+with a 12px letter, and on the canvas it grows as the zoom drops so the letter
+stays 12px on screen. A removed step is drawn where the published version held
+it and cannot be moved. Deleted edges use a distinct dotted treatment. Node
+position, dimensions, and measured geometry never create a change marker.
 
-Below `md`, **Changes** uses the mobile sequence of sheets, and every Changes
-sheet is about the comparison. Switching to Changes, or **Configuration** with
-no sheet open, opens the comparison summary sheet: its title names the
-comparison, it counts changes under **Behavior** and **Organization**, and it
-holds **Review N changes**, **Refresh comparison**, **Version history**, and
-**Exit comparison**. **Review N changes** opens the change list as a summary
-sheet with the same sections and rows as Browse, and its rows open in place the
-same way. Each setting in an open row lists "Version N" and **Current draft**
-under it, with only the sides that hold the object, so no two versions sit side
-by side. A changed node tapped on the canvas opens the change list with that
-node's row open, with the comparison summary beneath it when no sheet was
-open. Pressing a name selects the object without opening a sheet or moving the
-camera. A name of a changed step inside a Group opens that Group's view with
-the summary and the change list carried over, so Back reaches the summary.
-**Version history** opens as an inspector over the summary, and Back from
-history returns to the summary with its scroll. Choosing a version in history
-closes history and opens that comparison's summary; choosing the version
-already compared refreshes it. Each comparison, and each Group view of it, keeps
-its own sheets, so switching to Draft and back returns to the same comparison at
-the same sheet with the same rows open. A phone cannot move deleted nodes, so it
-offers no **Reset comparison layout**.
-
-On desktop, modified nodes show published and draft values side by side, added
-nodes show draft values only, and deleted nodes show published values only.
-Deleted nodes remain movable for comparison clarity, and **Reset comparison
-layout**, offered only after one has moved, restores historical positions.
-Comparison movement never changes the draft or its save history. Field labels
-come from the extension catalog; machine paths don't appear as labels.
+Below `md` the sheet covers the screen, clear of the safe-area insets, with the
+same content in one column and its footer always on screen.
 
 ## 6. Do's and Don'ts
 

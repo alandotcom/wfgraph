@@ -12,13 +12,9 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { Store } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
-import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
-import { comparisonRevealContextAtom } from "#src/components/workflow/canvas-reveal/changes-summary";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
@@ -29,15 +25,9 @@ import {
   extractRpcProcedurePath,
   parseRpcRequestInput,
   rpcErrorResponse,
-  rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
-import {
-  comparisonDisplayGraphAtom,
-  comparisonSessionAtom,
-  isComparisonErrorAtom,
-  isComparisonPendingAtom,
-} from "#src/lib/workflow-comparison-store";
+import { requestedReviewAtom } from "#src/lib/workflow-review-store";
 import {
   displayNodesAtom,
   loadWorkflowGraphAtom,
@@ -89,125 +79,30 @@ const draftNodes: WorkflowNode[] = [
   },
 ];
 
-function comparisonFor(base: {
-  id: string;
-  isCurrent: boolean;
-  /** Steps the published version holds and the draft removed. */
-  removedStepIds?: readonly string[] | undefined;
-  /** The draft's nodes as the comparison against this base holds them. */
-  draftNodes?: readonly WorkflowNode[] | undefined;
-}): WorkflowComparisonPayload {
-  const removed = base.removedStepIds ?? [];
-  return {
-    baseVersion: {
-      id: base.id,
-      version: 1,
-      publishedAt: "2026-09-01T00:00:00.000Z",
-      isCurrent: base.isCurrent,
-    },
-    proposedVersion: 2,
-    baseGraph: createSerializedWorkflowGraph({
-      nodes: removed.map((id) => ({
-        id,
-        type: "action",
-        position: { x: 0, y: 0 },
-        data: { label: id, type: "action" },
-      })),
-      edges: [],
-    }),
-    draftGraph: createSerializedWorkflowGraph({
-      nodes: [...(base.draftNodes ?? [])],
-      edges: [],
-    }),
-    hasChanges: removed.length > 0,
-    nodeChanges: removed.map((nodeId) => ({
-      nodeId,
-      kind: "removed",
-      fields: [],
-    })),
-    edgeChanges: [],
-  };
-}
-
-type HeldAnswer = "answer" | "fail";
-
-/**
- * The server this harness answers for: the current publication, the base
- * version each comparison request named, and which ids do not exist. A base in
- * `removedStepIds` compares with those steps removed, and `hold(base)` keeps
- * that base's next answer back until the returned function releases it.
- */
+/** Answers the run detail request the route sync observes. */
 function stubServer() {
-  const holds = new Map<string, Promise<HeldAnswer>>();
-  const server = {
-    currentVersionId: "version_1",
-    comparisonRequests: [] as Array<string | undefined>,
-    removedStepIds: {} as Record<string, readonly string[]>,
-    draftNodesByBase: {} as Record<string, readonly WorkflowNode[]>,
-    hold: (baseVersionId: string): ((answer: HeldAnswer) => void) => {
-      let release: (answer: HeldAnswer) => void = () => undefined;
-      holds.set(
-        baseVersionId,
-        new Promise<HeldAnswer>((resolve) => {
-          release = resolve;
-        })
-      );
-      return (answer) => release(answer);
-    },
-  };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       const path = extractRpcProcedurePath(rpcUrl(url));
       const input = await parseRpcRequestInput(init);
-      const missing = rpcErrorResponse({
-        code: "NOT_FOUND",
-        status: 404,
-        message: "Not found",
-      });
-      if (path === "workflow/compareVersion") {
-        const baseVersionId =
-          typeof input.baseVersionId === "string"
-            ? input.baseVersionId
-            : undefined;
-        server.comparisonRequests.push(baseVersionId);
-        if (baseVersionId === "missing") {
-          return missing;
-        }
-        const id = baseVersionId ?? server.currentVersionId;
-        const hold = holds.get(id);
-        holds.delete(id);
-        if (hold && (await hold) === "fail") {
-          return rpcErrorResponse({
-            code: "INTERNAL_SERVER_ERROR",
-            status: 500,
-            message: "Down",
-          });
-        }
-        return rpcJsonResponse(
-          comparisonFor({
-            id,
-            isCurrent: id === server.currentVersionId,
-            removedStepIds: server.removedStepIds[id],
-            draftNodes: server.draftNodesByBase[id],
-          })
-        );
-      }
       if (path === "workflow/getExecutionLogs") {
         // A run that exists stays loading, which is all these cases need.
         return input.executionId === "missing"
-          ? missing
+          ? rpcErrorResponse({
+              code: "NOT_FOUND",
+              status: 404,
+              message: "Not found",
+            })
           : new Promise<Response>(() => undefined);
       }
       throw new Error(`Unexpected RPC ${path}`);
     })
   );
-  return server;
 }
 
 function Probe() {
-  const { openComparison } = useWorkflowComparisonActions();
-  const navigation = useWorkflowWorkspaceNavigation(openComparison);
+  const navigation = useWorkflowWorkspaceNavigation();
   const goToStep = useGoToStep();
   return (
     <>
@@ -216,9 +111,6 @@ function Probe() {
       </button>
       <button onClick={navigation.showRuns} type="button">
         Runs
-      </button>
-      <button onClick={navigation.showChanges} type="button">
-        Changes
       </button>
       <button onClick={() => goToStep("draft_step")} type="button">
         Go to step
@@ -248,7 +140,7 @@ async function renderEditorRoute(initialEntry: string) {
     ): WorkflowRouteSearch =>
       authorizedWorkflowSearch(search, {
         canOpenRuns: true,
-        canOpenComparison: true,
+        canReview: true,
       }),
     component: () => (
       <>
@@ -317,7 +209,7 @@ describe("WorkspaceRouteSync", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps the open run across a visit to Changes", async () => {
+  it("keeps the open run across a visit to Draft", async () => {
     stubServer();
     const { store, search, click } = await renderEditorRoute(
       "/workflows/workflow_1?view=runs&executionId=run_1"
@@ -326,10 +218,8 @@ describe("WorkspaceRouteSync", () => {
       expect(store.get(selectedExecutionIdAtom)).toBe("run_1")
     );
 
-    click("Changes");
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_1" })
-    );
+    click("Draft");
+    await waitFor(() => expect(search()).toEqual({}));
 
     click("Runs");
     await waitFor(() =>
@@ -360,10 +250,8 @@ describe("WorkspaceRouteSync", () => {
     await waitFor(() => expect(search()).toEqual({ view: "runs" }));
     await openRun("run_a");
     await openRun("run_b");
-    click("Changes");
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_1" })
-    );
+    click("Draft");
+    await waitFor(() => expect(search()).toEqual({}));
 
     await back({ view: "runs", executionId: "run_b" });
     await back({ view: "runs", executionId: "run_a" });
@@ -496,239 +384,22 @@ describe("WorkspaceRouteSync", () => {
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
   });
 
-  it("returns a missing comparison base to the current publication", async () => {
-    const server = stubServer();
-    const { search } = await renderEditorRoute(
-      "/workflows/workflow_1?view=changes&compare=missing"
+  it("opens Draft and asks for the review when a link names the Changes view", async () => {
+    stubServer();
+    const { store, search } = await renderEditorRoute(
+      "/workflows/workflow_1?view=changes&compare=version_1"
     );
 
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_1" })
-    );
-    expect(server.comparisonRequests).toEqual(["missing", undefined]);
-  });
-
-  it("settles on the retained comparison when a chosen base is missing", async () => {
-    const server = stubServer();
-    const { router, search } = await renderEditorRoute(
-      "/workflows/workflow_1?view=changes"
-    );
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_1" })
-    );
-
-    await act(() =>
-      router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "workflow_1" },
-        search: { view: "changes", compare: "missing" },
-      })
-    );
-
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_1" })
-    );
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
-    expect(search()).toEqual({ view: "changes", compare: "version_1" });
-    expect(server.comparisonRequests).toEqual([undefined, "missing"]);
-  });
-
-  it("follows a publish when the retained base was the current publication", async () => {
-    const server = stubServer();
-    const { search, click } = await renderEditorRoute(
-      "/workflows/workflow_1?view=changes"
-    );
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_1" })
-    );
-
-    click("Draft");
     await waitFor(() => expect(search()).toEqual({}));
-    server.currentVersionId = "version_2";
-    click("Changes");
-
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_2" })
-    );
-    expect(server.comparisonRequests.at(-1)).toBeUndefined();
+    expect(store.get(requestedReviewAtom)).toBe("workflow_1");
   });
 
-  it("keeps the focused Group when returning to Changes, and drops it once a publish leaves the comparison without that Group", async () => {
-    const server = stubServer();
-    server.draftNodesByBase = { version_1: draftNodes };
-    const { router, search, click } = await renderEditorRoute(
-      "/workflows/workflow_1?view=changes"
-    );
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_1" })
-    );
-    await act(() =>
-      router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "workflow_1" },
-        search: { view: "changes", compare: "version_1", group: "group_1" },
-      })
-    );
+  it("asks for no review when the route does not name one", async () => {
+    stubServer();
+    const { store, search } = await renderEditorRoute("/workflows/workflow_1");
 
-    click("Draft");
     await waitFor(() => expect(search()).toEqual({}));
-    click("Changes");
-    await waitFor(() => expect(server.comparisonRequests).toHaveLength(2));
-    await waitFor(() =>
-      expect(search()).toEqual({
-        view: "changes",
-        compare: "version_1",
-        group: "group_1",
-      })
-    );
-
-    click("Draft");
-    await waitFor(() => expect(search()).toEqual({}));
-    server.currentVersionId = "version_2";
-    click("Changes");
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_2" })
-    );
-  });
-
-  it("keeps an older chosen base when returning to Changes", async () => {
-    const server = stubServer();
-    const { search, click } = await renderEditorRoute(
-      "/workflows/workflow_1?view=changes&compare=version_0"
-    );
-    await waitFor(() =>
-      expect(server.comparisonRequests).toEqual(["version_0"])
-    );
-
-    click("Draft");
-    await waitFor(() => expect(search()).toEqual({}));
-    server.currentVersionId = "version_2";
-    click("Changes");
-
-    await waitFor(() =>
-      expect(server.comparisonRequests).toEqual(["version_0", "version_0"])
-    );
-    expect(search()).toEqual({ view: "changes", compare: "version_0" });
-  });
-
-  it("keeps the Draft selection when a comparison answers after leaving Changes", async () => {
-    const server = stubServer();
-    server.removedStepIds = { version_3: ["removed_step"] };
-    const { router, store, search, click } = await renderEditorRoute(
-      "/workflows/workflow_1"
-    );
-    const showChanges = (compare: string) =>
-      act(() =>
-        router.navigate({
-          to: "/workflows/$workflowId",
-          params: { workflowId: "workflow_1" },
-          search: { view: "changes", compare },
-        })
-      );
-    act(() => store.set(selectOnlyNodeAtom, "draft_step"));
-
-    await showChanges("version_3");
-    await waitFor(() =>
-      expect(store.get(comparisonSessionAtom)?.payload.baseVersion?.id).toBe(
-        "version_3"
-      )
-    );
-    act(() => store.set(selectOnlyNodeAtom, "removed_step"));
-    const answerVersion1 = server.hold("version_1");
-    await showChanges("version_1");
-    await waitFor(() =>
-      expect(server.comparisonRequests).toEqual(["version_3", "version_1"])
-    );
-    click("Draft");
-    await waitFor(() => expect(search()).toEqual({}));
-
-    await act(async () => answerVersion1("answer"));
-    await waitFor(() =>
-      expect(store.get(comparisonSessionAtom)?.payload.baseVersion?.id).toBe(
-        "version_1"
-      )
-    );
-    expect(store.get(isComparisonPendingAtom)).toBe(false);
-    expect(selectionState(store)).toEqual(selectedNodes(["draft_step"]));
-  });
-
-  it("drops a pending comparison for a base the route has left", async () => {
-    const server = stubServer();
-    const { router, store, search } = await renderEditorRoute(
-      "/workflows/workflow_1?view=changes&compare=version_3"
-    );
-    await waitFor(() =>
-      expect(store.get(comparisonRevealContextAtom).status).toBe("ready")
-    );
-    const answerVersion1 = server.hold("version_1");
-    await act(() =>
-      router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "workflow_1" },
-        search: { view: "changes", compare: "version_1" },
-      })
-    );
-    await waitFor(() =>
-      expect(store.get(comparisonRevealContextAtom).status).toBe("loading")
-    );
-    expect(store.get(comparisonDisplayGraphAtom)).toBeNull();
-
-    await act(async () => router.history.back());
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_3" })
-    );
-    expect(store.get(comparisonRevealContextAtom).status).toBe("ready");
-    await act(async () => answerVersion1("answer"));
-    await waitFor(() => expect(store.get(isComparisonPendingAtom)).toBe(false));
-
-    expect(store.get(comparisonSessionAtom)?.payload.baseVersion?.id).toBe(
-      "version_3"
-    );
-    expect(store.get(comparisonRevealContextAtom).status).toBe("ready");
-    expect(store.get(comparisonDisplayGraphAtom)).not.toBeNull();
-    expect(search()).toEqual({ view: "changes", compare: "version_3" });
-    expect(server.comparisonRequests).toEqual(["version_3", "version_1"]);
-  });
-
-  it("reports no failure for a base the route has left", async () => {
-    const server = stubServer();
-    const { router, store, search } = await renderEditorRoute(
-      "/workflows/workflow_1?view=changes&compare=version_3"
-    );
-    await waitFor(() =>
-      expect(store.get(comparisonRevealContextAtom).status).toBe("ready")
-    );
-    const answerVersion1 = server.hold("version_1");
-    await act(() =>
-      router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "workflow_1" },
-        search: { view: "changes", compare: "version_1" },
-      })
-    );
-    await waitFor(() =>
-      expect(server.comparisonRequests).toEqual(["version_3", "version_1"])
-    );
-
-    await act(async () => router.history.back());
-    await waitFor(() =>
-      expect(search()).toEqual({ view: "changes", compare: "version_3" })
-    );
-    await act(async () => answerVersion1("fail"));
-    await waitFor(() => expect(store.get(isComparisonPendingAtom)).toBe(false));
-
-    expect(store.get(isComparisonErrorAtom)).toBe(false);
-    expect(store.get(comparisonRevealContextAtom).status).toBe("ready");
-
-    // Returning to the failed base asks for it again.
-    await act(async () => router.history.forward());
-    await waitFor(() =>
-      expect(server.comparisonRequests).toEqual([
-        "version_3",
-        "version_1",
-        "version_1",
-      ])
-    );
+    expect(store.get(requestedReviewAtom)).toBeNull();
   });
 
   it("goes to a Draft step from Runs with one selection", async () => {

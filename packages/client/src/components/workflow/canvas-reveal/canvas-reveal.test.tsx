@@ -276,7 +276,7 @@ async function renderReveal(
     validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
       authorizedWorkflowSearch(search, {
         canOpenRuns: true,
-        canOpenComparison: true,
+        canReview: true,
       }),
     component: () => (
       <div className="relative" data-testid="canvas-area">

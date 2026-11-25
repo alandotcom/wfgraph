@@ -22,7 +22,6 @@ import {
 } from "#src/lib/workflow-graph-types";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { renameWorkflowDialogAtom } from "#src/lib/workflow-ui-store";
@@ -181,7 +180,10 @@ describe("the command palette", () => {
       rendered.getByRole("option", { name: "Switch to Runs" })
     ).toBeTruthy();
     expect(
-      rendered.getByRole("option", { name: "Switch to Changes" })
+      rendered.getByRole("option", { name: "Review changes" })
+    ).toBeTruthy();
+    expect(
+      rendered.getByRole("option", { name: "Version history" })
     ).toBeTruthy();
     expect(rendered.getByRole("option", { name: "Publish v2" })).toBeTruthy();
     for (const label of [
@@ -200,6 +202,11 @@ describe("the command palette", () => {
     pressCommandK();
     fireEvent.click(rendered.getByRole("option", { name: "Publish v2" }));
     expect(rendered.actions.handlePublish).toHaveBeenCalledOnce();
+
+    // Review changes opens the same sheet Publish does.
+    pressCommandK();
+    fireEvent.click(rendered.getByRole("option", { name: "Review changes" }));
+    expect(rendered.actions.handlePublish).toHaveBeenCalledTimes(2);
 
     pressCommandK();
     fireEvent.click(rendered.getByRole("option", { name: "Switch to Runs" }));
@@ -418,9 +425,18 @@ describe("the command palette", () => {
     ).not.toBeNull();
   });
 
-  it("keeps node search read-only in Changes without enabling run commands", async () => {
-    const rendered = renderChrome(ToolbarActions);
-    act(() => showWorkspaceRoute(rendered.store, { view: "changes" }));
+  it("disables edit and run commands while the review sheet is open", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      comparison: {
+        baseVersion: null,
+        proposedVersion: 1,
+        baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        hasChanges: true,
+        nodeChanges: [],
+        edgeChanges: [],
+      },
+    });
 
     await openedPalette(rendered);
 
@@ -569,44 +585,6 @@ describe("the command palette", () => {
     expect(persistedDraft(rendered.store)).toEqual(draftBefore);
     expectDraftSelectionKept(rendered.store);
     expect(rendered.actions.handleExecute).not.toHaveBeenCalled();
-  });
-
-  it("finds Changes nodes without replacing the Draft selection", async () => {
-    const comparison: WorkflowComparisonPayload = {
-      baseVersion: null,
-      proposedVersion: 1,
-      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
-      draftGraph: createSerializedWorkflowGraph({
-        nodes: [SEARCH_GRAPH[2]],
-        edges: [],
-      }),
-      hasChanges: true,
-      nodeChanges: [{ nodeId: "notify_customer", kind: "added", fields: [] }],
-      edgeChanges: [],
-    };
-    const rendered = renderChrome(ToolbarActions, {
-      graph: SEARCH_GRAPH.map((node) => ({
-        ...node,
-        selected: node.id === "lifecycle_1",
-      })),
-      edges: [SELECTED_SEARCH_EDGE],
-      comparison,
-    });
-    const draftBefore = persistedDraft(rendered.store);
-    const input = await openedPalette(rendered);
-
-    fireEvent.change(input, { target: { value: "notify" } });
-    fireEvent.click(rendered.getByRole("option", { name: /Notify customer/ }));
-
-    expect(rendered.store.get(selectedNodeAtom)).toBe("notify_customer");
-    expect(
-      rendered.store
-        .get(displayNodesAtom)
-        .filter((node) => node.selected)
-        .map((node) => node.id)
-    ).toEqual(["notify_customer"]);
-    expect(persistedDraft(rendered.store)).toEqual(draftBefore);
-    expectDraftSelectionKept(rendered.store);
   });
 
   // A held palette belongs to the workflow it was opened over. Opening another

@@ -308,7 +308,14 @@ describe("WorkflowToolbarChrome", () => {
     // Each view is rendered once. Below `md` the trailing group becomes the
     // overflow menu, so no view is named twice.
     expect(await findAllByRole("button", { name: "Draft" })).toHaveLength(1);
-    expect(await findByRole("button", { name: "Changes" })).toBeTruthy();
+    // Draft and Runs are the views; reviewing opens from Publish.
+    expect(
+      [
+        ...(
+          await findByRole("group", { name: "Workspace view" })
+        ).querySelectorAll("button"),
+      ].map((button) => button.textContent)
+    ).toEqual(["Draft", "Runs"]);
 
     const workspaceSwitcher = await findByRole("group", {
       name: "Workspace view",
@@ -422,7 +429,7 @@ describe("WorkflowToolbarChrome", () => {
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     fireEvent.keyUp(trigger, { key: "ArrowDown" });
 
-    for (const name of ["Draft", "Runs", "Changes"]) {
+    for (const name of ["Draft", "Runs"]) {
       expect(getByRole("menuitemradio", { name })).toBeTruthy();
     }
     expect(getByRole("menuitem", { name: "Run v7 · Live" })).toBeTruthy();

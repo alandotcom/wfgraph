@@ -45,7 +45,6 @@ import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
-import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
@@ -180,7 +179,7 @@ async function renderStrip(
     validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
       authorizedWorkflowSearch(search, {
         canOpenRuns: true,
-        canOpenComparison: true,
+        canReview: true,
       }),
     // The editor shell's arrangement, minus the panel: the syncs own route →
     // overlay, and the strip is the only thing on screen that can undo it.
@@ -241,27 +240,6 @@ afterEach(() => {
 });
 
 describe("WorkflowStatusStrip", () => {
-  it("identifies Changes and provides a return to Draft before comparison loads", async () => {
-    const { view, store, router } = await renderStrip();
-
-    await act(async () => {
-      await router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: WORKFLOW_ID },
-        search: { view: "changes" },
-      });
-    });
-
-    expect(await view.findByText("Changes")).toBeTruthy();
-    expect(view.getByText("Editing is off")).toBeTruthy();
-    // Leaving Changes is a real navigation. The match tree settles after the
-    // click, so the click holds the act scope.
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Back to draft" }));
-    });
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
-  });
-
   it("reports publication and save state in the fixed status row", async () => {
     const { view } = await renderStrip({ mode: "test", published: true });
 

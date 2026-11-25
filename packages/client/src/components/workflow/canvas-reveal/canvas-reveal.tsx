@@ -7,6 +7,7 @@ import {
   useStore,
 } from "jotai";
 import { ChevronLeft } from "lucide-react";
+import { cn } from "@wfgraph/shared/utils";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -24,6 +25,7 @@ import type {
   RevealLevel,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
+import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
 import {
   canvasRevealAtom,
   showCanvasRevealLevelAtom,
@@ -73,6 +75,10 @@ export function CanvasReveal() {
     revealTitleFocusRequestAtom
   );
   const { hasOverlays } = useOverlay();
+  // The review sheet takes Reveal's place while it shows. Reveal keeps its
+  // level and subject beneath it and comes back as it was when the sheet
+  // closes.
+  const coveredByReview = useAtomValue(isReviewSheetShownAtom);
   const navigation = useRevealNavigation();
   const canvasWidth = useRevealCanvasWidth();
   const rememberedWidth = useAtomValue(rememberedRevealWidthAtom);
@@ -149,7 +155,7 @@ export function CanvasReveal() {
   };
 
   useRevealKeyboard({
-    enabled: !isMobile,
+    enabled: !isMobile && !coveredByReview,
     level,
     hasOverlays,
     area: areaRef,
@@ -274,7 +280,7 @@ export function CanvasReveal() {
 
   return (
     <>
-      {level === "closed" && subject !== null ? (
+      {level === "closed" && subject !== null && !coveredByReview ? (
         <button
           aria-label="Open inspector"
           className="absolute top-1/2 right-0 z-20 flex size-6 -translate-y-1/2 items-center justify-center rounded-l-full border border-r-0 bg-background shadow-sm transition-colors hover:bg-muted"
@@ -292,12 +298,15 @@ export function CanvasReveal() {
         // shortcuts, including Delete and Backspace.
         // `overflow-clip` clips the contents and leaves the panel a box that is
         // not a scroll container, so focusing a control inside cannot scroll it.
-        className="canvas-reveal absolute z-20 flex flex-col overflow-clip rounded-xl border bg-sidebar shadow-sm transition-transform duration-150 ease-out"
+        className={cn(
+          "canvas-reveal absolute z-20 flex flex-col overflow-clip rounded-xl border bg-sidebar shadow-sm transition-transform duration-150 ease-out",
+          coveredByReview && "invisible"
+        )}
         data-level={level}
         data-slot="canvas-reveal"
         // Closed keeps the surface mounted, so Runs keeps its state, and inert,
         // so tabbing cannot scroll the clipped editor shell to reach it.
-        inert={level === "closed"}
+        inert={level === "closed" || coveredByReview}
         ref={(element) => {
           asideRef.current = element;
           areaRef.current = element?.parentElement ?? null;

@@ -26,7 +26,6 @@ export type RevealKindId =
   | "eventSplit"
   | "lifecycle"
   | "runs"
-  | "changes"
   | "panel";
 
 /**
@@ -283,52 +282,6 @@ export function matchRunsSubject(input: RunsMatchInput): RevealSubject | null {
     };
   }
   return { ...base, key: "graph", nodeId: null, placement: { kind: "graph" } };
-}
-
-/**
- * The Changes workspace, whatever it has selected. It offers Browse alone,
- * where the change list shows each object's differences in place. A single
- * selected node or connection is placed on the canvas, and any other selection
- * places the whole comparison graph.
- */
-export function matchChangesSubject(
-  input: RevealMatchInput
-): RevealSubject | null {
-  if (input.workspace !== "changes") {
-    return null;
-  }
-  const { nodes, edges } = selectedGraph(input);
-  const base = {
-    kind: "changes" as const,
-    workspace: input.workspace,
-    levels: ["browse"] as const,
-    runsTarget: null,
-  };
-  if (nodes.length === 1 && edges.length === 0) {
-    return {
-      ...base,
-      key: `node:${nodes[0].id}`,
-      nodeId: nodes[0].id,
-      placement: { kind: "nodes", nodeIds: [nodes[0].id] },
-    };
-  }
-  if (edges.length === 1 && nodes.length === 0) {
-    return {
-      ...base,
-      key: `edge:${edges[0].id}`,
-      nodeId: null,
-      placement: {
-        kind: "nodes",
-        nodeIds: uniq([edges[0].source, edges[0].target]),
-      },
-    };
-  }
-  return {
-    ...base,
-    key: "graph",
-    nodeId: null,
-    placement: { kind: "graph" },
-  };
 }
 
 /**

@@ -6,7 +6,7 @@
 
 import { atom } from "jotai";
 import { selectAtom } from "jotai/utils";
-import { sortBy } from "es-toolkit/array";
+import { compact, sortBy } from "es-toolkit/array";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import { inactiveBranch } from "#src/lib/inactive-branch";
@@ -45,10 +45,10 @@ import {
   activeWorkspaceAddressAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import {
-  comparisonDisplayGraphAtom,
-  isComparisonPendingAtom,
-} from "#src/lib/workflow-comparison-store";
-import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
+  isReviewOpenAtom,
+  reviewDisplayGraphAtom,
+  reviewHighlightAtom,
+} from "#src/lib/workflow-review-store";
 import {
   isGeneratingAtom,
   runStartInFlightAtom,
@@ -161,14 +161,13 @@ export const canvasEditingLockedAtom = atom(
   (get) =>
     get(isGeneratingAtom) ||
     get(workflowWorkspaceViewAtom) !== "draft" ||
-    get(isComparisonPendingAtom) ||
-    get(isPublicationReviewActiveAtom)
+    get(isReviewOpenAtom)
 );
 
 /**
  * The graph the active workspace presents before any paint: the Draft, the
- * open run's pinned graph, or the comparison graph. Null while Runs or Changes
- * is waiting for its graph.
+ * comparison the review sheet shows, or the open run's pinned graph. Null
+ * while Runs is waiting for its graph.
  */
 export const presentedGraphAtom = atom(
   (get): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null => {
@@ -176,10 +175,12 @@ export const presentedGraphAtom = atom(
     if (view === "runs") {
       return get(executionOverlayGraphAtom);
     }
-    if (view === "changes") {
-      return get(comparisonDisplayGraphAtom);
-    }
-    return { nodes: get(nodesStateAtom), edges: get(edgesStateAtom) };
+    return (
+      get(reviewDisplayGraphAtom) ?? {
+        nodes: get(nodesStateAtom),
+        edges: get(edgesStateAtom),
+      }
+    );
   }
 );
 
@@ -206,8 +207,7 @@ export const presentedGraphStructureAtom = selectAtom(
 const inactiveBranchAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
   const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
-  const comparison =
-    view === "changes" ? get(comparisonDisplayGraphAtom) : null;
+  const comparison = view === "draft" ? get(reviewDisplayGraphAtom) : null;
   if (comparison) {
     return { nodeIds: new Set<string>(), outletEdgeIds: new Set<string>() };
   }
@@ -306,8 +306,7 @@ export const canvasIssuesByNodeIdAtom = atom((get) => {
 export const displayNodesAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
   const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
-  const comparison =
-    view === "changes" ? get(comparisonDisplayGraphAtom) : null;
+  const comparison = view === "draft" ? get(reviewDisplayGraphAtom) : null;
   const displayGraph = view === "runs" ? overlay : comparison;
   const nodes = displayGraph?.nodes ?? get(nodesStateAtom);
   const statusByNodeId = get(statusByNodeIdAtom);
@@ -316,7 +315,20 @@ export const displayNodesAtom = atom((get) => {
   const issuesByNodeId = displayGraph
     ? EMPTY_ISSUES
     : get(canvasIssuesByNodeIdAtom);
-  const selectedIds = new Set(get(activeSelectionAtom).nodeIds);
+  // While the review sheet is open the canvas holds no selection, and the
+  // halo marks the step whose edit the sheet points at. A step inside a Group
+  // also marks the Group's card, which stands for it on the overview; the
+  // focused Group canvas draws no card for the Group itself.
+  const highlighted = comparison ? get(reviewHighlightAtom) : null;
+  const highlightedParent =
+    highlighted === null
+      ? undefined
+      : nodes.find((node) => node.id === highlighted)?.parentId;
+  const selectedIds = new Set(
+    comparison
+      ? compact([highlighted, highlightedParent])
+      : get(activeSelectionAtom).nodeIds
+  );
   const paintSelection = (items: WorkflowNode[]) =>
     mapOrSame(items, (node) =>
       withSelectedFlag(node, selectedIds.has(node.id), flaggedNodes)
@@ -427,9 +439,10 @@ function runPathRank(edge: WorkflowEdge): number {
 const paintedEdgesAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
   const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
-  const comparison =
-    view === "changes" ? get(comparisonDisplayGraphAtom) : null;
-  const selectedIds = new Set(get(activeSelectionAtom).edgeIds);
+  const comparison = view === "draft" ? get(reviewDisplayGraphAtom) : null;
+  const selectedIds = new Set(
+    comparison ? [] : get(activeSelectionAtom).edgeIds
+  );
   const paintSelection = (items: WorkflowEdge[]) =>
     mapOrSame(items, (edge) =>
       withSelectedFlag(edge, selectedIds.has(edge.id), flaggedEdges)

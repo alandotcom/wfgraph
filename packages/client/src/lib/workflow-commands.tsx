@@ -3,6 +3,7 @@ import {
   ClipboardPaste,
   Copy,
   CopyPlus,
+  FileDiff,
   Group,
   History,
   Maximize2,
@@ -29,7 +30,8 @@ export type WorkflowCommandId =
   | "run-draft"
   | "run-published"
   | "show-runs"
-  | "show-changes"
+  | "review-changes"
+  | "version-history"
   | "publish"
   | "undo"
   | "redo"
@@ -81,7 +83,7 @@ type WorkflowCommandState = {
   readonly canRunDraft: boolean;
   readonly canRunPublished: boolean;
   readonly canViewRuns: boolean;
-  readonly canViewChanges: boolean;
+  readonly canViewVersionHistory: boolean;
   readonly canPublish: boolean;
   /** Whether the grants and form factor offer adding a step. */
   readonly canAddStep: boolean;
@@ -101,7 +103,7 @@ type WorkflowCommandCallbacks = {
   readonly runDraft: () => void;
   readonly runPublished: () => void;
   readonly showRuns: () => void;
-  readonly showChanges: () => void;
+  readonly showVersionHistory: () => void;
   readonly publish: () => void;
   readonly fitView: () => void;
   readonly copySelection: () => void;
@@ -130,10 +132,10 @@ type PublishEligibility = {
 };
 
 /**
- * Why Run and Publish are off while Runs or Changes is the active view, or
- * null in Draft. Those views show a run's graph or a comparison, both
- * commands act on the Draft, and the editing lock those views hold disables
- * them. A disabled control states this sentence where the pointer finds it.
+ * Why Run and Publish are off while Runs is the active view, or null in
+ * Draft. Runs shows a run's graph, both commands act on the Draft, and the
+ * editing lock Runs holds disables them. A disabled control states this
+ * sentence where the pointer finds it.
  */
 export function draftViewReason(
   view: WorkflowWorkspaceView,
@@ -341,18 +343,31 @@ export function workflowCommands({
       execute: callbacks.showRuns,
     },
     {
-      id: "show-changes",
+      id: "review-changes",
       group: "workflow",
-      label: "Switch to Changes",
-      keywords: "Switch to Changes version history versions published compare",
-      disabled: !state.canViewChanges,
-      execute: callbacks.showChanges,
+      // The review sheet Publish opens. It ends in the Publish decision, so it
+      // is offered whenever Publish is.
+      label: "Review changes",
+      keywords: "Review changes compare differences edits publish",
+      disabled: !state.canPublish,
+      execute: callbacks.publish,
+    },
+    {
+      id: "version-history",
+      group: "workflow",
+      label: "Version history",
+      keywords: "Version history versions published restore migrate",
+      disabled: !state.canViewVersionHistory,
+      execute: callbacks.showVersionHistory,
     },
     {
       id: "publish",
       group: "workflow",
       label: publishCommandLabel(state.publishedVersion),
       keywords: "Publish workflow version release",
+      // The toolbar's Publish button and the Actions menu's "Review changes"
+      // open the same sheet, so the menu does not list it twice.
+      paletteOnly: true,
       disabled: !state.canPublish,
       execute: callbacks.publish,
     },
@@ -448,8 +463,10 @@ export function WorkflowCommandIcon({
     case "run-published":
       return <CirclePlay className={className} />;
     case "show-runs":
-    case "show-changes":
+    case "version-history":
       return <History className={className} />;
+    case "review-changes":
+      return <FileDiff className={className} />;
     case "publish":
       return <Upload className={className} />;
     case "undo":

@@ -131,12 +131,11 @@ const revealLevelPreferenceAtom = atom<"closed" | "browse">(
  * the same view, as a run opened from the run list, and otherwise at the
  * preference.
  *
- * The mobile Reveal sequence carries across addresses of Runs or of Changes,
- * whose sheets show the address itself:
- * when the previous address had a sheet open and the next has none, the next
- * opens its address sheet. Selecting a run, the newest run opening by itself,
- * Back to the run list, a newly started run, and choosing another comparison
- * base all keep the sequence this way.
+ * The mobile Reveal sequence carries across addresses of Runs, whose sheets
+ * show the address itself: when the previous address had a sheet open and the
+ * next has none, the next opens its address sheet. Selecting a run, the newest
+ * run opening by itself, Back to the run list, and a newly started run all
+ * keep the sequence this way.
  */
 export const applyWorkspaceRouteAtom = atom(
   null,
@@ -269,8 +268,8 @@ export const setWorkspaceSelectionAtom = atom(
 );
 
 /**
- * Empty the selection of every Draft and comparison address of one workflow,
- * as when its Draft graph is loaded. A run address presents the graph its run
+ * Empty the selection of every Draft address of one workflow, as when its
+ * Draft graph is loaded. A run address presents the graph its run
  * pinned, so its selection stays. Takes the workflow id so a load that runs
  * before the workflow becomes the current one clears that workflow and no
  * other.
@@ -336,7 +335,7 @@ export const setWorkspaceRevealLevelAtom = atom(
  * is dropped when the address no longer inspects the node `inspectedId` names,
  * so a scroll read before a selection change never lands on the next object. A
  * null `inspectedId` is the scroll of an address that inspects no object, such
- * as a run list, a run, or a comparison.
+ * as a run list or a run.
  */
 export const recordInspectorScrollAtom = atom(
   null,

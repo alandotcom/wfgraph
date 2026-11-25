@@ -11,6 +11,7 @@ import { viewportAnimationDuration } from "#src/lib/motion";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorldCamera } from "#src/lib/workflow-navigation-state";
 import { isAgentPanelExpandedAtom } from "#src/lib/workflow-ui-store";
+import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
 import {
   revealViewport,
   sameWorldCamera,
@@ -115,8 +116,12 @@ export function useRevealCamera(input: {
     keyResizeStartRef.current = store.get(revealKeyResizeInProgressAtom)
       ? keyResizeStart
       : null;
+    // The review sheet takes Reveal's place and width while it shows, so a
+    // placement it asks for keeps the step beside the sheet. Opening or
+    // closing the sheet is not something this hook looks at, so neither
+    // moves the camera.
     const occupiedWidth = revealOccupiedWidth(
-      state.level,
+      store.get(isReviewSheetShownAtom) ? "browse" : state.level,
       width,
       store.get(rememberedRevealWidthAtom)
     );

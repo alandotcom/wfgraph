@@ -97,7 +97,7 @@ async function renderSheetHost() {
     validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
       authorizedWorkflowSearch(search, {
         canOpenRuns: true,
-        canOpenComparison: true,
+        canReview: true,
       }),
     component: () => <Host />,
   });

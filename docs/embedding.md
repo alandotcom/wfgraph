@@ -395,26 +395,27 @@ const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
 
 ### Workspaces and Canvas Reveal
 
-The editor shows a workflow on one canvas in three workspaces. **Draft** edits the
-workflow, **Runs** inspects its runs, and **Changes** compares the draft with a published
-version. Canvas Reveal is a panel that floats over the right side of the canvas at one of
-two open levels. In Draft, selecting an object on the canvas opens Canvas Reveal. In Runs
-and Changes, the first visit opens Browse, pressing a step on a run's canvas opens Focus,
-and otherwise Canvas Reveal keeps the level the person last chose. Browse summarizes the
-object, and Focus holds its complete editor, a run node's evidence, or its field-level
-differences. On a canvas 1024px or wider, a person can drag the panel's left edge, or focus
+The editor shows a workflow on one canvas in two workspaces. **Draft** edits the
+workflow, and **Runs** inspects its runs. Canvas Reveal is a panel that floats over the
+right side of the canvas at one of two open levels. In Draft, selecting an object on the
+canvas opens Canvas Reveal. In Runs, the first visit opens Browse, pressing a step on a
+run's canvas opens Focus, and otherwise Canvas Reveal keeps the level the person last
+chose. Browse summarizes the object, and Focus holds its complete editor or a run node's
+evidence. **Publish** opens a review sheet in Canvas Reveal's place that lists each edit
+the draft makes to the published version, in the order a run reaches it, and ends in the
+decision to publish. Version history opens what each past version changed in the same
+sheet. On a canvas 1024px or wider, a person can drag the panel's left edge, or focus
 that edge and use the arrow keys, to resize Browse and Focus. The browser remembers each
 width in a cookie, and double-clicking the edge restores the default width. Cmd+B or
 Ctrl+B opens and closes Canvas Reveal when it has an object to show, which in Draft means a
 selected object. On a screen narrower than 768px, the shortcut closes the open sheets.
 Opening, changing, or closing it moves the camera and leaves the saved draft unchanged.
 
-The editor keeps the workspace address in the page's query string: `view` (`runs` or
-`changes`, absent for Draft), `executionId`, `compare` (the base version id), and `group`.
-Browser Back and Forward move between those addresses, and a copied link opens the same
-run, comparison, or Group. Draft, each run, each comparison, and each entered Group keep
-their own selection, Canvas Reveal level, scroll position, and camera while the page is
-open.
+The editor keeps the workspace address in the page's query string: `view` (`runs`,
+absent for Draft), `executionId`, and `group`. Browser Back and Forward move between those
+addresses, and a copied link opens the same run or Group. A link carrying `review=true`
+opens Draft with the review sheet. Draft, each run, and each entered Group keep their own
+selection, Canvas Reveal level, scroll position, and camera while the page is open.
 
 ### Groups
 
@@ -438,9 +439,8 @@ dragging an outlet into empty canvas creates a branch with no automatic rejoin.
 To change which branch continues, use the entered canvas: each edge to a
 "Continues to" stub can be deleted on its own, and dragging from a step onto a "Continues
 to" stub connects that step alone to the outside step the stub names.
-In **Runs** the card shows the Group's run status and step counts. In **Changes** Group
-edits count as Organization changes, and the comparison says when a version changes
-nothing a run executes.
+In **Runs** the card shows the Group's run status and step counts. The review sheet lists
+a Group's own edits, and a step moving between Groups, under "Does not change what runs".
 
 Version 1 Groups follow these rules:
 

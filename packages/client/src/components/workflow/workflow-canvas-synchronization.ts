@@ -12,7 +12,6 @@ type InternalLifecycleAnchor = {
 };
 
 const EMPTY_RUN_PRESENTATION = {};
-const EMPTY_CHANGES_PRESENTATION = {};
 
 export function canvasFitViewKey({
   workflowId,
@@ -114,11 +113,11 @@ export function canvasViewportCorrectionKey({
   presentation,
 }: {
   workflowId: string | null;
-  workspaceView: "draft" | "runs" | "changes";
+  workspaceView: "draft" | "runs";
   presentation: unknown;
 }): {
   workflowId: string;
-  workspaceView: "draft" | "runs" | "changes";
+  workspaceView: "draft" | "runs";
   presentation: unknown;
 } | null {
   if (!workflowId) {
@@ -158,8 +157,9 @@ export function useFitWorkflowGraph(input: {
 const scopedPresentations = new WeakMap<object, Map<string, object>>();
 
 /**
- * The key the canvas installs its graph on: the presented run or comparison, or
- * the Draft's stored edges, paired with the `scopeId` of the scope shown. The
+ * The key the canvas installs its graph on: the presented run, the comparison
+ * the review sheet shows, or the Draft's stored edges, paired with the
+ * `scopeId` of the scope shown. The
  * pair is one object per source and scope, so moving between the overview and a
  * focused Group installs the next graph and a repaint of either does not.
  */
@@ -170,7 +170,7 @@ export function canvasSynchronizationKey({
   draftEdges,
   scope,
 }: {
-  workspaceView: "draft" | "runs" | "changes";
+  workspaceView: "draft" | "runs";
   executionOverlay: object | null;
   comparison: object | null;
   draftEdges: WorkflowEdge[];
@@ -179,9 +179,7 @@ export function canvasSynchronizationKey({
   const source =
     workspaceView === "runs"
       ? (executionOverlay ?? EMPTY_RUN_PRESENTATION)
-      : workspaceView === "changes"
-        ? (comparison ?? EMPTY_CHANGES_PRESENTATION)
-        : draftEdges;
+      : (comparison ?? draftEdges);
   const byScope = scopedPresentations.get(source) ?? new Map<string, object>();
   scopedPresentations.set(source, byScope);
   const key = byScope.get(scope) ?? { source, scope };

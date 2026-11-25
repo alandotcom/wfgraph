@@ -190,7 +190,7 @@ describe("the persist round trip", () => {
         type: "action",
         [COMPARISON_NODE_ANNOTATION]: { kind: "removed" },
       })
-    ).toBe("Archive lead, Removed in comparison");
+    ).toBe("Archive lead, Removed");
   });
 
   it("uses the catalog label or a safe fallback for comparison action names", () => {
@@ -217,13 +217,9 @@ describe("the persist round trip", () => {
     };
 
     expect(comparisonNodeTitle(data, catalog)).toBe("Find issues");
-    expect(workflowNodeAriaLabel(data, catalog)).toBe(
-      "Find issues, Added in comparison"
-    );
+    expect(workflowNodeAriaLabel(data, catalog)).toBe("Find issues, Added");
     expect(comparisonNodeTitle(data)).toBe("Unavailable action");
-    expect(workflowNodeAriaLabel(data)).toBe(
-      "Unavailable action, Added in comparison"
-    );
+    expect(workflowNodeAriaLabel(data)).toBe("Unavailable action, Added");
   });
 
   it("uses node-type fallbacks for nodes that are not configured actions", () => {

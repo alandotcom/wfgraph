@@ -468,12 +468,11 @@ after its own authorization.
 **Canvas Reveal**:
 The editor's inspector, a panel that floats over the right side of the canvas
 in one of three levels: Closed, Browse, and Focus. Browse summarizes the
-selected object in the active workspace (Draft, Runs, or Changes), and Focus
-holds the object's complete editor or a run node's evidence. Changes has Browse
-alone, where each changed object's differences open in the change list. Draft,
-each run, each comparison, and each entered Group
-remember their own level, inspected object, scroll position, and camera. On a
-phone a sequence of sheets takes its place.
+selected object in the active workspace (Draft or Runs), and Focus holds the
+object's complete editor or a run node's evidence. Draft, each run, and each
+entered Group remember their own level, inspected object, scroll position, and
+camera. While the review sheet Publish opens is on screen, it takes Canvas
+Reveal's place. On a phone a sequence of sheets takes its place.
 _Avoid_: sidebar (the retired resizable panel beside the canvas)
 
 ### Build Agent

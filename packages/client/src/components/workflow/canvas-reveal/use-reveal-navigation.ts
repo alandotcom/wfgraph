@@ -1,4 +1,3 @@
-import { useNavigate } from "@tanstack/react-router";
 import { atom, useStore, type Atom } from "jotai";
 import { useMemo } from "react";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
@@ -15,7 +14,6 @@ import {
 import { selectedObject } from "#src/lib/canvas-selection";
 import {
   openMobileAddressSheetAtom,
-  openMobileChangeAtom,
   openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
   recordMobileSheetSectionAtom,
@@ -33,11 +31,6 @@ import {
   setWorkspaceRevealLevelAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import {
-  openMobileChangedObject,
-  selectChangedObject,
-} from "./changed-object-navigation";
-import { CHANGE_LIST_SECTION } from "./changes-summary";
 import { requestRevealPlacementAtom } from "./reveal-requests";
 
 /** The object an inspector shows and the section it shows for that object. */
@@ -91,7 +84,7 @@ export type RevealNavigation = {
   /** Open the inspector of `address` at Browse, or its sheet below `md`. */
   openInspector: (address: WorkspaceAddress) => void;
   /**
-   * Show the inspector of a Runs or Changes workspace just switched to at
+   * Show the inspector of the Runs workspace just switched to at
    * `address`. Desktop opens Canvas Reveal only on the workspace's first visit,
    * since Canvas Reveal remembers each address's level. Below `md` the sheets
    * are not remembered across a switch, so every switch opens the inspector.
@@ -109,9 +102,8 @@ export type RevealNavigation = {
   /**
    * Show a node pressed on a canvas outside a run, or chosen elsewhere, once
    * the selection is written. Desktop reopens a closed Canvas Reveal when the
-   * address follows its selection and holds `nodeId` alone. Below `md` a
-   * comparison selects the node in the change list sheet with its row open,
-   * and any other address opens its inspector.
+   * address follows its selection and holds `nodeId` alone. Below `md` the
+   * address opens its inspector.
    */
   showPressedNode: (input: {
     address: WorkspaceAddress;
@@ -137,14 +129,6 @@ export type RevealNavigation = {
     nodeId: string;
     isGroup: boolean;
   }) => void;
-  /**
-   * Show a changed object of the active comparison in the scope that shows it,
-   * entering its Group when the object is a step inside one, with its change
-   * list row open. At `md` and wider it selects the object and opens a closed
-   * Reveal at Browse; below `md` it selects the object in the change list
-   * sheet.
-   */
-  showChangedObject: (object: InspectedObject) => void;
 };
 
 const desktopShownSectionAtom = atom((get): ShownInspectorSection => {
@@ -166,7 +150,6 @@ const mobileShownSectionAtom = atom((get): ShownInspectorSection => {
 export function useRevealNavigation(): RevealNavigation {
   const isMobile = useIsMobile();
   const store = useStore();
-  const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const { openSheet } = useConfigurationSheet();
 
   return useMemo((): RevealNavigation => {
@@ -217,17 +200,7 @@ export function useRevealNavigation(): RevealNavigation {
         openInspector: openSheet,
         showSwitchedWorkspace: ({ address }) => openSheet(address),
         followSelection: openSheet,
-        showPressedNode: ({ address, nodeId }) => {
-          if (address.key.workspace === "changes") {
-            store.set(openMobileChangeAtom, {
-              address,
-              inspected: node(nodeId),
-              section: CHANGE_LIST_SECTION,
-            });
-          } else {
-            openSheet(address);
-          }
-        },
+        showPressedNode: ({ address }) => openSheet(address),
         inspectRunNode,
         pressRunCanvasNode: (input) => {
           recordRunCanvasPress(input, null);
@@ -239,8 +212,6 @@ export function useRevealNavigation(): RevealNavigation {
             opensEvidence: !input.isGroup,
           });
         },
-        showChangedObject: (object) =>
-          openMobileChangedObject({ store, navigate, object }),
       };
     }
     const inspectRunNode: RevealNavigation["inspectRunNode"] = ({
@@ -315,8 +286,6 @@ export function useRevealNavigation(): RevealNavigation {
           });
         }
       },
-      showChangedObject: (object) =>
-        selectChangedObject({ store, navigate, object }, { openReveal: true }),
     };
-  }, [isMobile, navigate, openSheet, store]);
+  }, [isMobile, openSheet, store]);
 }

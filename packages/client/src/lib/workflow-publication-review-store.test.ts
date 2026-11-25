@@ -57,10 +57,12 @@ describe("publication review store", () => {
       graph,
       expectedDraftRevision: 1,
       expectedPublishedVersionId: null,
-      review: {
+      payload: {
+        baseVersion: null,
         proposedVersion: 1,
         baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
         draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        hasChanges: true,
         nodeChanges: [],
         edgeChanges: [],
       },
@@ -89,7 +91,9 @@ describe("publication review store", () => {
       graph,
       expectedDraftRevision: 1,
       expectedPublishedVersionId: "version_1",
-      review: {
+      payload: {
+        baseVersion: null,
+        hasChanges: true,
         proposedVersion: 2,
         baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
         draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
@@ -128,7 +132,9 @@ describe("publication review store", () => {
         graph,
         expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
-        review: {
+        payload: {
+          baseVersion: null,
+          hasChanges: true,
           proposedVersion: 1,
           baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
           draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
@@ -155,7 +161,9 @@ describe("publication review store", () => {
         graph,
         expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
-        review: {
+        payload: {
+          baseVersion: null,
+          hasChanges: true,
           proposedVersion: 1,
           baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
           draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
@@ -190,7 +198,9 @@ describe("publication review store", () => {
         graph,
         expectedDraftRevision: 1,
         expectedPublishedVersionId: null,
-        review: {
+        payload: {
+          baseVersion: null,
+          hasChanges: true,
           proposedVersion: 1,
           baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
           draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
@@ -207,10 +217,12 @@ describe("publication review store", () => {
       graph,
       expectedDraftRevision: 1,
       expectedPublishedVersionId: null,
-      review: {
+      payload: {
+        baseVersion: null,
         proposedVersion: 1,
         baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
         draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        hasChanges: true,
         nodeChanges: [],
         edgeChanges: [],
       },

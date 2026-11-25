@@ -7,11 +7,7 @@ import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
-import {
-  isComparisonActiveAtom,
-  isComparisonPendingAtom,
-} from "#src/lib/workflow-comparison-store";
-import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
+import { isReviewOpenAtom } from "#src/lib/workflow-review-store";
 import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
 import {
   singleSelectedEdgeId,
@@ -98,12 +94,7 @@ const HISTORY_LIMIT = 50;
 
 /** Refuse draft mutations while a read-only display graph owns the canvas. */
 export function draftEditable(get: Getter): boolean {
-  return (
-    get(workflowWorkspaceViewAtom) === "draft" &&
-    !get(isComparisonActiveAtom) &&
-    !get(isComparisonPendingAtom) &&
-    !get(isPublicationReviewActiveAtom)
-  );
+  return get(workflowWorkspaceViewAtom) === "draft" && !get(isReviewOpenAtom);
 }
 
 /** Snapshot the graph so the next change is undoable, and drop any redo branch. */

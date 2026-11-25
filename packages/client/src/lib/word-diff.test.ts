@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   diffText,
   leadingTokens,
-  sidePieces,
+  unifiedPieces,
   textTokens,
 } from "#src/lib/word-diff";
 
@@ -35,7 +35,7 @@ describe("textTokens", () => {
 });
 
 describe("diffText", () => {
-  it("marks the words that changed and keeps the rest shared", () => {
+  it("marks the words that changed, whole, and keeps the rest shared", () => {
     expect(
       diffText(
         `Hi ${NAME}, your visit is on Monday.`,
@@ -58,9 +58,9 @@ describe("diffText", () => {
           " ",
         ],
       },
-      { kind: "removed", tokens: ["on", " ", "Monday"] },
-      { kind: "added", tokens: ["tomorrow"] },
-      { kind: "same", tokens: ["."] },
+      // The full stop touches both words, so the replacement takes it in.
+      { kind: "removed", tokens: ["on", " ", "Monday", "."] },
+      { kind: "added", tokens: ["tomorrow", "."] },
     ]);
   });
 
@@ -90,59 +90,46 @@ describe("diffText", () => {
   });
 });
 
-describe("sidePieces", () => {
+describe("unifiedPieces", () => {
   const words = (count: number, word: string) =>
     Array.from({ length: count }, () => word).join(" ");
 
-  it("shows each side's own changes beside the shared text", () => {
-    const runs = diffText("a b", "a c");
-    expect(sidePieces(runs, "before", { fold: false })).toEqual([
+  it("reads as one flow, each removal before the addition that replaces it", () => {
+    expect(unifiedPieces(diffText("a b", "a c"), { fold: false })).toEqual([
       { kind: "same", text: "a " },
-      { kind: "changed", text: "b" },
-    ]);
-    expect(sidePieces(runs, "after", { fold: false })).toEqual([
-      { kind: "same", text: "a " },
-      { kind: "changed", text: "c" },
+      { kind: "removed", text: "b" },
+      { kind: "gap" },
+      { kind: "added", text: "c" },
     ]);
   });
 
   it("folds long unchanged text and keeps the words next to a change", () => {
     const before = `${words(40, "lead")} old ${words(40, "tail")}`;
     const after = `${words(40, "lead")} new ${words(40, "tail")}`;
-    const pieces = sidePieces(diffText(before, after), "after", {
-      fold: true,
-    });
+    const pieces = unifiedPieces(diffText(before, after), { fold: true });
     expect(pieces.map((piece) => piece.kind)).toEqual([
       "fold",
       "same",
-      "changed",
+      "removed",
+      "gap",
+      "added",
       "same",
       "fold",
     ]);
     expect(pieces[1]).toEqual({ kind: "same", text: `${words(6, "lead")} ` });
-    expect(pieces[2]).toEqual({ kind: "changed", text: "new" });
-  });
-
-  it("folds the same text on both sides", () => {
-    const runs = diffText(
-      `${words(40, "lead")} old`,
-      `${words(40, "lead")} new`
-    );
-    const kinds = (side: "before" | "after") =>
-      sidePieces(runs, side, { fold: true }).map((piece) => piece.kind);
-    expect(kinds("before")).toEqual(["fold", "same", "changed"]);
-    expect(kinds("after")).toEqual(["fold", "same", "changed"]);
   });
 
   it("leaves short unchanged text whole and folds nothing without a change", () => {
     expect(
-      sidePieces(diffText("a b old", "a b new"), "before", { fold: true })
+      unifiedPieces(diffText("a b old", "a b new"), { fold: true })
     ).toEqual([
       { kind: "same", text: "a b " },
-      { kind: "changed", text: "old" },
+      { kind: "removed", text: "old" },
+      { kind: "gap" },
+      { kind: "added", text: "new" },
     ]);
     const long = words(80, "same");
-    expect(sidePieces(diffText(long, long), "after", { fold: true })).toEqual([
+    expect(unifiedPieces(diffText(long, long), { fold: true })).toEqual([
       { kind: "same", text: long },
     ]);
   });
@@ -185,5 +172,58 @@ describe("leadingTokens", () => {
     expect(leadingTokens(["averyveryverylongword"], limits)).toEqual([
       "averyveryverylongword",
     ]);
+  });
+});
+
+/**
+ * The difference as one line, the way the review sheet draws it: removed text
+ * between ~~ marks, added text plain, and the gap between them as a space.
+ */
+function readAsFlow(before: string, after: string): string {
+  return unifiedPieces(diffText(before, after), { fold: false })
+    .map((piece) => {
+      if (piece.kind === "fold") return "…";
+      if (piece.kind === "gap") return " ";
+      return piece.kind === "removed" ? `~~${piece.text}~~` : piece.text;
+    })
+    .join("");
+}
+
+describe("a difference a reader can parse", () => {
+  const STARTS_AT =
+    "{{@8eeb82e0-cdb5-4a90-941a-25ee25e893dc:Appointment booked.startsAt}}";
+
+  it("leaves a space between a removed word and the word that replaces it", () => {
+    expect(
+      readAsFlow(
+        `Your appointment is on ${STARTS_AT}.`,
+        `Your appointment is tomorrow, ${STARTS_AT}.`
+      )
+    ).toBe(`Your appointment is ~~on~~ tomorrow, ${STARTS_AT}.`);
+  });
+
+  it("joins removed and added words kept apart only by spaces", () => {
+    const before = "Reply C to confirm or call us to reschedule";
+    const after = "Reply C to confirm or call (555) 555-0142";
+    expect(readAsFlow(before, after)).toBe(
+      "Reply C to confirm or call ~~us to reschedule~~ (555) 555-0142"
+    );
+    expect(
+      unifiedPieces(diffText(before, after), { fold: false }).map(
+        (piece) => piece.kind
+      )
+    ).toEqual(["same", "removed", "gap", "added"]);
+  });
+
+  it("replaces a token with no space in it whole", () => {
+    expect(readAsFlow("Deposit of $50 is due", "Deposit of $75 is due")).toBe(
+      "Deposit of ~~$50~~ $75 is due"
+    );
+  });
+
+  it("keeps an insertion where it lands inside a word's punctuation", () => {
+    expect(readAsFlow("Reply C to confirm or", "Reply C to confirm, or")).toBe(
+      "Reply C to confirm, or"
+    );
   });
 });

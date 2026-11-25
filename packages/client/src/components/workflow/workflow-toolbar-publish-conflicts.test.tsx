@@ -12,7 +12,10 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAtomValue } from "jotai";
+import { usePublishReview } from "#src/components/workflow/review/use-publish-review";
 import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import { publicationReviewAtom } from "#src/lib/workflow-publication-review-store";
 import { useWorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import {
   deferred,
@@ -153,15 +156,17 @@ function stubPublishFlow(publishAnswer: () => Response | Promise<Response>) {
 function LivePublishProbe() {
   const workflowState = useWorkflowToolbarState();
   const actions = useWorkflowActions(workflowState);
+  const review = usePublishReview();
+  const publishReview = useAtomValue(publicationReviewAtom);
   return (
     <>
       <button onClick={actions.handlePublish} type="button">
         Start publish
       </button>
-      <button onClick={actions.confirmPublish} type="button">
+      <button onClick={review.confirmPublish} type="button">
         Confirm publish
       </button>
-      <output>{actions.publishReview ? "ready" : "idle"}</output>
+      <output>{publishReview ? "ready" : "idle"}</output>
     </>
   );
 }

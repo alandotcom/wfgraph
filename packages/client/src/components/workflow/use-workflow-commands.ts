@@ -2,7 +2,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useMemo } from "react";
 import { useReflowLayout } from "#src/components/workflow/use-reflow-layout";
-import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
+import { useReviewActions } from "#src/components/workflow/review/use-review-actions";
 import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-toolbar-handlers";
 import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
@@ -51,10 +51,8 @@ export function useWorkflowCommands({
   const groupSelection = useSetAtom(groupSelectionAtom);
   const { fitView } = useReactFlow();
   const { canReflow, reflow } = useReflowLayout();
-  const comparisonActions = useWorkflowComparisonActions();
-  const workspaceNavigation = useWorkflowWorkspaceNavigation(
-    comparisonActions.openComparison
-  );
+  const workspaceNavigation = useWorkflowWorkspaceNavigation();
+  const reviewActions = useReviewActions();
   const shortcuts = useMemo(
     () => editorShortcutLabels(isApplePlatform(currentPlatform())),
     []
@@ -97,10 +95,11 @@ export function useWorkflowCommands({
       canRunPublished:
         state.canExecute && state.canReadVersionGraph && !editingLocked,
       canViewRuns: Boolean(state.currentWorkflowId) && state.canReadRuns,
-      canViewChanges:
+      canViewVersionHistory:
         Boolean(state.currentWorkflowId) &&
         state.canReadVersionHistory &&
-        Boolean(state.publication?.isPublished),
+        Boolean(state.publication?.isPublished) &&
+        !editingLocked,
       canPublish:
         state.canPublish &&
         !isWorkflowPublishDisabled({
@@ -140,7 +139,7 @@ export function useWorkflowCommands({
       runDraft: () => void actions.handleExecute("draft"),
       runPublished: () => void actions.handleExecute("published"),
       showRuns: workspaceNavigation.showRuns,
-      showChanges: workspaceNavigation.showChanges,
+      showVersionHistory: reviewActions.openHistory,
       publish: actions.handlePublish,
       fitView: () =>
         void fitView(workflowFitViewOptions(viewportAnimationDuration())),

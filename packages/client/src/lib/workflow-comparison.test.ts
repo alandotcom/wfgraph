@@ -49,15 +49,15 @@ function payload(input: {
 }
 
 describe("buildComparisonDisplayGraph", () => {
-  it("reuses the built graph for equivalent position overrides", () => {
+  it("builds the graph once per comparison", () => {
     const comparison = payload({
       baseNodes: [node("shared"), node("removed")],
       draftNodes: [node("shared")],
       nodeChanges: [{ nodeId: "removed", kind: "removed", fields: [] }],
     });
 
-    const first = buildComparisonDisplayGraph(comparison, {});
-    const second = buildComparisonDisplayGraph(comparison, {});
+    const first = buildComparisonDisplayGraph(comparison);
+    const second = buildComparisonDisplayGraph(comparison);
 
     expect(second).toBe(first);
   });
@@ -122,8 +122,8 @@ describe("buildComparisonDisplayGraph", () => {
     // A flattened node has no `parentId` key, which is how React Flow
     // represents a top-level node.
     expect(removed).not.toHaveProperty("parentId");
-    expect(removed).not.toHaveProperty("draggable");
     expect(removed).toMatchObject({
+      draggable: false,
       position: { x: 120, y: 230 },
       focusable: true,
       deletable: false,
@@ -151,8 +151,7 @@ describe("buildComparisonDisplayGraph", () => {
           { nodeId: "child", kind: "removed", fields: [] },
         ],
         edgeChanges: [{ edgeId: "edge", kind: "removed" }],
-      }),
-      { group: { x: 500, y: 600 } }
+      })
     );
 
     expect(graph.nodes.map((item) => item.id)).toEqual([
@@ -161,7 +160,7 @@ describe("buildComparisonDisplayGraph", () => {
       "child",
     ]);
     expect(graph.nodes.find((item) => item.id === "group")).toMatchObject({
-      position: { x: 500, y: 600 },
+      position: { x: 100, y: 200 },
     });
     expect(graph.nodes.find((item) => item.id === "child")).toMatchObject({
       parentId: "group",
@@ -169,13 +168,13 @@ describe("buildComparisonDisplayGraph", () => {
       focusable: true,
     });
     for (const id of ["group", "child"]) {
-      expect(graph.nodes.find((item) => item.id === id)).not.toHaveProperty(
-        "draggable"
-      );
+      expect(graph.nodes.find((item) => item.id === id)).toMatchObject({
+        draggable: false,
+      });
     }
   });
 
-  it("freezes draft nodes and all comparison edges while retaining deleted-node movement", () => {
+  it("freezes every node and edge of the comparison", () => {
     const graph = buildComparisonDisplayGraph(
       payload({
         baseNodes: [node("shared"), node("deleted")],
@@ -199,9 +198,8 @@ describe("buildComparisonDisplayGraph", () => {
       deletable: false,
     });
     const deleted = graph.nodes.find((item) => item.id === "deleted");
-    // The canvas's `nodesDraggable` decides whether a removed node moves.
-    expect(deleted).not.toHaveProperty("draggable");
     expect(deleted).toMatchObject({
+      draggable: false,
       focusable: true,
       deletable: false,
     });

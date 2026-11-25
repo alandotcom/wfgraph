@@ -37,10 +37,11 @@ import {
   openCommandPaletteAtom,
 } from "#src/lib/command-palette-store";
 import {
-  beginWorkflowComparisonRequestAtom,
-  installWorkflowComparisonAtom,
-  settleWorkflowComparisonRequestAtom,
-} from "#src/lib/workflow-comparison-store";
+  beginPublicationReviewAtom,
+  clearPublicationReviewAtom,
+  installPublicationReviewAtom,
+} from "#src/lib/workflow-publication-review-store";
+import { reviewScrollRequestAtom } from "#src/lib/workflow-review-store";
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import {
   canvasEdgesAtom,
@@ -202,7 +203,7 @@ async function renderEditor(
     validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
       authorizedWorkflowSearch(search, {
         canOpenRuns: true,
-        canOpenComparison: true,
+        canReview: true,
       }),
     component: () => (
       <div
@@ -1177,74 +1178,24 @@ describe("the collapsed Group overview", () => {
     ).toBeTruthy();
   });
 
-  it("draws the collapsed card and keeps Changes Browse in both scopes", async () => {
-    const { view, store, router, search } = await renderEditor();
-    const graph = createSerializedWorkflowGraph({ nodes: NODES, edges: EDGES });
-    const payload: WorkflowComparisonPayload = {
-      baseVersion: {
-        id: "version_3",
-        version: 3,
-        publishedAt: "2026-09-01T00:00:00.000Z",
-        isCurrent: true,
-      },
-      proposedVersion: 4,
-      baseGraph: graph,
-      draftGraph: graph,
-      hasChanges: true,
-      nodeChanges: [{ nodeId: "welcome", kind: "modified", fields: [] }],
-      edgeChanges: [],
-    };
-    await act(async () => {
-      const epoch = store.set(beginWorkflowComparisonRequestAtom, "wf_1");
-      store.set(installWorkflowComparisonAtom, {
-        workflowId: "wf_1",
-        epoch,
-        payload,
-      });
-      store.set(settleWorkflowComparisonRequestAtom, {
-        workflowId: "wf_1",
-        epoch,
-      });
-      await router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "wf_1" },
-        search: { view: "changes", compare: "version_3" },
-      });
+  it("draws the collapsed card with its changed steps counted while the review sheet is open, with no camera move", async () => {
+    const { view, store } = await renderEditor();
+    const viewport = view.container.querySelector<HTMLElement>(
+      ".react-flow__viewport"
+    );
+    if (!viewport) {
+      throw new Error("the canvas did not render its viewport");
+    }
+    // Every camera change rewrites the viewport element's transform.
+    const cameraChanges: string[] = [];
+    const observer = new MutationObserver(() => {
+      cameraChanges.push(viewport.style.transform);
     });
-
-    await waitFor(() =>
-      expect(store.get(canvasNodesAtom).map((node) => node.id)).toContain(
-        "outreach"
-      )
-    );
-    expect(store.get(canvasNodesAtom).map((node) => node.id)).not.toContain(
-      "welcome"
-    );
-    expect(
-      view.getByRole("complementary", { name: "Changes inspector" })
-    ).toBeTruthy();
-
-    await act(async () => {
-      await router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "wf_1" },
-        search: { view: "changes", compare: "version_3", group: "outreach" },
-      });
+    observer.observe(viewport, {
+      attributes: true,
+      attributeFilter: ["style"],
     });
-
-    await waitFor(() =>
-      expect(store.get(canvasNodesAtom).map((node) => node.id)).toEqual(
-        expect.arrayContaining(["welcome", "case_study"])
-      )
-    );
-    expect(search()).toMatchObject({ view: "changes", group: "outreach" });
-    expect(
-      view.getByRole("complementary", { name: "Changes inspector" })
-    ).toBeTruthy();
-  });
-
-  it("counts changed steps on the collapsed card and enters the Group to show the first one", async () => {
-    const { view, store, router, search, reveal } = await renderEditor();
+    const historyBefore = store.get(historyAtom);
     const graph = createSerializedWorkflowGraph({ nodes: NODES, edges: EDGES });
     const payload: WorkflowComparisonPayload = {
       baseVersion: {
@@ -1265,61 +1216,51 @@ describe("the collapsed Group overview", () => {
       edgeChanges: [],
     };
     await act(async () => {
-      const epoch = store.set(beginWorkflowComparisonRequestAtom, "wf_1");
-      store.set(installWorkflowComparisonAtom, {
+      const epoch = store.set(beginPublicationReviewAtom, "wf_1");
+      store.set(installPublicationReviewAtom, {
         workflowId: "wf_1",
-        epoch,
+        epoch: epoch ?? 0,
+        pending: false,
+        graph,
+        expectedDraftRevision: 1,
+        expectedPublishedVersionId: "version_3",
         payload,
       });
-      store.set(settleWorkflowComparisonRequestAtom, {
-        workflowId: "wf_1",
-        epoch,
-      });
-      await router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "wf_1" },
-        search: { view: "changes", compare: "version_3" },
-      });
     });
+
+    await waitFor(() =>
+      expect(store.get(canvasNodesAtom).map((node) => node.id)).toContain(
+        "outreach"
+      )
+    );
+    expect(store.get(canvasNodesAtom).map((node) => node.id)).not.toContain(
+      "welcome"
+    );
+    expect(
+      (await view.findByTestId("group-changed-steps-outreach")).textContent
+    ).toBe("2 changed");
+
+    // Pressing the Group card asks the sheet for its first changed step's
+    // edit, and selects nothing.
     await act(async () => {
-      store.set(setWorkspaceRevealLevelAtom, {
-        address: store.get(activeWorkspaceAddressAtom),
-        level: "closed",
-      });
+      fireEvent.click(view.getByTestId("group-changed-steps-outreach"));
     });
-    await waitFor(() => expect(reveal()?.dataset.level).toBe("closed"));
-
-    const marker = await view.findByRole("button", {
-      name: "Show 2 changed steps in group Initial outreach",
+    expect(store.get(reviewScrollRequestAtom)?.nodeId).toBe("case_study");
+    expect(store.get(activeSelectionAtom)).toEqual({
+      nodeIds: [],
+      edgeIds: [],
     });
-    expect(marker.textContent).toBe("2 changed");
-    fireEvent.click(marker);
 
+    // Closing the sheet returns the draft to the canvas.
+    await act(async () => {
+      store.set(clearPublicationReviewAtom, "wf_1");
+    });
     await waitFor(() =>
-      expect(search()).toEqual({
-        view: "changes",
-        compare: "version_3",
-        group: "outreach",
-      })
+      expect(view.queryByTestId("group-changed-steps-outreach")).toBeNull()
     );
-    await waitFor(() =>
-      expect(store.get(activeSelectionAtom)).toEqual({
-        nodeIds: ["case_study"],
-        edgeIds: [],
-      })
-    );
-    expect(reveal()?.dataset.level).toBe("browse");
-    const name = view.getByRole("button", { name: "Send case study" });
-    expect(name.getAttribute("aria-pressed")).toBe("true");
-    // The change list opens the step's row to show its differences.
-    await waitFor(() =>
-      expect(
-        name
-          .closest('[data-slot="change-row"]')
-          ?.querySelector("[aria-expanded]")
-          ?.getAttribute("aria-expanded")
-      ).toBe("true")
-    );
+    observer.disconnect();
+    expect(cameraChanges).toEqual([]);
+    expect(store.get(historyAtom)).toBe(historyBefore);
   });
 });
 

@@ -23,8 +23,8 @@ describe("workflow route state", () => {
     });
   });
 
-  it("keeps a run only in Runs and a comparison base only in Changes", () => {
-    const access = { canOpenRuns: true, canOpenComparison: true };
+  it("keeps a run only in Runs, and reads a Changes link as a review request on Draft", () => {
+    const access = { canOpenRuns: true, canReview: true };
     expect(
       authorizedWorkflowSearch(
         { view: "runs", executionId: "exec_1", compare: "version_1" },
@@ -36,7 +36,10 @@ describe("workflow route state", () => {
         { view: "changes", executionId: "exec_1", compare: "version_1" },
         access
       )
-    ).toEqual({ view: "changes", compare: "version_1" });
+    ).toEqual({ review: true });
+    expect(authorizedWorkflowSearch({ review: "true" }, access)).toEqual({
+      review: true,
+    });
     // Draft is the absent view, so a run or base without its view is dropped.
     expect(
       authorizedWorkflowSearch(
@@ -50,13 +53,13 @@ describe("workflow route state", () => {
     expect(
       authorizedWorkflowSearch(
         { view: "runs", executionId: "", group: ["group_1"] },
-        { canOpenRuns: true, canOpenComparison: true }
+        { canOpenRuns: true, canReview: true }
       )
     ).toEqual({ view: "runs" });
     expect(
       authorizedWorkflowSearch(
         { view: "elsewhere", compare: 3 },
-        { canOpenRuns: true, canOpenComparison: true }
+        { canOpenRuns: true, canReview: true }
       )
     ).toEqual({});
   });
@@ -65,13 +68,13 @@ describe("workflow route state", () => {
     expect(
       authorizedWorkflowSearch(
         { view: "runs", executionId: "exec_1", group: "group_1" },
-        { canOpenRuns: false, canOpenComparison: true }
+        { canOpenRuns: false, canReview: true }
       )
     ).toEqual({ group: "group_1" });
     expect(
       authorizedWorkflowSearch(
         { view: "changes", compare: "version_1" },
-        { canOpenRuns: true, canOpenComparison: false }
+        { canOpenRuns: true, canReview: false }
       )
     ).toEqual({});
   });

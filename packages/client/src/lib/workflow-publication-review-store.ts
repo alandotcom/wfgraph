@@ -1,31 +1,14 @@
 /**
- * Publication preflight owns an immutable draft snapshot until the user closes
- * its review or the publish request finishes. The workflow id scopes that
- * lifetime so a late response cannot attach its graph to a different editor.
+ * The draft's review, which Publish opens as the review sheet's first page,
+ * owns an immutable draft snapshot until the reader closes the sheet or the
+ * publish request finishes. The workflow id scopes that lifetime so a late
+ * response cannot attach its graph to a different editor.
  */
 
 import { atom } from "jotai";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
-import type {
-  WorkflowComparisonPayload,
-  WorkflowEdgeChange,
-  WorkflowNodeChange,
-} from "@wfgraph/shared/graph/publication-contracts";
+import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-
-/**
- * What the Publish confirmation shows. `baseGraph` and `draftGraph` are the
- * comparison's redacted graphs, which the confirmation classifies its changes
- * against.
- */
-export type PublicationReview = {
-  baseVersion?: number | undefined;
-  proposedVersion: number;
-  baseGraph: WorkflowComparisonPayload["baseGraph"];
-  draftGraph: WorkflowComparisonPayload["draftGraph"];
-  nodeChanges: WorkflowNodeChange[];
-  edgeChanges: WorkflowEdgeChange[];
-};
 
 type PendingPublicationReview = {
   workflowId: string;
@@ -40,7 +23,8 @@ export type ReadyPublicationReview = {
   graph: SerializedWorkflowGraph;
   expectedDraftRevision: number;
   expectedPublishedVersionId: string | null;
-  review: PublicationReview;
+  /** The comparison of the snapshot with the current publication. */
+  payload: WorkflowComparisonPayload;
 };
 
 type PublicationReviewSession =
@@ -64,7 +48,7 @@ export const publicationReviewSessionAtom = atom((get) => {
     : null;
 });
 
-/** A preflight locks its workflow while comparison, confirmation, or publish runs. */
+/** Whether Publish is preparing, showing, or sending the draft's review. */
 export const isPublicationReviewActiveAtom = atom(
   (get) => get(publicationReviewSessionAtom) !== null
 );

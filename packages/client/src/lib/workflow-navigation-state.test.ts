@@ -48,13 +48,12 @@ function runAddress(executionId: string) {
 }
 
 describe("workspace addresses", () => {
-  it("distinguishes Draft, the run list, a run, and a comparison", () => {
+  it("distinguishes Draft, the run list, and a run", () => {
     const searches: WorkflowRouteSearch[] = [
       {},
       { view: "runs" },
       { view: "runs", executionId: "exec_1" },
-      { view: "changes", compare: "version_1" },
-      { view: "changes", compare: "version_1", group: "group_1" },
+      { view: "runs", executionId: "exec_1", group: "group_1" },
     ];
     const addresses = searches.map((search) =>
       workspaceAddressFromSearch("workflow_1", search)
@@ -64,8 +63,7 @@ describe("workspace addresses", () => {
       "draft",
       "runs",
       "run:exec_1",
-      "comparison:version_1",
-      "comparison:version_1",
+      "run:exec_1",
     ]);
     expect(addresses.map(workspaceRouteSearch)).toEqual(searches);
   });
@@ -151,36 +149,6 @@ describe("updateScopeNavigation", () => {
     expect(runKeys).not.toContain("run:exec_2");
     expect(runKeys).toHaveLength(RETAINED_KEYS_PER_VIEW + 1);
   });
-
-  it("evicts the oldest comparison keys while keeping the comparison Changes reopens", () => {
-    const comparisonAddress = (compare: string) =>
-      workspaceAddressFromSearch("workflow_1", { view: "changes", compare });
-    let navigation: WorkflowNavigation = rememberRouteSearch(
-      EMPTY_WORKFLOW_NAVIGATION,
-      comparisonAddress("version_0")
-    );
-    for (let index = 0; index <= RETAINED_KEYS_PER_VIEW + 2; index++) {
-      navigation = updateScopeNavigation(
-        navigation,
-        comparisonAddress(`version_${index}`),
-        (scope) => withDesktopRevealLevel(scope, "browse")
-      );
-    }
-    navigation = updateScopeNavigation(
-      navigation,
-      runAddress("exec_1"),
-      (scope) => withDesktopRevealLevel(scope, "browse")
-    );
-
-    const keys = [...navigation.workspaces.keys()];
-    expect(keys).toContain("comparison:version_0");
-    expect(keys).not.toContain("comparison:version_1");
-    expect(keys).not.toContain("comparison:version_2");
-    expect(keys.filter((key) => key.startsWith("comparison:"))).toHaveLength(
-      RETAINED_KEYS_PER_VIEW + 1
-    );
-    expect(keys).toContain("run:exec_1");
-  });
 });
 
 describe("selection", () => {
@@ -213,14 +181,10 @@ describe("selection", () => {
     );
   });
 
-  it("empties every Draft and comparison scope and keeps the rest", () => {
+  it("empties every Draft scope and keeps the rest", () => {
     const overview = workspaceAddressFromSearch("workflow_1", {});
     const group = workspaceAddressFromSearch("workflow_1", {
       group: "group_1",
-    });
-    const comparison = workspaceAddressFromSearch("workflow_1", {
-      view: "changes",
-      compare: "version_1",
     });
     const run = runAddress("exec_1");
     let navigation = updateScopeNavigation(
@@ -235,9 +199,6 @@ describe("selection", () => {
     navigation = updateScopeNavigation(navigation, group, (scope) =>
       withSelection(scope, { nodeIds: ["child"], edgeIds: [] })
     );
-    navigation = updateScopeNavigation(navigation, comparison, (scope) =>
-      withSelection(scope, { nodeIds: ["a"], edgeIds: [] })
-    );
     navigation = updateScopeNavigation(navigation, run, (scope) =>
       withSelection(scope, { nodeIds: ["run_step"], edgeIds: [] })
     );
@@ -248,9 +209,6 @@ describe("selection", () => {
       EMPTY_SELECTION
     );
     expect(scopeNavigationAt(cleared, group).selection).toEqual(
-      EMPTY_SELECTION
-    );
-    expect(scopeNavigationAt(cleared, comparison).selection).toEqual(
       EMPTY_SELECTION
     );
     expect(scopeNavigationAt(cleared, run).selection).toEqual({
@@ -307,15 +265,12 @@ describe("rememberRouteSearch", () => {
     );
     navigation = rememberRouteSearch(
       navigation,
-      workspaceAddressFromSearch("workflow_1", {
-        view: "changes",
-        compare: "version_1",
-      })
+      workspaceAddressFromSearch("workflow_1", { group: "group_1" })
     );
 
     expect(navigation.searches).toEqual({
       runs: { view: "runs", executionId: "exec_1" },
-      changes: { view: "changes", compare: "version_1" },
+      draft: { group: "group_1" },
     });
     expect(rememberRouteSearch(navigation, runAddress("exec_1"))).toBe(
       navigation
@@ -358,12 +313,7 @@ describe("recovery", () => {
   });
 
   it("settles a route on the nearest address the editor can open", () => {
-    const base = {
-      groupMissing: false,
-      runMissing: false,
-      missingComparisonBaseId: null,
-      installedComparisonBaseId: undefined,
-    };
+    const base = { groupMissing: false, runMissing: false };
     const valid: WorkflowRouteSearch = { view: "runs", executionId: "exec_1" };
 
     expect(recoveredRouteSearch({ ...base, search: valid })).toBe(valid);
@@ -381,44 +331,6 @@ describe("recovery", () => {
         runMissing: true,
       })
     ).toEqual({ view: "runs" });
-    expect(
-      recoveredRouteSearch({
-        ...base,
-        search: { view: "changes", compare: "version_9" },
-        missingComparisonBaseId: "version_9",
-      })
-    ).toEqual({ view: "changes" });
-    // A refusal of another base leaves the named base alone.
-    const retained: WorkflowRouteSearch = {
-      view: "changes",
-      compare: "version_1",
-    };
-    expect(
-      recoveredRouteSearch({
-        ...base,
-        search: retained,
-        missingComparisonBaseId: "version_9",
-      })
-    ).toBe(retained);
-    expect(
-      recoveredRouteSearch({
-        ...base,
-        search: { view: "changes" },
-        installedComparisonBaseId: "version_2",
-      })
-    ).toEqual({ view: "changes", compare: "version_2" });
-    // A named base the installed comparison does not match yet stays named.
-    const named: WorkflowRouteSearch = {
-      view: "changes",
-      compare: "version_1",
-    };
-    expect(
-      recoveredRouteSearch({
-        ...base,
-        search: named,
-        installedComparisonBaseId: "version_2",
-      })
-    ).toBe(named);
   });
 });
 

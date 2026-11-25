@@ -37,7 +37,7 @@ export function insideKeyboardLayer(element: Element): boolean {
 
 /**
  * Whether `event` is Cmd+Enter or Ctrl+Enter with no other modifier, the chord
- * that submits the Run draft and Publish dialogs.
+ * that submits the Run draft dialog and publishes from the review sheet.
  */
 export function isSubmitChord(event: {
   key: string;

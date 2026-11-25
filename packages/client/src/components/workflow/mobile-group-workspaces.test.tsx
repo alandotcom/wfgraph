@@ -27,7 +27,6 @@ import type { Store } from "jotai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode as PersistedWorkflowNode,
@@ -36,7 +35,6 @@ import { ExtensionCatalogProvider } from "#src/components/extension-catalog-prov
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
-import { changesMobileSheet } from "#src/components/workflow/canvas-reveal/changes-summary";
 import {
   MobileReveal,
   MobileRevealCovered,
@@ -46,7 +44,6 @@ import {
   installRunsRevealRpc,
   log,
   removeRunsRevealRpc,
-  runsRpc,
   served,
   runHeading,
 } from "#src/components/workflow/canvas-reveal/runs-reveal.test-support";
@@ -55,13 +52,7 @@ import { RunStatusProjection } from "#src/components/workflow/run-status-project
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
-import { rpcJsonResponse } from "#src/lib/rpc-fetch-test-support";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import {
-  beginWorkflowComparisonRequestAtom,
-  installWorkflowComparisonAtom,
-  settleWorkflowComparisonRequestAtom,
-} from "#src/lib/workflow-comparison-store";
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import {
   loadWorkflowGraphAtom,
@@ -164,7 +155,6 @@ function graphOf(
 }
 
 const DRAFT_NODES = workflowNodes({ caseStudySubject: "Case study, updated" });
-const DRAFT = graphOf(DRAFT_NODES);
 
 /** The workspace switcher's three controls, as the toolbar offers them. */
 function WorkspaceSwitcher() {
@@ -176,9 +166,6 @@ function WorkspaceSwitcher() {
       </button>
       <button onClick={workspace.showRuns} type="button">
         Show Runs
-      </button>
-      <button onClick={workspace.showChanges} type="button">
-        Show Changes
       </button>
     </>
   );
@@ -217,12 +204,11 @@ type PhoneEditor = {
 };
 
 /**
- * The editor below `md` with the real canvas, over a Draft of `DRAFT`, the run
- * fixture `served` and, when given, `comparison` installed for "version_3".
+ * The editor below `md` with the real canvas, over a Draft of `DRAFT` and the
+ * run fixture `served`.
  */
 async function renderPhoneEditor(input: {
   search: string;
-  comparison?: WorkflowComparisonPayload | undefined;
 }): Promise<PhoneEditor> {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, {
@@ -231,23 +217,6 @@ async function renderPhoneEditor(input: {
   });
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Patient reactivation");
-  const { comparison } = input;
-  if (comparison) {
-    const epoch = store.set(beginWorkflowComparisonRequestAtom, "wf_1");
-    store.set(installWorkflowComparisonAtom, {
-      workflowId: "wf_1",
-      epoch,
-      payload: comparison,
-    });
-    store.set(settleWorkflowComparisonRequestAtom, {
-      workflowId: "wf_1",
-      epoch,
-    });
-    runsRpc.override = (path) =>
-      path === "workflow/compareVersion"
-        ? Promise.resolve(rpcJsonResponse(comparison))
-        : undefined;
-  }
 
   const flow: { instance: ReactFlowInstance | null } = { instance: null };
   const keepFlow = (instance: ReactFlowInstance) => {
@@ -260,7 +229,7 @@ async function renderPhoneEditor(input: {
     validateSearch: (search: WorkflowRouteSearch & SearchSchemaInput) =>
       authorizedWorkflowSearch(search, {
         canOpenRuns: true,
-        canOpenComparison: true,
+        canReview: true,
       }),
     component: () => (
       <>
@@ -416,7 +385,7 @@ async function renderPhoneEditor(input: {
   };
 }
 
-/** What stays true of the stored draft through every Runs and Changes step. */
+/** What stays true of the stored draft through every Runs step. */
 function expectDraftUntouched(store: Store) {
   const positions = (nodes: readonly { id: string; position: unknown }[]) =>
     new Map(nodes.map((node) => [node.id, node.position]));
@@ -425,13 +394,13 @@ function expectDraftUntouched(store: Store) {
   expect(store.get(hasUnsavedChangesAtom)).toBe(false);
 }
 
-/** No control a phone shows in Runs or Changes edits the graph's shape. */
+/** No control a phone shows in Runs edits the graph's shape. */
 function expectNoTopologyAuthoring(editor: {
   view: ReturnType<typeof render>;
   canvasNode: (id: string) => HTMLElement | null;
 }) {
   const topology =
-    /^(Delete|Duplicate|Group steps|Ungroup|Add step|Tidy layout|Reset comparison layout)/;
+    /^(Delete|Duplicate|Group steps|Ungroup|Add step|Tidy layout)/;
   expect(editor.view.queryAllByRole("button", { name: topology })).toEqual([]);
   for (const node of editor.view.container.querySelectorAll<HTMLElement>(
     ".react-flow__node"
@@ -684,244 +653,6 @@ describe("mobile Runs Group drill-in", () => {
   });
 });
 
-/** Case study's subject changed inside the Group, and Route outcome's outside. */
-function childModification(): WorkflowComparisonPayload {
-  return {
-    baseVersion: {
-      id: "version_3",
-      version: 3,
-      publishedAt: "2026-09-01T00:00:00.000Z",
-      isCurrent: true,
-    },
-    proposedVersion: 4,
-    baseGraph: graphOf(
-      workflowNodes().map((node) =>
-        node.id === "route"
-          ? step("route", "Route outcome", "Route before")
-          : node
-      )
-    ),
-    draftGraph: DRAFT,
-    hasChanges: true,
-    nodeChanges: [
-      {
-        nodeId: "route",
-        kind: "modified",
-        fields: [
-          {
-            path: ["data", "config", "subject"],
-            kind: "modified",
-            before: "Route before",
-            after: "Route",
-          },
-        ],
-      },
-      {
-        nodeId: "case_study",
-        kind: "modified",
-        fields: [
-          {
-            path: ["data", "config", "subject"],
-            kind: "modified",
-            before: "Case study",
-            after: "Case study, updated",
-          },
-        ],
-      },
-    ],
-    edgeChanges: [],
-  };
-}
-
-describe("mobile Changes Group drill-in", () => {
-  it("opens the first changed member's row from a Group card's changed count, and a name crosses the Group boundary", async () => {
-    const editor = await renderPhoneEditor({
-      search: "?view=changes&compare=version_3",
-      comparison: childModification(),
-    });
-    const { store, search, inSheet, title, press } = editor;
-    const sheets = () =>
-      store.get(activeMobileSheetsAtom).map(changesMobileSheet);
-    const row = (name: string) =>
-      inSheet()
-        .getByRole("button", { name })
-        .closest('[data-slot="change-row"]') as HTMLElement | null;
-
-    // The Group card's changed count opens the change list inside the Group
-    // with the member's row open.
-    const changed = await waitFor(() => {
-      const button = editor.view.container.querySelector<HTMLElement>(
-        '[data-slot="group-changed-steps"]'
-      );
-      if (!button) {
-        throw new Error("the Group card shows no changed count");
-      }
-      return button;
-    });
-    expect(changed.textContent).toBe("1 changed");
-    await act(async () => {
-      fireEvent.click(changed);
-    });
-    await waitFor(() =>
-      expect(search()).toEqual({
-        view: "changes",
-        compare: "version_3",
-        group: "outreach",
-      })
-    );
-    await waitFor(() => expect(title()).toBe("Changes"));
-    expect(sheets()).toEqual(["summary", "changes"]);
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["case_study"]);
-    const member = row("Send case study");
-    if (!member) {
-      throw new Error("the member has no change list row");
-    }
-    expect(
-      within(member)
-        .getAllByRole("listitem")
-        .map((item) => item.textContent)
-    ).toEqual([expect.stringContaining("Case study, updated")]);
-    await waitFor(() =>
-      expect(editor.handleSides("welcome")).toEqual(["top", "bottom"])
-    );
-    expectNoTopologyAuthoring(editor);
-
-    // A step drawn on the overview leaves the Group, carrying the sheets, and
-    // the member's name enters the Group again.
-    press("Route outcome");
-    await waitFor(() => expect(editor.scope()).toEqual({ kind: "overview" }));
-    expect(sheets()).toEqual(["summary", "changes"]);
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["route"]);
-    press("Send case study");
-    await waitFor(() =>
-      expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" })
-    );
-    expect(sheets()).toEqual(["summary", "changes"]);
-
-    // The comparison summary inside the Group leads back to the Group canvas.
-    press("Back to Summary");
-    expect(sheets()).toEqual(["summary"]);
-    press("Back to Initial outreach");
-    expect(editor.sheet()).toBeNull();
-    expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" });
-    expectDraftUntouched(store);
-  });
-
-  it("shows an organization-only Group's summary from its card, and a membership-only member inside the Group", async () => {
-    const comparison: WorkflowComparisonPayload = {
-      baseVersion: {
-        id: "version_3",
-        version: 3,
-        publishedAt: "2026-09-01T00:00:00.000Z",
-        isCurrent: true,
-      },
-      proposedVersion: 4,
-      baseGraph: graphOf(
-        workflowNodes({
-          groupLabel: "Reminders",
-          caseStudySubject: "Case study, updated",
-        }).map((node) =>
-          node.id === "welcome"
-            ? step("welcome", "Send welcome back", "Welcome")
-            : node
-        )
-      ),
-      draftGraph: DRAFT,
-      hasChanges: true,
-      nodeChanges: [
-        {
-          nodeId: "outreach",
-          kind: "modified",
-          fields: [
-            {
-              path: ["data", "label"],
-              kind: "modified",
-              before: "Reminders",
-              after: "Initial outreach",
-            },
-          ],
-        },
-        {
-          nodeId: "welcome",
-          kind: "modified",
-          fields: [{ path: ["parentId"], kind: "added", after: "outreach" }],
-        },
-      ],
-      edgeChanges: [],
-    };
-    const editor = await renderPhoneEditor({
-      search: "?view=changes&compare=version_3",
-      comparison,
-    });
-    const { store, search, inSheet, title, press } = editor;
-    const sheets = () =>
-      store.get(activeMobileSheetsAtom).map(changesMobileSheet);
-
-    // The Group card opens the change list with the Group's row open.
-    await editor.tapNode("outreach");
-    await waitFor(() => expect(title()).toBe("Changes"));
-    expect(sheets()).toEqual(["summary", "changes"]);
-    const groupRow = inSheet()
-      .getByRole("button", { name: "Initial outreach" })
-      .closest('[data-slot="change-row"]') as HTMLElement | null;
-    if (!groupRow) {
-      throw new Error("the Group has no change list row");
-    }
-    expect(
-      within(groupRow).getByText(/execution behavior is unchanged/)
-    ).toBeTruthy();
-    const members = within(groupRow)
-      .getByRole("heading", { name: "Changed steps in this Group" })
-      .closest("section") as HTMLElement;
-    expectNoTopologyAuthoring(editor);
-
-    // A membership-only member shows inside the Group.
-    fireEvent.click(
-      within(members).getByRole("button", {
-        name: "Send welcome back Moved into Initial outreach",
-      })
-    );
-    await waitFor(() => expect(search()).toMatchObject({ group: "outreach" }));
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["welcome"]);
-    const memberRow = inSheet()
-      .getByRole("button", { name: "Send welcome back" })
-      .closest('[data-slot="change-row"]') as HTMLElement | null;
-    if (!memberRow) {
-      throw new Error("the member has no change list row");
-    }
-    await waitFor(() =>
-      expect(
-        within(memberRow).getByRole("list", {
-          name: "Group membership of this step",
-        })
-      ).toBeTruthy()
-    );
-
-    // Back inside the Group removes the change list, and Workflow returns to
-    // the overview's change list, whose Group row enters the Group.
-    press("Back to Summary");
-    await waitFor(() => expect(sheets()).toEqual(["summary"]));
-    expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" });
-    await editor.leaveGroup();
-    await waitFor(() => expect(editor.scope()).toEqual({ kind: "overview" }));
-    await waitFor(() => expect(title()).toBe("Changes"));
-    expect(sheets()).toEqual(["summary", "changes"]);
-    press(/Enter group/);
-    await waitFor(() =>
-      expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" })
-    );
-    await waitFor(() =>
-      expect(editor.handleSides("case_study")).toEqual(["top", "bottom"])
-    );
-    await waitFor(() => expect(sheets()).toEqual(["summary"]));
-    expect(title()).toBe("Version 3 → proposed version 4");
-    expect(
-      inSheet().getByRole("button", { name: "Back to Initial outreach" })
-    ).toBeTruthy();
-    expectDraftUntouched(store);
-  });
-});
-
 describe("mobile workspace switching inside Groups", () => {
   it("restores each workspace's Group scope, sheet depth, selection and camera", async () => {
     served.items = [execution("exec_f", "failed")];
@@ -936,10 +667,7 @@ describe("mobile workspace switching inside Groups", () => {
         }),
       ],
     };
-    const editor = await renderPhoneEditor({
-      search: "?view=changes",
-      comparison: childModification(),
-    });
+    const editor = await renderPhoneEditor({ search: "" });
     const { view, store, search, title, press, levels } = editor;
     const selected = () => store.get(activeSelectionAtom).nodeIds;
     const switchTo = async (name: string) => {
@@ -948,27 +676,7 @@ describe("mobile workspace switching inside Groups", () => {
       });
     };
 
-    // Changes: the change list inside the Group, with the member's row open.
-    await editor.openSheet();
-    await waitFor(() => expect(title()).toBe("Version 3 → proposed version 4"));
-    const changed = await waitFor(() => {
-      const button = view.container.querySelector<HTMLElement>(
-        '[data-slot="group-changed-steps"]'
-      );
-      if (!button) {
-        throw new Error("the Group card shows no changed count");
-      }
-      return button;
-    });
-    await act(async () => {
-      fireEvent.click(changed);
-    });
-    await waitFor(() => expect(title()).toBe("Changes"));
-    const changesCamera = { x: 30, y: -300, zoom: 0.8 };
-    await editor.moveCamera(changesCamera);
-
     // Draft: a member's inspector inside the Group.
-    await switchTo("Show Draft");
     await waitFor(() => expect(search()).toEqual({}));
     await editor.tapNode("outreach");
     press(/Enter group/);
@@ -992,22 +700,6 @@ describe("mobile workspace switching inside Groups", () => {
     );
     const runsCamera = { x: 50, y: -500, zoom: 0.6 };
     await editor.moveCamera(runsCamera);
-
-    await switchTo("Show Changes");
-    await waitFor(() =>
-      expect(search()).toEqual({
-        view: "changes",
-        compare: "version_3",
-        group: "outreach",
-      })
-    );
-    await waitFor(() => expect(title()).toBe("Changes"));
-    expect(store.get(activeMobileSheetsAtom).map(changesMobileSheet)).toEqual([
-      "summary",
-      "changes",
-    ]);
-    expect(selected()).toEqual(["case_study"]);
-    editor.expectCamera(changesCamera);
 
     await switchTo("Show Draft");
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));

@@ -9,7 +9,7 @@
 import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
 import {
   COMPARISON_EDGE_ANNOTATION,
-  comparisonChangeLabel,
+  COMPARISON_CHANGE_KIND_LABEL,
   type EditorEdgeData,
 } from "#src/lib/workflow-graph-types";
 
@@ -40,7 +40,7 @@ export function workflowEdgeAriaLabel({
     : `${sourceLabel} to ${targetLabel}`;
   const comparison = data?.[COMPARISON_EDGE_ANNOTATION];
   if (comparison) {
-    return `${label}, ${comparisonChangeLabel(comparison.kind)}`;
+    return `${label}, ${COMPARISON_CHANGE_KIND_LABEL[comparison.kind]}`;
   }
   return data?.runPath ? `${label}, ${RUN_PATH_WORDS[data.runPath]}` : label;
 }

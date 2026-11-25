@@ -100,8 +100,8 @@ describe("active workspace address", () => {
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
     expect(store.get(selectedExecutionIdAtom)).toBe("run_1");
 
-    showWorkspaceRoute(store, { view: "changes", compare: "version_1" });
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("changes");
+    showWorkspaceRoute(store, {});
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
   });
 
@@ -122,13 +122,11 @@ describe("active workspace address", () => {
   it("remembers the search each view last showed", () => {
     const store = draftStore();
     showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
-    showWorkspaceRoute(store, { view: "changes", compare: "version_1" });
     showWorkspaceRoute(store, { group: "group_1" });
 
     expect(store.get(rememberedRouteSearchesAtom)).toEqual({
       draft: { group: "group_1" },
       runs: { view: "runs", executionId: "run_1" },
-      changes: { view: "changes", compare: "version_1" },
     });
   });
 });
@@ -159,10 +157,10 @@ describe("selection", () => {
     showWorkspaceRoute(store, { view: "runs", executionId: "run_2" });
     expect(store.get(selectedNodeAtom)).toBeNull();
 
-    showWorkspaceRoute(store, { view: "changes", compare: "version_1" });
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(activeSelectionAtom, {
       nodeIds: [],
-      edgeIds: ["comparison_edge"],
+      edgeIds: ["run_list_edge"],
     });
 
     showWorkspaceRoute(store, {});
@@ -175,8 +173,8 @@ describe("selection", () => {
     showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
     expect(store.get(selectedNodeAtom)).toBe("run_step");
 
-    showWorkspaceRoute(store, { view: "changes", compare: "version_1" });
-    expect(store.get(selectedEdgeAtom)).toBe("comparison_edge");
+    showWorkspaceRoute(store, { view: "runs" });
+    expect(store.get(selectedEdgeAtom)).toBe("run_list_edge");
     expect(store.get(selectedNodeAtom)).toBeNull();
   });
 
@@ -232,11 +230,9 @@ describe("selection", () => {
     expect(paintedSelection(store)).toEqual({ nodeIds: [], edgeIds: [] });
   });
 
-  it("clears Draft and comparison selections on a Draft load and keeps a run's", () => {
+  it("clears Draft selections on a Draft load and keeps a run's", () => {
     const store = draftStore();
     store.set(selectOnlyNodeAtom, "draft_step");
-    showWorkspaceRoute(store, { view: "changes", compare: "version_1" });
-    store.set(selectOnlyNodeAtom, "comparison_step");
     showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
     store.set(executionOverlayGraphAtom, {
       nodes: [actionNode("run_step")],
@@ -253,8 +249,6 @@ describe("selection", () => {
       nodeIds: ["run_step"],
       edgeIds: [],
     });
-    showWorkspaceRoute(store, { view: "changes", compare: "version_1" });
-    expect(store.get(selectedNodeAtom)).toBeNull();
     showWorkspaceRoute(store, {});
     expect(store.get(selectedNodeAtom)).toBeNull();
     expect(paintedSelection(store)).toEqual({ nodeIds: [], edgeIds: [] });
@@ -300,21 +294,6 @@ describe("selection", () => {
 });
 
 describe("desktop Reveal level", () => {
-  it("starts a Runs or Changes scope first shown from another view at the preference", () => {
-    const store = draftStore();
-    showWorkspaceRoute(store, { view: "runs" });
-    store.set(chooseDesktopRevealLevelAtom, "closed");
-
-    showWorkspaceRoute(store, { view: "changes" });
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
-    store.set(chooseDesktopRevealLevelAtom, "browse");
-
-    showWorkspaceRoute(store, { view: "runs" });
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
-    showWorkspaceRoute(store, { view: "changes" });
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
-  });
-
   it("starts a Draft scope closed whatever the preference is", () => {
     const store = draftStore();
     showWorkspaceRoute(store, { view: "runs" });
@@ -478,26 +457,11 @@ describe("desktop Reveal level", () => {
     );
   });
 
-  it("keeps the level a scope showed when another workspace is toggled", () => {
-    const store = draftStore();
-    showWorkspaceRoute(store, { view: "changes" });
-    const changesLevel = store.get(activeDesktopRevealLevelAtom);
-
-    showWorkspaceRoute(store, { view: "runs" });
-    store.set(
-      chooseDesktopRevealLevelAtom,
-      changesLevel === "closed" ? "browse" : "closed"
-    );
-    showWorkspaceRoute(store, { view: "changes" });
-
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe(changesLevel);
-  });
-
   it("never writes the cookie when a workspace is restored", () => {
     const store = draftStore();
     showWorkspaceRoute(store, { view: "runs" });
     store.set(chooseDesktopRevealLevelAtom, "closed");
-    showWorkspaceRoute(store, { view: "changes" });
+    showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
     store.set(chooseDesktopRevealLevelAtom, "browse");
     store.set(selectOnlyNodeAtom, "draft_step");
     const cookie = document.cookie;
@@ -653,7 +617,6 @@ describe("navigation and the workflow definition", () => {
       level: "focus",
     });
     showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
-    showWorkspaceRoute(store, { view: "changes", compare: "version_1" });
     store.set(setWorkspaceSelectionAtom, {
       address: workspaceAddressFromSearch("workflow_1", {}),
       selection: { nodeIds: ["child_step"], edgeIds: [] },

@@ -46,9 +46,9 @@ import {
   undoAtom,
 } from "#src/lib/workflow-graph-store";
 import {
-  activeComparisonAtom,
-  moveComparisonNodesAtom,
-} from "#src/lib/workflow-comparison-store";
+  requestReviewScrollAtom,
+  reviewDisplayGraphAtom,
+} from "#src/lib/workflow-review-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   isGeneratingAtom,
@@ -56,16 +56,14 @@ import {
   workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
-import { WORKFLOW_EDGE_TYPE } from "#src/lib/workflow-graph-types";
+import {
+  COMPARISON_GROUP_ANNOTATION,
+  WORKFLOW_EDGE_TYPE,
+} from "#src/lib/workflow-graph-types";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
-import {
-  GroupChangedStepsSlot,
-  type GroupChangedStepsControlProps,
-  GroupNode,
-} from "./nodes/group-node";
-import { GroupChangedStepsButton } from "./canvas-reveal/changes-navigation";
+import { GroupNode } from "./nodes/group-node";
 import { groupBoundaryNodeTypes } from "./nodes/group-boundary-node";
 import { GroupScopeBar } from "./group-scope-bar";
 import { useGroupScopeNavigation } from "./use-group-scope-navigation";
@@ -126,11 +124,6 @@ const edgeTypes = {
  */
 const defaultEdgeOptions = { type: WORKFLOW_EDGE_TYPE };
 
-/** The changed-steps control a Group card draws on a comparison canvas. */
-function renderGroupChangedSteps(props: GroupChangedStepsControlProps) {
-  return <GroupChangedStepsButton {...props} />;
-}
-
 const nodeTypes = {
   lifecycle: LifecycleNode,
   action: ActionNode,
@@ -160,8 +153,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const overlayActive = useAtomValueRawSync(isExecutionOverlayActiveAtom);
   const executionOverlay = useAtomValueRawSync(executionOverlayGraphAtom);
-  const comparison = useAtomValue(activeComparisonAtom);
+  // While the review sheet shows a comparison, the Draft canvas draws it.
+  const comparison = useAtomValue(reviewDisplayGraphAtom);
   const comparisonActive = comparison !== null;
+  const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
   const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
@@ -169,7 +164,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const [showMinimap] = useAtom(showMinimapAtom);
   const revealOccupiedWidth = useRevealOccupiedWidth();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
-  const moveComparisonNodes = useSetAtom(moveComparisonNodesAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const selection = useAtomValue(canvasSelectionAtom);
   const clearSelection = useClearWorkflowNodeInspection();
@@ -181,7 +175,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     useReactFlow();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fittedWorkflowIdRef = useRef<string | null>(null);
-  // The workflow the canvas has placed only on the Draft that Runs or Changes
+  // The workflow the canvas has placed only on the Draft that Runs
   // paints while its own graph loads. That placement is no camera anyone
   // chose, so the resolved graph still gets the workflow's first placement.
   const provisionalWorkflowIdRef = useRef<string | null>(null);
@@ -219,11 +213,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     scope: scopeId(scope),
   });
   const resolvedWorkspacePresentation =
-    workspaceView === "runs"
-      ? executionOverlay
-      : workspaceView === "changes"
-        ? comparison
-        : null;
+    workspaceView === "runs" ? executionOverlay : null;
   const viewportCorrection = useMemo(
     () =>
       canvasViewportCorrectionKey({
@@ -500,14 +490,29 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // Modifier clicks still use React Flow's additive selection changes.
   const canvasWritesSelection =
     !graphEditingLocked && !interaction.comparisonVisible;
-  const onNodeClick: NodeMouseHandler = useCallback(
-    (event, node) =>
+  // While the review sheet is open, pressing a card scrolls the sheet to that
+  // step's edit and selects nothing.
+  const onNodeClick: NodeMouseHandler<WorkflowNode> = useCallback(
+    (event, node) => {
+      if (interaction.comparisonVisible) {
+        // A collapsed Group card stands for the changed steps inside it.
+        const members =
+          node.data[COMPARISON_GROUP_ANNOTATION]?.changedMemberIds;
+        requestReviewScroll(members?.[0] ?? node.id);
+        return;
+      }
       inspectNode(node.id, {
         selectionApplied:
           canvasWritesSelection &&
           (event.metaKey || event.ctrlKey || event.shiftKey),
-      }),
-    [canvasWritesSelection, inspectNode]
+      });
+    },
+    [
+      canvasWritesSelection,
+      inspectNode,
+      interaction.comparisonVisible,
+      requestReviewScroll,
+    ]
   );
 
   // React Flow still ends a Draft drag the editing lock interrupted, and the
@@ -522,16 +527,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       }
     },
     [onNodesChange]
-  );
-
-  const onComparisonNodesChange = useCallback(
-    (changes: Parameters<typeof onNodesChange>[0]) => {
-      if (currentWorkflowId) {
-        moveComparisonNodes({ workflowId: currentWorkflowId, changes });
-      }
-      onLockedNodesChange(changes);
-    },
-    [currentWorkflowId, moveComparisonNodes, onLockedNodesChange]
   );
 
   const handleNodesChange = useCallback(
@@ -614,106 +609,99 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         revealOccupiedWidth,
       })}
     >
-      {/* React Flow Canvas. A Group card on a comparison canvas leads to its
-          changed steps through the control the slot supplies. */}
+      {/* React Flow Canvas. */}
       <InsertStepSlot.Provider
         value={interaction.insertsNodes ? insertStepOnEdge : null}
       >
-        <GroupChangedStepsSlot.Provider value={renderGroupChangedSteps}>
-          <Canvas
-            className="bg-background"
-            connectionLineComponent={Connection}
-            connectionMode={ConnectionMode.Strict}
-            // A tap on a handle starts a connection only where one can be made.
-            connectOnClick={!topologyLocked}
-            defaultEdgeOptions={defaultEdgeOptions}
-            deleteKeyCode={interaction.deleteKeyCode}
-            edges={accessibleGraph.edges}
-            edgesFocusable={interaction.edgesFocusable}
-            edgeTypes={edgeTypes}
-            elementsSelectable={interaction.elementsSelectable}
-            isValidConnection={isValidConnection}
-            minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
-            nodes={accessibleGraph.nodes}
-            multiSelectionKeyCode={interaction.multiSelectionKeyCode}
-            nodesConnectable={interaction.editsTopology}
-            nodesDraggable={interaction.nodesDraggable}
-            nodeTypes={nodeTypes}
-            onBeforeDelete={
-              interaction.comparisonVisible
-                ? () => Promise.resolve(false)
-                : onBeforeDelete
-            }
-            onConnect={topologyLocked ? undefined : onConnect}
-            onConnectEnd={topologyLocked ? undefined : onConnectEnd}
-            onConnectStart={topologyLocked ? undefined : onConnectStart}
-            onEdgeContextMenu={topologyLocked ? undefined : onEdgeContextMenu}
-            onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
-            onNodeClick={isGenerating ? undefined : onNodeClick}
-            onNodeDoubleClick={onNodeDoubleClick}
-            onNodeContextMenu={topologyLocked ? undefined : onNodeContextMenu}
-            onNodesChange={
-              interaction.comparisonVisible
-                ? onComparisonNodesChange
-                : graphEditingLocked
-                  ? onLockedNodesChange
-                  : handleNodesChange
-            }
-            onMoveEnd={() => {
-              workspaceCamera.onMoveEnd();
-              revealCamera.onMoveEnd();
-            }}
-            onMoveStart={workspaceCamera.onMoveStart}
-            onPaneClick={onPaneClick}
-            onPaneContextMenu={topologyLocked ? undefined : onPaneContextMenu}
-            selectionKeyCode={interaction.selectionKeyCode}
+        <Canvas
+          className="bg-background"
+          connectionLineComponent={Connection}
+          connectionMode={ConnectionMode.Strict}
+          // A tap on a handle starts a connection only where one can be made.
+          connectOnClick={!topologyLocked}
+          defaultEdgeOptions={defaultEdgeOptions}
+          deleteKeyCode={interaction.deleteKeyCode}
+          edges={accessibleGraph.edges}
+          edgesFocusable={interaction.edgesFocusable}
+          edgeTypes={edgeTypes}
+          elementsSelectable={interaction.elementsSelectable}
+          isValidConnection={isValidConnection}
+          minZoom={WORKFLOW_CANVAS_MIN_ZOOM}
+          nodes={accessibleGraph.nodes}
+          multiSelectionKeyCode={interaction.multiSelectionKeyCode}
+          nodesConnectable={interaction.editsTopology}
+          nodesDraggable={interaction.nodesDraggable}
+          nodeTypes={nodeTypes}
+          onBeforeDelete={
+            interaction.comparisonVisible
+              ? () => Promise.resolve(false)
+              : onBeforeDelete
+          }
+          onConnect={topologyLocked ? undefined : onConnect}
+          onConnectEnd={topologyLocked ? undefined : onConnectEnd}
+          onConnectStart={topologyLocked ? undefined : onConnectStart}
+          onEdgeContextMenu={topologyLocked ? undefined : onEdgeContextMenu}
+          onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
+          onNodeClick={isGenerating ? undefined : onNodeClick}
+          onNodeDoubleClick={onNodeDoubleClick}
+          onNodeContextMenu={topologyLocked ? undefined : onNodeContextMenu}
+          onNodesChange={
+            graphEditingLocked ? onLockedNodesChange : handleNodesChange
+          }
+          onMoveEnd={() => {
+            workspaceCamera.onMoveEnd();
+            revealCamera.onMoveEnd();
+          }}
+          onMoveStart={workspaceCamera.onMoveStart}
+          onPaneClick={onPaneClick}
+          onPaneContextMenu={topologyLocked ? undefined : onPaneContextMenu}
+          selectionKeyCode={interaction.selectionKeyCode}
+        >
+          <Panel
+            className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
+            data-slot={CANVAS_OBSTACLE_SLOTS.controls}
+            position="bottom-left"
+            style={{ bottom: "var(--workflow-controls-bottom)" }}
           >
-            <Panel
-              className="[--workflow-controls-bottom:3.5rem] border-none bg-transparent p-0 md:[--workflow-controls-bottom:0px]"
-              data-slot={CANVAS_OBSTACLE_SLOTS.controls}
-              position="bottom-left"
-              style={{ bottom: "var(--workflow-controls-bottom)" }}
+            <Controls
+              canReflow={!graphEditingLocked && canReflow}
+              // A phone offers no topology authoring, so it shows no Tidy layout.
+              onReflow={
+                graphEditingLocked || !topologyAuthoring ? undefined : reflow
+              }
             >
-              <Controls
-                canReflow={!graphEditingLocked && canReflow}
-                // A phone offers no topology authoring, so it shows no Tidy layout.
-                onReflow={
-                  graphEditingLocked || !topologyAuthoring ? undefined : reflow
-                }
-              >
-                {/* Draft says what the workflow does while nothing is open in
+              {/* Draft says what the workflow does while nothing is open in
                     Canvas Reveal, which then holds the selected object's
-                    details. Runs and Changes keep the zoom cue, since their
+                    details. Runs keeps the zoom cue, since its
                     canvas shows a graph other than the draft. */}
-                {workspaceView !== "draft" ? (
-                  <OverviewCue />
-                ) : revealOccupiedWidth === 0 ? (
-                  <WorkflowSummaryCard />
-                ) : null}
-              </Controls>
-            </Panel>
-            {/* A workflow with nothing but its Lifecycle Node shows how to
+              {workspaceView !== "draft" ? (
+                <OverviewCue />
+              ) : revealOccupiedWidth === 0 ? (
+                <WorkflowSummaryCard />
+              ) : null}
+            </Controls>
+          </Panel>
+          {/* A workflow with nothing but its Lifecycle Node shows how to
                 begin, wherever the canvas can add a step. */}
-            {interaction.insertsNodes && scope.kind === "overview" ? (
-              <EmptyWorkflowStart />
-            ) : null}
-            {showMinimap && (
-              // maskColor and nodeColor default to hardcoded light-mode values that
-              // never invert: the viewport rectangle was invisible in light (1.05:1)
-              // and a bright reversed frame in dark (6.58:1). The test-mode banner
-              // moved to bottom-centre, so this corner is no longer contested.
-              <MiniMap
-                bgColor="var(--sidebar)"
-                className="rounded-lg border shadow-sm"
-                maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
-                nodeColor="var(--muted-foreground)"
-                nodeStrokeColor="var(--border)"
-                pannable
-                zoomable
-              />
-            )}
-          </Canvas>
-        </GroupChangedStepsSlot.Provider>
+          {interaction.insertsNodes && scope.kind === "overview" ? (
+            <EmptyWorkflowStart />
+          ) : null}
+          {showMinimap && (
+            // maskColor and nodeColor default to hardcoded light-mode values that
+            // never invert: the viewport rectangle was invisible in light (1.05:1)
+            // and a bright reversed frame in dark (6.58:1). The test-mode banner
+            // moved to bottom-centre, so this corner is no longer contested.
+            <MiniMap
+              bgColor="var(--sidebar)"
+              className="rounded-lg border shadow-sm"
+              maskColor="color-mix(in oklch, var(--muted) 60%, transparent)"
+              nodeColor="var(--muted-foreground)"
+              nodeStrokeColor="var(--border)"
+              pannable
+              zoomable
+            />
+          )}
+        </Canvas>
       </InsertStepSlot.Provider>
 
       <GroupScopeBar />

@@ -44,9 +44,9 @@ function validateWorkflowSearch(
   return authorizedWorkflowSearch(search, {
     canOpenRuns:
       can(WfGraphOperations.workflowGetById.id) && canInspectWorkflowRuns(),
-    canOpenComparison:
+    canReview:
       can(WfGraphOperations.workflowCompareVersion.id) &&
-      can(WfGraphOperations.workflowGetVersionHistory.id),
+      can(WfGraphOperations.workflowPublish.id),
   });
 }
 

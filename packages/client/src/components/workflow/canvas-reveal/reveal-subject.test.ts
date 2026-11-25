@@ -5,7 +5,6 @@ import {
   CONDITION_RULES_TARGET_ID,
   effectiveRevealLevel,
   isOrdinaryStep,
-  matchChangesSubject,
   matchConditionSubject,
   matchEventSplitSubject,
   matchGroupSubject,
@@ -123,7 +122,6 @@ describe("matchConditionSubject", () => {
       matchConditionSubject(input("draft", ["condition", "send"]))
     ).toBeNull();
     expect(matchConditionSubject(input("runs", ["condition"]))).toBeNull();
-    expect(matchConditionSubject(input("changes", ["condition"]))).toBeNull();
   });
 });
 
@@ -189,7 +187,6 @@ describe("matchEventSplitSubject", () => {
       matchEventSplitSubject(input("draft", ["split", "send"]))
     ).toBeNull();
     expect(matchEventSplitSubject(input("runs", ["split"]))).toBeNull();
-    expect(matchEventSplitSubject(input("changes", ["split"]))).toBeNull();
   });
 });
 
@@ -209,9 +206,8 @@ describe("matchPanelSubject", () => {
     expect(matchPanelSubject(input("draft", ["deleted"]))).toBeNull();
   });
 
-  it("leaves Runs and Changes to their own kinds", () => {
+  it("leaves Runs to its own kind", () => {
     expect(matchPanelSubject(input("runs", ["send"]))).toBeNull();
-    expect(matchPanelSubject(input("changes", ["send"]))).toBeNull();
   });
 });
 
@@ -264,41 +260,8 @@ describe("matchRunsSubject", () => {
     });
   });
 
-  it("refuses Draft and Changes", () => {
+  it("refuses Draft", () => {
     expect(matchRunsSubject(runsInput("draft", ["send"]))).toBeNull();
-    expect(matchRunsSubject(runsInput("changes", []))).toBeNull();
-  });
-});
-
-describe("matchChangesSubject", () => {
-  it("places the selected node, the selected connection's steps, or the whole graph, offering Browse alone", () => {
-    expect(matchChangesSubject(input("changes", []))).toMatchObject({
-      kind: "changes",
-      key: "graph",
-      nodeId: null,
-      placement: { kind: "graph" },
-      levels: ["browse"],
-    });
-    expect(matchChangesSubject(input("changes", ["send"]))).toMatchObject({
-      key: "node:send",
-      nodeId: "send",
-      placement: { kind: "nodes", nodeIds: ["send"] },
-      levels: ["browse"],
-    });
-    expect(matchChangesSubject(input("changes", [], ["e1"]))).toMatchObject({
-      key: "edge:e1",
-      nodeId: null,
-      placement: { kind: "nodes", nodeIds: ["send", "wait"] },
-      levels: ["browse"],
-    });
-    expect(
-      matchChangesSubject(input("changes", ["send", "wait"]))
-    ).toMatchObject({ key: "graph", placement: { kind: "graph" } });
-  });
-
-  it("belongs to Changes alone", () => {
-    expect(matchChangesSubject(input("draft", ["send"]))).toBeNull();
-    expect(matchChangesSubject(input("runs", []))).toBeNull();
   });
 });
 

@@ -16,6 +16,7 @@ import {
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
+import { useReviewEdit } from "#src/components/workflow/review/use-review-edit";
 import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
 import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
@@ -507,6 +508,10 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   );
   const configWaitPreview = useWaitPreview(actionType ?? "", data?.config);
   const waitPreview = runtimeWaitPreview ?? configWaitPreview;
+  // While the review sheet is open a changed card wears its marker and says
+  // what changed in the words the sheet uses.
+  const reviewEdit = useReviewEdit(id);
+  const reviewMarker = reviewEdit ? { kind: reviewEdit.kind } : undefined;
 
   // A condition node renders two source handles where every other node renders
   // one, and an Event Split renders one per Event that can reach it, which
@@ -558,7 +563,9 @@ export const ActionNode = memo((props: ActionNodeProps) => {
         testSkipped={testSkipped}
         targetPosition={targetPosition}
       >
-        <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
+        <ComparisonMarker
+          comparison={data[COMPARISON_NODE_ANNOTATION] ?? reviewMarker}
+        />
         {isDisabled && (
           <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
             <EyeOff className="size-3.5 text-background" />
@@ -603,12 +610,14 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   const authoredDescription = rulesPhrase
     ? compact([rulesPhrase, data.description]).join(" · ")
     : data.description;
-  const displayDescription = waitPreview
-    ? waitPreview.countdown
-    : aiModel
-      ? getModelDisplayName(aiModel)
-      : authoredDescription ||
-        getIntegrationFromActionType(catalog, actionType);
+  const displayDescription = reviewEdit
+    ? reviewEdit.summary
+    : waitPreview
+      ? waitPreview.countdown
+      : aiModel
+        ? getModelDisplayName(aiModel)
+        : authoredDescription ||
+          getIntegrationFromActionType(catalog, actionType);
 
   return (
     <Node
@@ -668,7 +677,9 @@ export const ActionNode = memo((props: ActionNodeProps) => {
       )}
       targetPosition={targetPosition}
     >
-      <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
+      <ComparisonMarker
+        comparison={data[COMPARISON_NODE_ANNOTATION] ?? reviewMarker}
+      />
       {/* Disabled badge in top left */}
       {isDisabled && (
         <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
@@ -727,7 +738,11 @@ export const ActionNode = memo((props: ActionNodeProps) => {
         <NodeTitle>{displayTitle}</NodeTitle>
         {displayDescription && (
           <NodeDescription
-            className={waitPreview ? "font-medium tabular-nums" : undefined}
+            className={
+              waitPreview && !reviewEdit
+                ? "font-medium tabular-nums"
+                : undefined
+            }
           >
             {displayDescription}
           </NodeDescription>

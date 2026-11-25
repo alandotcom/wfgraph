@@ -246,9 +246,9 @@ describe("LifecycleNode handles", () => {
       [COMPARISON_NODE_ANNOTATION]: { kind: "modified" },
     });
 
-    expect(
-      view.getByTitle("Modified in comparison").getAttribute("aria-hidden")
-    ).toBe("true");
+    expect(view.getByTitle("Modified").getAttribute("aria-hidden")).toBe(
+      "true"
+    );
     expect(view.getByText("M")).toBeTruthy();
   });
 

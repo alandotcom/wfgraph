@@ -1,6 +1,6 @@
 import { cn } from "@wfgraph/shared/utils";
 import {
-  comparisonChangeLabel,
+  COMPARISON_CHANGE_KIND_LABEL,
   type ComparisonNodeAnnotation,
 } from "#src/lib/workflow-graph-types";
 
@@ -41,7 +41,7 @@ export function ComparisonMarker({
         markerStyle[comparison.kind],
         className
       )}
-      title={comparisonChangeLabel(comparison.kind)}
+      title={COMPARISON_CHANGE_KIND_LABEL[comparison.kind]}
     >
       {markerLetter[comparison.kind]}
     </span>

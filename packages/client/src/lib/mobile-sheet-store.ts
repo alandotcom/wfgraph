@@ -6,10 +6,8 @@
 
 import { atom } from "jotai";
 import {
-  withMobileAddressSection,
   withMobileAddressSheet,
   withMobileInspectorOverAddress,
-  withMobileSequenceFrom,
   withMobileSheet,
   withMobileSheetScroll,
   withMobileSheetSection,
@@ -19,14 +17,11 @@ import {
 } from "#src/lib/mobile-sheet-navigation";
 import {
   revealFollowsSelection,
-  workspaceAddressId,
   type InspectedObject,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
-import { selectedObject, withSelection } from "#src/lib/canvas-selection";
+import { selectedObject } from "#src/lib/canvas-selection";
 import {
-  activeMobileSheetsAtom,
-  activeWorkspaceAddressAtom,
   addressNavigation,
   updateAddressNavigationAtom,
 } from "#src/lib/workflow-workspace-navigation";
@@ -82,72 +77,9 @@ export const openMobileInspectorOverAddressAtom = atom(
 );
 
 /**
- * Show one section of a named address as a sheet at `level` over its open
- * sheets, as `withMobileAddressSection` describes: in Changes the change list
- * as a summary sheet, or version history as an inspector sheet.
- */
-export const openMobileAddressSectionAtom = atom(
-  null,
-  (
-    _get,
-    set,
-    input: {
-      address: WorkspaceAddress;
-      level: MobileRevealLevel;
-      section: string;
-    }
-  ) => {
-    set(updateAddressNavigationAtom, input.address, (scope) =>
-      withMobileAddressSection(scope, input)
-    );
-  }
-);
-
-/**
- * Select one changed object in a named comparison address and show the sheet
- * of `section`, the change list, which opens that object's row, in one
- * navigation write. When that address has no sheet open and is another scope
- * of the active comparison, the active address's sheets are carried first, as
- * applying its route would carry them, so Back from a Group member reaches the
- * sheets the member was chosen from. The section sheet then opens as
- * `withMobileAddressSection` describes, as a summary sheet.
- */
-export const openMobileChangeAtom = atom(
-  null,
-  (
-    get,
-    set,
-    input: {
-      address: WorkspaceAddress;
-      inspected: InspectedObject;
-      section: string;
-    }
-  ) => {
-    const { address, inspected } = input;
-    const active = get(activeWorkspaceAddressAtom);
-    const sameComparison =
-      workspaceAddressId({ ...active, scope: address.scope }) ===
-      workspaceAddressId(address);
-    const sheets = sameComparison ? get(activeMobileSheetsAtom) : [];
-    set(updateAddressNavigationAtom, address, (scope) =>
-      withMobileAddressSection(
-        withSelection(
-          withMobileSequenceFrom(scope, { sheets, sameKey: true }),
-          inspected.kind === "node"
-            ? { nodeIds: [inspected.id], edgeIds: [] }
-            : { nodeIds: [], edgeIds: [inspected.id] }
-        ),
-        { level: "summary", section: input.section }
-      )
-    );
-  }
-);
-
-/**
  * Open the mobile Reveal sequence of a named address, unless a sheet is
  * already open there: in Draft the summary sheet of the one object the address
- * selects, and in Runs and Changes the address sheet, such as a run list, a
- * run, or a comparison's summary. Answers whether the address shows the mobile
+ * selects, and in Runs the address sheet of a run list or a run. Answers whether the address shows the mobile
  * Reveal sequence, which a Draft address whose selection holds no single object
  * does not.
  */

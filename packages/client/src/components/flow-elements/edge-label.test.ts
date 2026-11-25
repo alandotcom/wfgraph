@@ -48,7 +48,7 @@ describe("workflowEdgeAriaLabel", () => {
           },
         },
       })
-    ).toBe("Condition to Archive lead, Removed in comparison");
+    ).toBe("Condition to Archive lead, Removed");
   });
 
   it("says whether the run took the edge on a run's canvas", () => {

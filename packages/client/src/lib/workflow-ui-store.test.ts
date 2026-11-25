@@ -42,9 +42,9 @@ describe("workflowWorkspaceViewAtom", () => {
 
   it("reads the view the route names", () => {
     const store = workflowStore();
-    showWorkspaceRoute(store, { view: "changes" });
+    showWorkspaceRoute(store, { view: "runs" });
 
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("changes");
+    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
   });
 });
 

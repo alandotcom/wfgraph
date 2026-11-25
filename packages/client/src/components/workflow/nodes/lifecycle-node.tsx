@@ -9,6 +9,7 @@ import {
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
+import { useReviewEdit } from "#src/components/workflow/review/use-review-edit";
 import {
   NODE_ICON_CLASS,
   workflowNodeSize,
@@ -40,8 +41,11 @@ type LifecycleNodeProps = NodeProps & {
 };
 
 export const LifecycleNode = memo(
-  ({ data, selected, isConnectable }: LifecycleNodeProps) => {
+  ({ id, data, selected, isConnectable }: LifecycleNodeProps) => {
     const catalog = useExtensionCatalog();
+    // While the review sheet is open a changed card says what changed in the
+    // words the sheet uses.
+    const reviewEdit = useReviewEdit(id);
 
     if (!data) {
       return null;
@@ -49,7 +53,8 @@ export const LifecycleNode = memo(
 
     const displayTitle = data.label || "Lifecycle";
     const startSummary = getStartSummary(data.config, catalog);
-    const displayDescription = data.description || startSummary;
+    const displayDescription =
+      reviewEdit?.summary ?? (data.description || startSummary);
     const status = data.status;
     // Soften the chip when no Cancel Event can take this outlet; the handle stays
     // connectable so a builder can still wire the branch before naming Events.
@@ -84,7 +89,12 @@ export const LifecycleNode = memo(
         status={status}
         style={workflowNodeSize()}
       >
-        <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
+        <ComparisonMarker
+          comparison={
+            data[COMPARISON_NODE_ANNOTATION] ??
+            (reviewEdit ? { kind: reviewEdit.kind } : undefined)
+          }
+        />
         <div
           className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
           style={{ left: STARTED_HANDLE_LEFT }}

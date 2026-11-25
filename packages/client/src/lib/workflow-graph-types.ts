@@ -131,20 +131,20 @@ export type WorkflowEdge = Edge<EditorEdgeData>;
  */
 export const WORKFLOW_EDGE_TYPE = "animated";
 
-/** The word naming each kind of comparison change, as a list row shows it. */
+/**
+ * The word naming each kind of change, as the review sheet and the canvas
+ * both name it to a reader.
+ */
 export const COMPARISON_CHANGE_KIND_LABEL: Readonly<
-  Record<ComparisonNodeAnnotation["kind"], string>
+  Record<
+    ComparisonNodeAnnotation["kind"] | ComparisonEdgeAnnotation["kind"],
+    string
+  >
 > = {
   added: "Added",
   modified: "Modified",
   removed: "Removed",
 };
-
-export function comparisonChangeLabel(
-  kind: ComparisonNodeAnnotation["kind"] | ComparisonEdgeAnnotation["kind"]
-): string {
-  return `${COMPARISON_CHANGE_KIND_LABEL[kind]} in comparison`;
-}
 
 /** The name a Group shows: its label, or "Group" when the label is blank. */
 export function groupLabel(label: string | undefined): string {
@@ -209,7 +209,7 @@ export function workflowNodeAriaLabel(
 ): string {
   const comparison = data[COMPARISON_NODE_ANNOTATION];
   if (comparison) {
-    return `${comparisonNodeTitle(data, catalog)}, ${comparisonChangeLabel(comparison.kind)}`;
+    return `${comparisonNodeTitle(data, catalog)}, ${COMPARISON_CHANGE_KIND_LABEL[comparison.kind]}`;
   }
   let result: string;
   const nodeLabel = data.label?.trim();

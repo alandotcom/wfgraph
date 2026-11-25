@@ -72,10 +72,6 @@ import {
 } from "#src/lib/workflow-save-store";
 import { remoteDraftChangeAtom } from "#src/lib/workflow-graph-store";
 import {
-  comparisonSessionAtom,
-  isComparisonPendingAtom,
-} from "#src/lib/workflow-comparison-store";
-import {
   selectedExecutionIdAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
@@ -466,47 +462,6 @@ function PinnedRunStatus() {
   );
 }
 
-function ChangesStatus() {
-  const session = useAtomValue(comparisonSessionAtom);
-  const pending = useAtomValue(isComparisonPendingAtom);
-  const { showDraft } = useWorkflowWorkspaceNavigation();
-  const baseVersion = session?.payload.baseVersion?.version;
-
-  return (
-    <>
-      <StatusItems>
-        <span className="shrink-0 whitespace-nowrap font-medium">
-          {pending && !session ? "Comparing changes" : "Changes"}
-        </span>
-        {session ? (
-          <>
-            <StripDivider />
-            <span className="shrink-0 whitespace-nowrap">
-              {baseVersion ? `v${baseVersion}` : "No published version"}
-              {" → "}
-              proposed v{session.payload.proposedVersion}
-            </span>
-          </>
-        ) : null}
-        <StripDivider />
-        <span className="shrink-0 whitespace-nowrap">Editing is off</span>
-        <StripDivider />
-        <WorkflowSaveStatus />
-      </StatusItems>
-      <Button
-        className="h-6 shrink-0 text-info hover:text-info"
-        onClick={showDraft}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        <ArrowLeft className="size-3" />
-        Back to draft
-      </Button>
-    </>
-  );
-}
-
 export function WorkflowStatusStrip({
   workflowId,
 }: {
@@ -535,8 +490,6 @@ export function WorkflowStatusStrip({
       <WorkflowUnloadGuard />
       {workspaceView === "runs" ? (
         <PinnedRunStatus />
-      ) : workspaceView === "changes" ? (
-        <ChangesStatus />
       ) : (
         <DraftStatus workflowId={workflowId} />
       )}

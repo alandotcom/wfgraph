@@ -30,12 +30,12 @@ import {
   useWorkflowToolbarState,
   type WorkflowToolbarState,
 } from "#src/components/workflow/workflow-toolbar-state";
-import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
   type WorkflowWorkspaceView,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
+import { useRequestedReview } from "#src/components/workflow/review/use-requested-review";
 
 type WorkflowToolbarProps = {
   workflowId?: string | undefined;
@@ -45,11 +45,10 @@ type WorkflowToolbarProps = {
 export const WORKSPACE_LABELS: Record<WorkflowWorkspaceView, string> = {
   draft: "Draft",
   runs: "Runs",
-  changes: "Changes",
 };
 
 function isWorkspaceView(value: unknown): value is WorkflowWorkspaceView {
-  return value === "draft" || value === "runs" || value === "changes";
+  return value === "draft" || value === "runs";
 }
 
 /**
@@ -57,46 +56,30 @@ function isWorkspaceView(value: unknown): value is WorkflowWorkspaceView {
  * The desktop switcher and the mobile overflow menu render the same choice, so
  * the trailing group reads this once.
  *
- * An unsaved canvas offers no views, because Runs and Changes both need a saved
- * workflow and there is no second view to switch to.
+ * An unsaved canvas offers no views, because Runs needs a saved workflow and
+ * there is no second view to switch to.
  */
 function useWorkspaceViews({
   hasWorkflow,
   canReadRuns,
-  canCompare,
-  canReadVersionHistory,
-  isPublished,
 }: {
   hasWorkflow: boolean;
   canReadRuns: boolean;
-  canCompare: boolean;
-  canReadVersionHistory: boolean;
-  isPublished: boolean;
 }) {
   const view = useAtomValue(workflowWorkspaceViewAtom);
-  const comparisonActions = useWorkflowComparisonActions();
-  const navigation = useWorkflowWorkspaceNavigation(
-    comparisonActions.openComparison
-  );
+  const navigation = useWorkflowWorkspaceNavigation();
   const views: WorkflowWorkspaceView[] = hasWorkflow
-    ? [
-        "draft",
-        ...(canReadRuns ? (["runs"] as const) : []),
-        ...(canReadVersionHistory && canCompare && isPublished
-          ? (["changes"] as const)
-          : []),
-      ]
+    ? ["draft", ...(canReadRuns ? (["runs"] as const) : [])]
     : [];
   const selectView = (nextView: WorkflowWorkspaceView) => {
     if (nextView === "draft") navigation.showDraft();
     if (nextView === "runs") navigation.showRuns();
-    if (nextView === "changes") navigation.showChanges();
   };
 
   return { view, views, selectView };
 }
 
-/** The three views as a segmented control, at `md` and above. */
+/** The views as a segmented control, at `md` and above. */
 function WorkspaceViewSwitcher({
   view,
   views,
@@ -209,9 +192,6 @@ function WorkflowTrailingControls({
   const workspace = useWorkspaceViews({
     hasWorkflow: Boolean(workflowId),
     canReadRuns: state.canReadRuns,
-    canCompare: state.canCompare,
-    canReadVersionHistory: state.canReadVersionHistory,
-    isPublished: Boolean(state.publication?.isPublished),
   });
   // Below `md` the whole group is one button. A viewer who does not own the
   // workflow can neither run nor publish, and their only view is already on
@@ -297,6 +277,7 @@ export function WorkflowToolbarChrome({
 export const WorkflowToolbar = ({ workflowId }: WorkflowToolbarProps) => {
   const state = useWorkflowToolbarState();
   const actions = useWorkflowActions(state);
+  useRequestedReview(state, actions);
 
   return (
     <WorkflowToolbarChrome
