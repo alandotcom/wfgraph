@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import { useDomEvent } from "#src/hooks/effects";
+import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import type { RevealLevel } from "#src/lib/workflow-navigation-state";
 import { CANVAS_OBSTACLE_SLOTS } from "./reveal-geometry";
 
@@ -15,7 +16,8 @@ function escapeOwnedByControl(target: Element): boolean {
 }
 
 /**
- * Canvas Reveal's keys. Cmd+B or Ctrl+B toggles Reveal. Escape inside the canvas
+ * Canvas Reveal's keys. Cmd+B or Ctrl+B toggles Reveal, except from a text
+ * field, where it is the field's own chord. Escape inside the canvas
  * area unwinds one level, unless an overlay, the agent panel, an open control,
  * or an earlier capture listener that called `preventDefault` owns it. Escape is
  * read in the document's capture phase and stopped once Reveal takes it, so a
@@ -32,7 +34,11 @@ export function useRevealKeyboard(input: {
   onUnwind: () => void;
 }): void {
   useDomEvent(window, "keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "b") {
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      event.key === "b" &&
+      editorChordAllowed(event, { inTextFields: false })
+    ) {
       event.preventDefault();
       if (input.enabled) {
         input.onToggle();

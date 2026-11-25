@@ -10,6 +10,7 @@ import {
 import { useAtom, useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
 import {
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useMemo,
   useRef,
@@ -25,7 +26,10 @@ import { useInsertStepOnEdge } from "#src/components/workflow/use-add-step";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
-import { isTextEntry } from "#src/lib/is-text-entry";
+import {
+  editorChordAllowed,
+  keyboardLayerOpen,
+} from "#src/lib/editor-shortcuts";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import {
   canvasGraphAtom,
@@ -431,9 +435,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         return;
       }
 
-      // Leave text editing alone. Node config fields are contentEditable divs,
-      // so checking the tag name would miss them and steal their text undo.
-      if (isTextEntry(event.target)) {
+      // A text field keeps its own undo. Node config fields are contentEditable
+      // divs, which the gate counts as text fields.
+      if (!editorChordAllowed(event, { inTextFields: false })) {
         return;
       }
 
@@ -463,7 +467,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
   const handleFitViewShortcut = useCallback(
     (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "/") {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key === "/" &&
+        editorChordAllowed(event, { inTextFields: false })
+      ) {
         event.preventDefault();
         void fitView(keyboardFitViewOptions);
       }
@@ -475,8 +483,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
   // The store deletes the selection as one operation. Stop React Flow from
   // following it with partial edge/node removals or implied Group descendants.
+  // React Flow reads Backspace from the whole document, so a delete key pressed
+  // inside an open dialog or menu would otherwise remove the canvas selection
+  // behind it.
   const onBeforeDelete = useCallback(() => {
-    if (!graphEditingLocked) {
+    if (!graphEditingLocked && !keyboardLayerOpen()) {
       deleteCanvasSelection();
     }
     return Promise.resolve(false);
@@ -570,6 +581,25 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     closeContextMenu();
   }, [clearSelection, closeContextMenu, wasNodeJustCreatedFromConnection]);
 
+  // React Flow treats Escape on a focused node as a selection key, so Escape
+  // on a step that is not selected would select it and open Reveal. Escape
+  // only closes or deselects, so that key press stops here. Escape on a
+  // selected node still reaches React Flow, which deselects it.
+  const onCanvasKeyDownCapture = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "Escape" || !(event.target instanceof Element)) {
+        return;
+      }
+      const nodeId = event.target
+        .closest(".react-flow__node")
+        ?.getAttribute("data-id");
+      if (nodeId && !selection.nodeIds.includes(nodeId)) {
+        event.stopPropagation();
+      }
+    },
+    [selection.nodeIds]
+  );
+
   return (
     // Size comes from the canvas box, which Canvas Reveal floats over without
     // resizing. Nothing animates that size, because React Flow observes the
@@ -577,6 +607,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     <div
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
+      onKeyDownCapture={onCanvasKeyDownCapture}
       ref={canvasContainerRef}
       style={canvasContainerStyle({
         ready: isCanvasReady,

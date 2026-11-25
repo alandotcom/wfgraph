@@ -485,7 +485,7 @@ Opening Focus moves focus to the step title, returning to Browse puts focus on
 **Focus editor**, and closing returns focus to the canvas object or control that
 opened Browse. Closing keeps the canvas selection. Selecting a step again, or
 the chevron on the canvas's right edge, reopens the level Reveal was closed
-from. Cmd+B opens and closes Canvas Reveal. The level, the inspected step, the
+from. Cmd+B opens and closes Canvas Reveal from anywhere but a text field. The level, the inspected step, the
 inspector's scroll position, and the Lifecycle Focus section are remembered
 separately for Draft, each Group view, the run list, each run, and each
 comparison. Levels add no browser history.

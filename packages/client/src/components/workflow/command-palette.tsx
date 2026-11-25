@@ -41,7 +41,7 @@ import { useAddStep } from "#src/components/workflow/use-add-step";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
-import { isTextEntry } from "#src/lib/is-text-entry";
+import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import {
   currentPalettePage,
   paletteCanGoBack,
@@ -262,7 +262,7 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
         setPalette(null);
         return;
       }
-      if (isTextEntry(event.target)) {
+      if (!editorChordAllowed(event, { inTextFields: true })) {
         return;
       }
       event.preventDefault();

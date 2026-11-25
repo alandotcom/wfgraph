@@ -21,7 +21,7 @@ import {
   PREFLIGHT_BUSY_MESSAGE,
   useWorkflowIssuePreflight,
 } from "#src/hooks/use-workflow-issue-preflight";
-import { isTextEntry } from "#src/lib/is-text-entry";
+import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import { publishWarningMessage } from "#src/lib/publish-warnings";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
@@ -155,11 +155,16 @@ export function useWorkflowActions(
   }, [canUpdate, currentWorkflowId, edges, isGenerating, nodes, saveWorkflow]);
 
   // Cmd+S shares the command palette's save path, so an explicit save and the
-  // shortcut cannot race the autosave queue differently.
+  // shortcut cannot race the autosave queue differently. The browser's own Save
+  // page dialog is refused even while a dialog or menu holds the keyboard and
+  // the save itself waits.
   const handleSaveShortcut = useCallback(
     (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "s") {
         event.preventDefault();
+        if (!editorChordAllowed(event, { inTextFields: true })) {
+          return;
+        }
         event.stopPropagation();
         void handleSave();
       }
@@ -185,7 +190,11 @@ export function useWorkflowActions(
       if (!((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
         return;
       }
-      if (!canExecute || !canUpdate || isTextEntry(event.target)) {
+      if (
+        !canExecute ||
+        !canUpdate ||
+        !editorChordAllowed(event, { inTextFields: false })
+      ) {
         return;
       }
       event.preventDefault();

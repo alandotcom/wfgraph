@@ -1,7 +1,7 @@
 import { useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { useDomEvent } from "#src/hooks/effects";
-import { isTextEntry } from "#src/lib/is-text-entry";
+import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import {
   copySelectionAtom,
@@ -12,7 +12,8 @@ import {
 
 /**
  * Cmd/Ctrl+C, V, D, and G for the canvas selection. Disabled while a run overlay
- * or generation owns the canvas, and skipped while a field is being typed in.
+ * or generation owns the canvas, and skipped while a field is being typed in
+ * or a dialog or menu is open.
  * Paste and duplicate insert steps, so they wait for `insertsNodes`, and a
  * refused paste or duplicate shows its refusal.
  */
@@ -31,7 +32,7 @@ export function useCanvasCopyPaste(input: {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) {
         return;
       }
-      if (isTextEntry(event.target)) {
+      if (!editorChordAllowed(event, { inTextFields: false })) {
         return;
       }
 

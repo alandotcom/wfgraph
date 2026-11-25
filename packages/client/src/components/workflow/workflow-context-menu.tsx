@@ -330,6 +330,9 @@ export function WorkflowContextMenu({
       : [];
   // Below the cursor when the menu fits there, above it otherwise.
   const opensUpward =
+      // Names the menu to the editor's shortcut gate, which holds every editor
+      // chord while it is open.
+      data-slot="canvas-context-menu"
     menuState.position.y + MENU_HEIGHT_PX + VIEWPORT_MARGIN_PX >
     window.innerHeight;
   const nodeLabel = clicked?.data.label || "Step";
