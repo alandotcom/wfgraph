@@ -61,7 +61,7 @@ const GENERIC_CONFIG_LABEL = "Configuration value";
 /** The label of a node property outside `data` the editor has no name for. */
 const GENERIC_PROPERTY_LABEL = "Property";
 /** The label of a Lifecycle Rules value the editor has no name for. */
-const GENERIC_LIFECYCLE_LABEL = "Lifecycle rule";
+const GENERIC_LIFECYCLE_LABEL = "Start rule";
 export const GENERIC_LABELS: ReadonlySet<string> = new Set([
   GENERIC_CONFIG_LABEL,
   GENERIC_PROPERTY_LABEL,
@@ -110,7 +110,7 @@ export type ComparisonConnection = { id: string; name: string };
 
 const NODE_TYPE_LABEL: Readonly<Record<string, string>> = {
   action: "Step",
-  lifecycle: "Lifecycle",
+  lifecycle: "Start",
   group: "Group",
   add: "Placeholder",
 };

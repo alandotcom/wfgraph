@@ -72,7 +72,7 @@ export function LifecycleIssuesCallout({
     return null;
   }
   return (
-    <WarningCallout title="Lifecycle settings need attention">
+    <WarningCallout title="The start needs attention">
       {issues.map((issue) => (
         <span className="block" key={issue}>
           {issue}

@@ -156,7 +156,7 @@ export function ConditionFields({
       currentNodeId={nodeId}
       description="Build a condition from Entity fields, the arriving Event, and results from earlier steps. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
-      emptyFieldsMessage="No fields are available. Track an Entity or connect this step after the Lifecycle or a step with typed results."
+      emptyFieldsMessage="No fields are available. Track an Entity or connect this step after the start or a step with typed results."
       fields={fields}
       // Named for what it does rather than for the node it sits on: "Condition"
       // on a node called Condition said nothing about which way True leads.

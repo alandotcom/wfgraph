@@ -353,14 +353,10 @@ describe("mobile Reveal focus and camera", () => {
   it("returns focus to an Event Split's action after Back from the Lifecycle inspector", async () => {
     const { view, select } = await renderMobile();
     await select("split");
-    fireEvent.click(
-      view.getByRole("button", { name: "Open Lifecycle Start Events" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
     fireEvent.click(view.getByRole("button", { name: "Back to Split" }));
     await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe(
-        "Open Lifecycle Start Events"
-      )
+      expect(document.activeElement?.textContent).toBe("Open start Events")
     );
   });
 
@@ -440,9 +436,7 @@ describe("mobile Reveal for complex nodes", () => {
     ).toBeTruthy();
     expect(view.queryByRole("button", { name: "Edit step" })).toBeNull();
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Open Lifecycle Start Events" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
     expect(sheet()?.dataset.level).toBe("inspector");
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["lifecycle-1"]);
 

@@ -141,7 +141,7 @@ function ValueRow({ field }: { field: ConditionSelectableField }) {
 }
 
 const NO_VALUES_MESSAGE =
-  "No values reach this Condition. Connect it below the Lifecycle Node or a step with typed outputs.";
+  "No values reach this Condition. Connect it below the start or a step with typed outputs.";
 
 /**
  * The Condition's rules read back: one sentence for the logic, then each group

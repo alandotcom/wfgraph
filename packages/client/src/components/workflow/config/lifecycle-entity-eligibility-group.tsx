@@ -195,7 +195,7 @@ function UnavailableEntityNote({
 
   return (
     <div className="space-y-1 text-muted-foreground text-xs">
-      <p>Only Entities identified by every lifecycle event are shown.</p>
+      <p>Only Entities identified by every start and Cancel Event are shown.</p>
       <ul className="list-disc space-y-0.5 pl-4">
         {unavailable.map(({ entity, missingEvents }) => (
           <li key={entity.type}>
@@ -371,7 +371,9 @@ export function LifecycleEntityEligibilityGroup({
       className="py-3 first:pt-0 last:pb-0"
       help={
         <>
-          <p>Lifecycle Events provide the Entity ID that relates runs.</p>
+          <p>
+            Start and Cancel Events provide the Entity ID that relates runs.
+          </p>
           <p>
             Eligibility can check current Entity data before a run starts or
             before each step.
@@ -549,7 +551,7 @@ export function LifecycleEntityEligibilityGroup({
           <p>
             {events.length === 0
               ? "Add a Start Event before tracking an Entity."
-              : "No Entity can be tracked because the lifecycle events do not share a compatible Entity binding."}
+              : "No Entity can be tracked because the start and Cancel Events do not share a compatible Entity binding."}
           </p>
           <UnavailableEntityNote
             catalog={catalog}

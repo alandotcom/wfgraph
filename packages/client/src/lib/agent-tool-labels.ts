@@ -179,7 +179,7 @@ export function agentToolLabel(input: {
       return "Undoing its edits";
 
     case "set_lifecycle_rules":
-      return "Setting the Lifecycle Rules";
+      return "Setting what starts the workflow";
 
     case "set_condition":
       return "Setting a test";

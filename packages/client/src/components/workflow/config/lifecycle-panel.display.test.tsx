@@ -73,7 +73,7 @@ describe("LifecyclePanel display", () => {
     expect(view.getByRole("heading", { name: "Nightly sweep" })).toBeTruthy();
     expect(
       view.getByText(
-        "Lifecycle Events use their Correlation Path values to identify related runs."
+        "Start and Cancel Events use their Correlation Path values to identify related runs."
       )
     ).toBeTruthy();
   });
@@ -155,7 +155,7 @@ describe("LifecyclePanel display", () => {
 
     expect(
       view.getByText(
-        "With no Lifecycle Events, the overlapping-run rule treats all manual runs as related."
+        "With no start or Cancel Events, the overlapping-run rule treats all manual runs as related."
       )
     ).toBeTruthy();
   });

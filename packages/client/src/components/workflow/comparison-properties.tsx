@@ -420,7 +420,7 @@ export function comparisonMetadataNotice(input: {
     return null;
   }
   return (node ?? baseNode ?? draftNode)?.data.type === "lifecycle"
-    ? "Some Lifecycle settings have no name in this editor, so they show general names."
+    ? "Some settings of the start have no name in this editor, so they show general names."
     : "Some settings are not described by this step's action, so they show general names.";
 }
 

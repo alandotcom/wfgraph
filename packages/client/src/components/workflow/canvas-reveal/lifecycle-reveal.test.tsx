@@ -215,7 +215,7 @@ async function renderLifecycle(
   // A Browse section is the section element around its heading.
   const region = (name: string) => {
     const section = within(
-      view.getByRole("complementary", { name: "Lifecycle inspector" })
+      view.getByRole("complementary", { name: "Start details" })
     )
       .getByRole("heading", { name })
       .closest("section");
@@ -361,7 +361,7 @@ describe("Lifecycle Browse", () => {
     });
 
     expect(region("Entity").textContent).toContain(
-      "No Entity is tracked. Lifecycle Events use their Correlation Path values to identify related runs."
+      "No Entity is tracked. Start and Cancel Events use their Correlation Path values to identify related runs."
     );
   });
 
@@ -466,7 +466,7 @@ describe("Lifecycle section editors", () => {
   it("opens a section's editor in place, in the policy's order", async () => {
     const { view } = await renderLifecycle(CONFIGURED);
     const headings = () =>
-      within(view.getByRole("complementary", { name: "Lifecycle inspector" }))
+      within(view.getByRole("complementary", { name: "Start details" }))
         .getAllByRole("heading", { level: 3 })
         .map((heading) => heading.textContent);
     const order = [
@@ -574,7 +574,7 @@ describe("Lifecycle section editors", () => {
       store.set(clearSelectionAtom);
     });
     expect(
-      view.queryByRole("complementary", { name: "Lifecycle inspector" })
+      view.queryByRole("complementary", { name: "Start details" })
     ).toBeNull();
 
     await act(async () => {
@@ -648,7 +648,7 @@ describe("Lifecycle section editors", () => {
     // shown.
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
     expect(
-      view.getByRole("complementary", { name: "Lifecycle inspector" })
+      view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();
   });
 
@@ -714,7 +714,7 @@ describe("Lifecycle section editors", () => {
     });
     expect(
       within(
-        view.getByRole("complementary", { name: "Lifecycle inspector" })
+        view.getByRole("complementary", { name: "Start details" })
       ).getByText("No integration Events, so no Connection is needed.")
     ).toBeTruthy();
 

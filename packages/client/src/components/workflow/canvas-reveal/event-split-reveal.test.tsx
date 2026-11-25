@@ -255,7 +255,7 @@ describe("Event Split Browse", () => {
     expect(view.getByRole("heading", { name: "Split" })).toBeTruthy();
     expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
     expect(aside()?.textContent).toContain(
-      "Its outlets are the Events that reach it from the Lifecycle Node's Start Events"
+      "Its outlets are the Events that reach it from the start Events"
     );
   });
 
@@ -340,7 +340,7 @@ describe("Event Split Browse", () => {
     const outlets = region("Splits by Event");
     expect(outlets.textContent).toContain("Appointment removed");
     expect(outlets.textContent).toContain(
-      "No longer reaches this Event Split from the Lifecycle Node's Start Events."
+      "No longer reaches this Event Split from the start Events."
     );
     expect(outlets.textContent).toContain("Continues to Removed target");
   });
@@ -377,7 +377,7 @@ describe("Event Split Browse", () => {
     expect(outlets.textContent).toContain("Continues to Send reminder");
   });
 
-  it("opens the Lifecycle Node's Cancel Events for a split on the Canceled side", async () => {
+  it("opens the Cancel Events for a split on the Canceled side", async () => {
     const { view, aside } = await renderEventSplit({
       nodes: [anEntryNode({ cancelEvents: ["app/canceled"] }), splitNode],
       edges: [
@@ -390,15 +390,11 @@ describe("Event Split Browse", () => {
       ],
     });
 
-    expect(aside()?.textContent).toContain(
-      "reach it from the Lifecycle Node's Cancel Events"
-    );
+    expect(aside()?.textContent).toContain("reach it from the Cancel Events");
     expect(
-      view.queryByRole("button", { name: "Open Lifecycle Start Events" })
+      view.queryByRole("button", { name: "Open start Events" })
     ).toBeNull();
-    fireEvent.click(
-      view.getByRole("button", { name: "Open Lifecycle Cancel Events" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Open Cancel Events" }));
 
     expect(aside()?.dataset.level).toBe("browse");
     expect(
@@ -419,7 +415,7 @@ describe("Event Split Browse", () => {
       "reach it from the Wait Subscriptions of Wait for cancel"
     );
     expect(
-      view.queryByRole("button", { name: "Open Lifecycle Start Events" })
+      view.queryByRole("button", { name: "Open start Events" })
     ).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "Open Wait for cancel" }));
 
@@ -436,15 +432,13 @@ describe("Event Split Browse", () => {
     ).toBeTruthy();
   });
 
-  it("opens the Lifecycle Node's Start Events and returns on Back", async () => {
+  it("opens the start Events and returns on Back", async () => {
     const { view, aside } = await renderEventSplit({
       nodes: [lifecycleNode, splitNode, sendNode],
       edges: BASE_EDGES,
     });
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Open Lifecycle Start Events" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
 
     expect(aside()?.dataset.level).toBe("browse");
     expect(view.getByRole("heading", { name: "Lifecycle" })).toBeTruthy();
@@ -467,9 +461,7 @@ describe("Event Split Browse", () => {
       edges: BASE_EDGES,
     });
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Open Lifecycle Start Events" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
     expect(
       view.getByRole("button", { name: "Done editing Start Events" })
     ).toBeTruthy();
@@ -484,7 +476,7 @@ describe("Event Split Browse", () => {
       )
     );
     expect(
-      view.getByRole("complementary", { name: "Lifecycle inspector" })
+      view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();
 
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
@@ -501,9 +493,7 @@ describe("Event Split Browse", () => {
       edges: BASE_EDGES,
     });
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Open Lifecycle Start Events" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
     await act(async () => {
       store.set(clearSelectionAtom);
     });
@@ -517,14 +507,14 @@ describe("Event Split Browse", () => {
     // The section stays open as it was left, and Escape closes it first.
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
     expect(
-      view.getByRole("complementary", { name: "Lifecycle inspector" })
+      view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();
     expect(aside()?.dataset.level).toBe("browse");
     // With nothing left to step back from, Escape keeps the Lifecycle Node
     // shown.
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
     expect(
-      view.getByRole("complementary", { name: "Lifecycle inspector" })
+      view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();
     expect(store.get(activeRevealPresentationAtom).inspected).toEqual({
       kind: "node",

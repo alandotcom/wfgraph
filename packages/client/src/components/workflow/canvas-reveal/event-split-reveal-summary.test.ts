@@ -162,7 +162,7 @@ describe("eventSplitConnections", () => {
 });
 
 describe("eventSplitOwner", () => {
-  it("names the Lifecycle Node's Start Events or Cancel Events by side", () => {
+  it("names the start Events or Cancel Events by side", () => {
     expect(
       eventSplitOwner({
         source: { kind: "lifecycle", nodeId: "lifecycle", side: "started" },
@@ -170,8 +170,8 @@ describe("eventSplitOwner", () => {
         catalog,
       })
     ).toMatchObject({
-      description: "the Lifecycle Node's Start Events",
-      actionLabel: "Open Lifecycle Start Events",
+      description: "the start Events",
+      actionLabel: "Open start Events",
     });
     expect(
       eventSplitOwner({
@@ -180,8 +180,8 @@ describe("eventSplitOwner", () => {
         catalog,
       })
     ).toMatchObject({
-      description: "the Lifecycle Node's Cancel Events",
-      actionLabel: "Open Lifecycle Cancel Events",
+      description: "the Cancel Events",
+      actionLabel: "Open Cancel Events",
     });
   });
 
@@ -202,8 +202,6 @@ describe("eventSplitOwner", () => {
           catalog,
         }),
       ])
-    ).toBe(
-      "the Wait Subscriptions of Send and the Lifecycle Node's Start Events"
-    );
+    ).toBe("the Wait Subscriptions of Send and the start Events");
   });
 });

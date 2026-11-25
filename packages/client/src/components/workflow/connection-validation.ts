@@ -54,7 +54,7 @@ function endpointRefusal(
   if (source?.type === "add" || target?.type === "add")
     return "Connect to a workflow step rather than the Add step control.";
   if (target?.data.type === "lifecycle")
-    return "Lifecycle is the workflow entry and cannot accept a connection.";
+    return "The start begins the workflow, so it takes no incoming connection.";
   return null;
 }
 

@@ -182,9 +182,9 @@ function LifecyclePolicyEditor({
 
   return (
     <div className="grid min-h-full grid-cols-1">
-      <nav aria-label="Lifecycle policy" className="p-2">
+      <nav aria-label="Start rules" className="p-2">
         <p className="px-2 pt-1 pb-2 text-muted-foreground text-xs">
-          Lifecycle policy
+          Start rules
         </p>
         <ul className="flex flex-wrap gap-1">
           {LIFECYCLE_SECTIONS.map((entry) => {

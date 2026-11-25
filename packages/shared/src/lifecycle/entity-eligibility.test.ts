@@ -289,7 +289,7 @@ describe("checkEntityEligibility", () => {
           catalog,
         })
       )
-    ).toContain("has no lifecycle role");
+    ).toContain("is neither a start nor a Cancel Event");
   });
 
   it("makes selected bindings the sole identity source", () => {

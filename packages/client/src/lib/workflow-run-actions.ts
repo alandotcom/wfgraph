@@ -30,7 +30,7 @@ export const IGNORED_REASON_MESSAGES = {
   // Named by its own label: the setting is the "Allow manual runs" checkbox on
   // the Lifecycle node, so the sentence sends the reader to that control.
   manual_start_not_allowed:
-    "This workflow does not allow manual runs. Select Allow manual runs on the Lifecycle node.",
+    "This workflow does not allow manual runs. Open the start, choose what starts it, and select Allow manual runs.",
   start_event_required:
     "This workflow has an Event Split, so the run must name an Event.",
   // Neither reaches this map in practice: a Start Filter is read on an arriving

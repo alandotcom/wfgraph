@@ -606,7 +606,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    expect(view.queryByText("Lifecycle settings need attention")).toBeNull();
+    expect(view.queryByText("The start needs attention")).toBeNull();
 
     chooseEvent(view, "Cancel Events", "Appointment created");
 
@@ -857,7 +857,7 @@ describe("LifecyclePanel Correlation Paths", () => {
 
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(onConfigChange).not.toHaveBeenCalled();
-    expect(view.queryByText("Lifecycle settings need attention")).toBeNull();
+    expect(view.queryByText("The start needs attention")).toBeNull();
   });
 
   // Unlimited compares no entities, so there is no value to compare and no input.
@@ -920,7 +920,7 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
-    expect(view.queryByText("Lifecycle settings need attention")).toBeNull();
+    expect(view.queryByText("The start needs attention")).toBeNull();
   });
 });
 
@@ -1387,7 +1387,7 @@ describe("LifecyclePanel refusals", () => {
       />
     );
 
-    expect(view.getByText("Lifecycle settings need attention")).toBeTruthy();
+    expect(view.getByText("The start needs attention")).toBeTruthy();
     expect(
       view.getByText(
         "Nothing can start this workflow. Add a Start Event or a schedule, or allow manual starts."

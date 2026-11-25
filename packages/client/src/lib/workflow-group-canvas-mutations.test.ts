@@ -678,7 +678,7 @@ describe("Authoring inside a Group drawn in place", () => {
     ).toMatchObject({ sourceHandle: null, target: "inserted" });
   });
 
-  it("refuses a replacement into Lifecycle without writing history or saving", async () => {
+  it("refuses a replacement into the start without writing history or saving", async () => {
     const store = createGraphStore({
       nodes: [lifecycle(), lookup("a")],
       edges: [edge("la", "life", "a", "started")],
@@ -690,7 +690,7 @@ describe("Authoring inside a Group drawn in place", () => {
       store.set(insertStepOnEdgeAtom, { node, edgeId: "la", catalog })
     ).toEqual({
       refusal:
-        "Lifecycle is the workflow entry and cannot accept a connection.",
+        "The start begins the workflow, so it takes no incoming connection.",
     });
     await tick();
     expect(graphOf(store)).toEqual(before);

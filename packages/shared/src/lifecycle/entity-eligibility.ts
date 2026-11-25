@@ -195,7 +195,7 @@ export function checkEntityEligibility(input: {
   );
   if (strayBinding) {
     return refuse(
-      `Tracked Entity binding for Event "${strayBinding}" has no lifecycle role. Remove that binding or add the Event as a Start or Cancel Event.`
+      `Tracked Entity binding for Event "${strayBinding}" is neither a start nor a Cancel Event. Remove that binding or add the Event as a Start or Cancel Event.`
     );
   }
 
@@ -218,7 +218,7 @@ export function checkEntityEligibility(input: {
     }
     if (binding.entityType !== tracked.type) {
       return refuse(
-        `Event "${eventName}" binding "${bindingName}" identifies Entity "${binding.entityType}", not tracked Entity "${tracked.type}". Choose compatible bindings for every lifecycle Event.`
+        `Event "${eventName}" binding "${bindingName}" identifies Entity "${binding.entityType}", not tracked Entity "${tracked.type}". Choose compatible bindings for every start and Cancel Event.`
       );
     }
     if (rules.correlationPaths?.[eventName]) {

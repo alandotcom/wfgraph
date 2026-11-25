@@ -9,7 +9,7 @@
 export function unlabelledStepName(node: { data: { type: string } }): string {
   switch (node.data.type) {
     case "lifecycle":
-      return "Lifecycle Node";
+      return "Start";
     case "group":
       return "Group";
     default:

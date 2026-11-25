@@ -82,11 +82,11 @@ export function describeRelatedRuns(
   if (!hasLifecycleEvents) {
     return rules.concurrency === "unlimited"
       ? "Every manual start creates a separate run."
-      : "With no Lifecycle Events, the overlapping-run rule treats all manual runs as related.";
+      : "With no start or Cancel Events, the overlapping-run rule treats all manual runs as related.";
   }
 
   if (rules.concurrency !== "unlimited" || rules.cancelEvents.length > 0) {
-    return "Lifecycle Events use their Correlation Path values to identify related runs.";
+    return "Start and Cancel Events use their Correlation Path values to identify related runs.";
   }
 
   return "Runs are not matched while every arrival starts a separate run and no Cancel Event is configured.";

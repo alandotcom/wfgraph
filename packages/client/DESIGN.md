@@ -500,8 +500,8 @@ split on the Started side, its Cancel Events for a split on the Canceled side,
 or the Wait Subscriptions of the nearest event-mode Wait above it. It lists each
 outlet with the Event's label, optional description, raw Event name, and the step
 its stored connection leads to, or a line saying a disconnected outlet ends the
-run there. The primary action opens the source: **Open Lifecycle Start Events**
-or **Open Lifecycle Cancel Events** selects the Lifecycle node with that
+run there. The primary action opens the source: **Open start Events**
+or **Open Cancel Events** selects the start with that
 section's editor open, and **Open** followed by the Wait's name selects the Wait
 and opens its editor. **Back** from either returns to the Event Split. The list also says when no Event source reaches the Event
 Split, when an outlet's Event is no longer declared by the app, when a stored
@@ -630,13 +630,13 @@ Selecting a step, Condition, Lifecycle node, Event Split,
 Group, or connection opens its summary sheet over the bottom of the
 canvas, which stays pannable and zoomable above it. It reads the object the way
 the desktop editor would summarize it: settings as labels and values, a
-Condition's rules as sentences, and the Lifecycle policy's sections. A
+Condition's rules as sentences, and the start's sections. A
 summary sheet that opens moves the camera once, the least it must, to keep its
 subject above the sheet's top edge, and only when the sheet would cover it. The sheet's header names the object and its
 validation status beside **Close** and the control that opens its full-screen
 editor: **Edit step**, **Edit rules** for a Condition, or **Edit group**. That
-control, an issue, and a Lifecycle section's **Edit** open the full-screen
-editor; the Lifecycle section list sits above its section there. An Event Split's action opens the Lifecycle inspector
+control, an issue, and a start section's **Edit** open the full-screen
+editor; the start's section list sits above its section there. An Event Split's action opens the start's details
 at its section, or the Wait's summary, over the Event Split's summary. Every
 sheet above the first leads with a Back control named for the sheet beneath,
 **Summary** when that sheet shows the same object. Back and Escape remove one

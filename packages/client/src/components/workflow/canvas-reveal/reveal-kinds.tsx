@@ -468,7 +468,7 @@ const GROUP_KIND: RevealKind = {
 const LIFECYCLE_KIND: RevealKind = {
   id: "lifecycle",
   match: matchLifecycleSubject,
-  regionLabel: "Lifecycle inspector",
+  regionLabel: "Start details",
   header: { owner: "shell", model: lifecycleHeaderModel },
   Browse: LifecycleEditor,
   Focus: null,

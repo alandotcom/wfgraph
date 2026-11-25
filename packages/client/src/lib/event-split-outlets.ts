@@ -21,7 +21,7 @@ export const EVENT_SPLIT_HEADING = "Splits by Event";
 
 /** What an Event Split with no Event source above it says, on every surface. */
 export const EVENT_SPLIT_NO_SOURCE_TEXT =
-  "No Event reaches this Event Split yet. Connect it below the Lifecycle Node or an event-mode Wait, and it draws one outlet for each Event that reaches it.";
+  "No Event reaches this Event Split yet. Connect it below the start or an event-mode Wait, and it draws one outlet for each Event that reaches it.";
 
 /**
  * A null id answers nothing, which is what every node that is not a split passes:

@@ -85,8 +85,8 @@ function choose(scope: HTMLElement, name: string, option: string) {
 
 function refusal(view: RenderResult): string | null {
   return (
-    view.queryByText("Lifecycle settings need attention")?.parentElement
-      ?.textContent ?? null
+    view.queryByText("The start needs attention")?.parentElement?.textContent ??
+    null
   );
 }
 

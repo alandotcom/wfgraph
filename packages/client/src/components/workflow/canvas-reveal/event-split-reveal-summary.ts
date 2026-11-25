@@ -126,13 +126,13 @@ export function eventSplitOwner(input: {
     return source.side === "started"
       ? {
           source,
-          description: "the Lifecycle Node's Start Events",
-          actionLabel: "Open Lifecycle Start Events",
+          description: "the start Events",
+          actionLabel: "Open start Events",
         }
       : {
           source,
-          description: "the Lifecycle Node's Cancel Events",
-          actionLabel: "Open Lifecycle Cancel Events",
+          description: "the Cancel Events",
+          actionLabel: "Open Cancel Events",
         };
   }
   const wait = input.nodes.find((node) => node.id === source.nodeId);
