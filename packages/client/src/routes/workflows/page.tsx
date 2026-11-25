@@ -58,6 +58,7 @@ import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts
 import {
   filterRuns,
   runFiltersFromSearch,
+  runEntityKey,
   runFilterToSearch,
   toExecutionsQueryInput,
   uniqueNonEmpty,
@@ -395,7 +396,7 @@ export default function WorkflowsPage() {
     [runs]
   );
   const entitySuggestions = useMemo(
-    () => uniqueNonEmpty(runs.map((item) => item.entityValue)),
+    () => uniqueNonEmpty(runs.map((item) => runEntityKey(item))),
     [runs]
   );
   const isLoadingRuns = runsQuery.isPending;

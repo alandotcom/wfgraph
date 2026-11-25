@@ -70,6 +70,7 @@ export type RunHistorySearchRow = {
   startSource: WorkflowExecutionStartSource | null;
   startEventName: string | null;
   entityValue: string | null;
+  entity: { type: string; id: string } | null;
   error: string | null;
 };
 
@@ -298,12 +299,22 @@ function fieldValue(
     case "event":
       return run.startEventName;
     case "entity":
-      return run.entityValue;
+      return runEntityKey(run);
     default: {
       const exhaustive: never = field;
       return exhaustive;
     }
   }
+}
+
+/**
+ * The text the Entity filter and the search match a run's Entity against:
+ * the id of a tracked Entity, or the Entity Value of a run that tracks none.
+ */
+export function runEntityKey(
+  run: Pick<RunHistorySearchRow, "entity" | "entityValue">
+): string | null {
+  return run.entity?.id ?? run.entityValue;
 }
 
 function normalize(value: string): string {
@@ -375,7 +386,7 @@ function runSearchText(run: RunHistorySearchRow): string {
     runGraphLabel(run),
     run.startSource,
     run.startEventName,
-    run.entityValue,
+    runEntityKey(run),
     run.error,
   ]
     .filter((value): value is string => value !== null && value !== "")

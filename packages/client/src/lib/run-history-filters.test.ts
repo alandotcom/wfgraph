@@ -32,6 +32,7 @@ function run(
     startSource: "manual",
     startEventName: null,
     entityValue: null,
+    entity: null,
     error: null,
     ...overrides,
   };
@@ -206,6 +207,38 @@ describe("filterRuns", () => {
     ).toEqual(["exec_2"]);
     expect(
       filterRuns(rows, { query: "user_1", filters: [] }).map((row) => row.id)
+    ).toEqual(["exec_1"]);
+  });
+
+  // A tracked run carries no Entity Value; its Entity's id is what a person
+  // reads in the run's title and types into the search or the Entity filter.
+  it("matches a tracked run's Entity id in the search and the Entity filter", () => {
+    const withTracked = [
+      ...rows,
+      run({
+        id: "exec_5",
+        entity: { type: "patient", id: "pat_20418" },
+      }),
+    ];
+
+    expect(
+      filterRuns(withTracked, { query: "pat_20418", filters: [] }).map(
+        (row) => row.id
+      )
+    ).toEqual(["exec_5"]);
+    expect(
+      filterRuns(withTracked, {
+        query: "",
+        filters: [
+          filter({ field: "entity", operator: "is", value: "pat_20418" }),
+        ],
+      }).map((row) => row.id)
+    ).toEqual(["exec_5"]);
+    expect(
+      filterRuns(withTracked, {
+        query: "",
+        filters: [filter({ field: "entity", operator: "is", value: "user_1" })],
+      }).map((row) => row.id)
     ).toEqual(["exec_1"]);
   });
 
