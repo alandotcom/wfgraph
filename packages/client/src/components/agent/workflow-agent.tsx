@@ -168,6 +168,7 @@ function PromptLine({
   onDetach,
   onSend,
   onFocus,
+  onOpen,
 }: {
   input: RefObject<HTMLTextAreaElement | null>;
   attached: AttachedStep | null;
@@ -177,6 +178,8 @@ function PromptLine({
   onDetach: () => void;
   onSend: () => void;
   onFocus: () => void;
+  /** Opens the conversation from a line that already has focus. */
+  onOpen: () => void;
 }) {
   const showsOffer = offered !== null && offered.id !== attached?.id;
   return (
@@ -226,27 +229,48 @@ function PromptLine({
         }}
       >
         {mark ? (
-          <span
+          // The dot is the one visible sign of a reply, so it is also the
+          // control that shows it. The hit area reaches past the 8px dot.
+          <button
             aria-label={
-              mark === "working" ? "The agent is working" : "The agent replied"
+              mark === "working"
+                ? "The agent is working. Show the conversation"
+                : "The agent replied. Show the conversation"
             }
-            className="mb-3 ml-1 size-2 shrink-0 rounded-full bg-primary"
+            className="mb-1.5 flex size-6 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
             data-slot="agent-mark"
-            role="img"
-          />
+            onClick={onOpen}
+            type="button"
+          >
+            <span className="size-2 rounded-full bg-primary" />
+          </button>
         ) : null}
         <ComposerPrimitive.Input
           aria-label="Message the agent"
           cancelOnEscape={false}
           className="max-h-32 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm"
+          // Focus opens the conversation, and a line that kept focus when the
+          // conversation collapsed opens it on a click, or on Enter or Down
+          // while it is empty.
+          onClick={onOpen}
           onFocus={onFocus}
           onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+            const empty = isBlank(event.currentTarget.value);
+            if (event.key === "ArrowDown" && empty) {
+              event.preventDefault();
+              onOpen();
+              return;
+            }
             if (
               event.key === "Enter" &&
               !event.shiftKey &&
               !event.nativeEvent.isComposing
             ) {
               event.preventDefault();
+              if (empty) {
+                onOpen();
+                return;
+              }
               onSend();
             }
           }}
@@ -398,6 +422,7 @@ function AgentSurface({
           setOpen(true);
         }
       }}
+      onOpen={() => setOpen(true)}
       onSend={send}
     />
   );

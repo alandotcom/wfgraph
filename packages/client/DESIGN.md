@@ -368,7 +368,9 @@ Popover-filled panel up to 560px wide and 60% of the canvas tall, with a
 hairline ring and shadow-lg, holding the thread, the suggestions, tool
 activity, errors, **New conversation**, and **Close conversation**. That
 control and Escape collapse it back to the line and keep the conversation; the
-line then shows a small dot while the agent works or after it replied. The
+line then shows a small dot while the agent works or after it replied.
+Clicking the dot, clicking the line, or pressing Enter or Down in an empty line
+opens the conversation again, which also works when the line kept focus. The
 conversation covers the canvas where an edit lands, so the agent's first edit
 in a turn collapses it to the line, whose dot says the agent is still working,
 and when the turn ends the camera shows the steps it added or changed if they

@@ -165,6 +165,52 @@ describe("WorkflowAgentView", () => {
     expect(screen.getByText("Add a Slack step")).toBeTruthy();
   });
 
+  it("reopens a collapsed conversation from the line that kept focus", async () => {
+    storeThread("Add a Slack step");
+    const { field, conversation, type } = renderAgent();
+    act(() => {
+      field().focus();
+    });
+    const collapse = () => {
+      fireEvent.keyDown(field(), { key: "Escape" });
+      expect(conversation()).toBeNull();
+      expect(document.activeElement).toBe(field());
+    };
+
+    collapse();
+    fireEvent.click(field());
+    expect(conversation()).not.toBeNull();
+
+    collapse();
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(conversation()).not.toBeNull();
+
+    collapse();
+    fireEvent.keyDown(field(), { key: "ArrowDown" });
+    expect(conversation()).not.toBeNull();
+
+    // With text in the line, Down moves the caret and leaves it closed.
+    collapse();
+    type("Add a Wait");
+    fireEvent.keyDown(field(), { key: "ArrowDown" });
+    expect(conversation()).toBeNull();
+  });
+
+  it("shows the reply from the dot the line keeps after a collapsed turn", async () => {
+    const { field, conversation, type } = renderAgent();
+    type("What does this workflow do?");
+    fireEvent.keyDown(field(), { key: "Enter" });
+    await waitFor(() => expect(sentBodies).toHaveLength(1));
+    fireEvent.keyDown(field(), { key: "Escape" });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "The agent is working. Show the conversation",
+      })
+    );
+    expect(conversation()).not.toBeNull();
+  });
+
   it("marks the line while the agent works with the conversation collapsed", async () => {
     const { field, conversation, type } = renderAgent();
     expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
@@ -175,12 +221,16 @@ describe("WorkflowAgentView", () => {
     expect(conversation()).not.toBeNull();
     expect(await screen.findByRole("button", { name: "Stop" })).toBeTruthy();
     expect(
-      screen.queryByRole("img", { name: "The agent is working" })
+      screen.queryByRole("button", {
+        name: "The agent is working. Show the conversation",
+      })
     ).toBeNull();
 
     fireEvent.keyDown(field(), { key: "Escape" });
     expect(
-      await screen.findByRole("img", { name: "The agent is working" })
+      await screen.findByRole("button", {
+        name: "The agent is working. Show the conversation",
+      })
     ).toBeTruthy();
   });
 
@@ -372,7 +422,9 @@ describe("WorkflowAgentView", () => {
         screen.queryByRole("region", { name: "Agent conversation" })
       ).toBeNull();
       expect(
-        screen.getByRole("img", { name: "The agent is working" })
+        screen.getByRole("button", {
+          name: "The agent is working. Show the conversation",
+        })
       ).toBeTruthy();
 
       await act(async () => {
