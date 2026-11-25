@@ -19,6 +19,7 @@ import { ExtensionCatalogProvider } from "#src/components/extension-catalog-prov
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { WorkflowOutline } from "#src/components/workflow/outline/workflow-outline";
+import { commandPaletteAtom } from "#src/lib/command-palette-store";
 import {
   loadWorkflowGraphAtom,
   selectOnlyNodeAtom,
@@ -246,5 +247,21 @@ describe("WorkflowOutline", () => {
     fireEvent.click(changed);
     expect(store.get(reviewScrollRequestAtom)?.nodeId).toBe("Send intake form");
     expect(store.get(activeSelectionAtom).nodeIds).toEqual([]);
+  });
+
+  it("opens the step picker after a step with /, and refuses a Condition's row", async () => {
+    const { store } = renderOutline();
+    const list = await tree();
+
+    act(() => store.set(selectOnlyNodeAtom, "Deposit covers the visit?"));
+    fireEvent.keyDown(list, { key: "/" });
+    expect(store.get(commandPaletteAtom)).toBeNull();
+
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    fireEvent.keyDown(list, { key: "/" });
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual([
+      "Send deposit receipt",
+    ]);
+    expect(store.get(commandPaletteAtom)?.pages).toEqual([{ id: "add-step" }]);
   });
 });

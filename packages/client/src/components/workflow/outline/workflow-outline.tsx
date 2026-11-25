@@ -24,6 +24,8 @@ import { ProviderLogo } from "#src/components/workflow/nodes/action-node";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { Input } from "#src/components/ui/input";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
+import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import { editOfNode, workflowEdits } from "#src/lib/workflow-edits";
@@ -91,7 +93,8 @@ function outlineSections(outline: Outline): Section[] {
  * the extension catalog from the editor's stores, so it takes no props. It
  * fills its container and scrolls inside it. The list is one Tab stop: arrow
  * keys, Home and End move between rows and select each step, Left and Right
- * fold, and Enter selects the step and asks the details for focus. Pointing at
+ * fold, Enter selects the step and asks the details for focus, and `/` opens
+ * the step picker to add a step after the row's step. Pointing at
  * or focusing a row puts the selection halo on its card without moving the
  * camera. Cmd+F or Ctrl+F focuses the filter field.
  */
@@ -111,6 +114,7 @@ export function WorkflowOutline() {
   const setHighlight = useSetAtom(reviewHighlightAtom);
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
   const focusRevealTitle = useSetAtom(revealTitleFocusRequestAtom);
+  const openPalette = useSetAtom(openCommandPaletteAtom);
 
   const editing = view === "draft" && !reviewShown;
   // While the review sheet shows, the graph holds removed steps too, and the
@@ -309,11 +313,43 @@ export function WorkflowOutline() {
         case " ":
           choose(row);
           return true;
+        case "/":
+          if (event.altKey || event.shiftKey) return false;
+          addStepAfter(row);
+          return true;
         default:
           return false;
       }
     })();
     if (handled) event.preventDefault();
+  };
+
+  /**
+   * Open the command palette's step picker to add a step after the row's step.
+   * The picker adds on the selected step's one outlet, so the row is selected
+   * first. A Condition and an Event Split have several outlets and a Group has
+   * none of its own, so those rows say where to add instead.
+   */
+  const addStepAfter = (row: OutlineRow) => {
+    if (!editing) return;
+    if (
+      row.kind === "group" ||
+      row.kind === "continues" ||
+      (row.kind === "step" &&
+        (row.stepKind === "condition" || row.stepKind === "event-split"))
+    ) {
+      showGraphEditRefusal({
+        refusal:
+          row.kind === "group"
+            ? "Select a step inside the Group to add a step after it."
+            : row.kind === "continues"
+              ? "Select the step to add a step after it."
+              : "Add a step on one of its outlets from the canvas.",
+      });
+      return;
+    }
+    if (row.key !== selectedKey) choose(row);
+    openPalette({ id: "add-step" });
   };
 
   const onFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
