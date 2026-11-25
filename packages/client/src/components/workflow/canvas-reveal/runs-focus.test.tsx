@@ -285,9 +285,7 @@ describe("Runs Focus node evidence", () => {
       )
     ).toBeTruthy();
     expect(shown.getByText("Waiting for app/reply")).toBeTruthy();
-    expect(
-      await shown.findByText("Run waiting in event node 'Wait for reply'")
-    ).toBeTruthy();
+    expect(await shown.findByText("Waiting at Wait for reply")).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Resume now" }));
     await waitFor(() =>
@@ -399,7 +397,7 @@ describe("Runs Focus node evidence", () => {
     );
     const entries = activity.closest("ol")?.querySelectorAll("li") ?? [];
     expect([...entries].map((entry) => entry.firstChild?.textContent)).toEqual([
-      "Run waiting in event node 'Wait for reply'",
+      "Waiting at Wait for reply",
       "Run resumed from the Runs view",
     ]);
     expect(within(evidence()).queryByText("Resume now")).toBeNull();
@@ -855,6 +853,56 @@ describe("Runs Focus node evidence", () => {
     expect(shown.getByText("Did not match")).toBeTruthy();
     expect(shown.getByText("Matched")).toBeTruthy();
     expect(shown.getAllByText("Decided the branch")).toHaveLength(1);
+  });
+
+  it("labels a Wait's evidence with its form's words, and leaves the engine's own fields to the raw data", async () => {
+    served.items = [execution("exec_w", "completed")];
+    served.graphs = {
+      ver_exec_w: createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "pause",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Wait a day",
+              type: "action",
+              config: { actionType: "Wait", waitMode: "delay" },
+            },
+          },
+        ],
+        edges: [],
+      }),
+    };
+    served.logsByExecutionId = {
+      exec_w: [
+        log({
+          id: "log_pause",
+          nodeId: "pause",
+          nodeName: "Wait a day",
+          status: "success",
+          input: { waitMode: "delay", waitDuration: "1d", waitGateMode: "off" },
+          output: { waitType: "delay", hops: 1 },
+        }),
+      ],
+    };
+    const { aside, title, evidence, canvasNode } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_w",
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_w")));
+
+    fireEvent.click(await canvasNode("Wait a day"));
+    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
+    const shown = within(evidence());
+    expect(shown.getByText("How should this step wait?")).toBeTruthy();
+    expect(shown.getByText("Wait for time")).toBeTruthy();
+    expect(shown.getByText("If the scheduled time has passed")).toBeTruthy();
+    expect(shown.getByText("Continue immediately")).toBeTruthy();
+    expect(shown.queryByText(/Wait Gate Mode|Hops|Wait Type/u)).toBeNull();
+
+    fireEvent.click(shown.getByRole("button", { name: "Show raw data" }));
+    expect(shown.getAllByText(/"hops"/u).length).toBeGreaterThan(0);
   });
 
   it("shows a step's input and output as labeled values before its raw data", async () => {

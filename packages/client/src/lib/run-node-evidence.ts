@@ -203,6 +203,8 @@ export type RunNodeEvidence = {
   waits: readonly ExecutionWait[];
   /** The run's audit events that name this node, oldest first. */
   activity: readonly ExecutionEvent[];
+  /** How the run started, which an activity sentence names. */
+  run: Pick<WorkflowExecution, "startSource" | "startEventName">;
   /** The run's cancellation event, when the shown execution was cancelled. */
   cancellation: ExecutionEvent | null;
   /**
@@ -285,6 +287,10 @@ export function buildRunNodeEvidence(input: {
           })
         : null,
     waits,
+    run: {
+      startSource: execution.startSource,
+      startEventName: execution.startEventName,
+    },
     activity: sortBy(
       input.events.filter((event) => eventNodeId(event) === nodeId),
       [(event) => event.createdAt.getTime()]

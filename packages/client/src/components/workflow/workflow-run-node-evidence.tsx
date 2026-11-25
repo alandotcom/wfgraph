@@ -11,6 +11,7 @@ import {
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+import { readConfigString } from "@wfgraph/shared/graph/node-config";
 import { referenceFieldLabel } from "@wfgraph/shared/graph/node-references";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { Button } from "#src/components/ui/button";
@@ -36,6 +37,17 @@ import {
 import { Section } from "./canvas-reveal/reveal-sections";
 import { RUN_POLL_MS } from "./use-workflow-runs";
 import { waitingSummary } from "./workflow-run-detail";
+import { runActivitySentence } from "#src/lib/run-activity";
+import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
+import {
+  WAIT_DELAY_TIMING_OPTIONS,
+  WAIT_GATE_OPTIONS,
+  WAIT_MODE_OPTIONS,
+  WAIT_TIMEOUT_OPTIONS,
+  WAIT_WINDOW_OPTIONS,
+} from "./config/wait-options";
+import { WAIT_FIELD_LABELS } from "@wfgraph/shared/actions/wait-field-labels";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { RunFailureText } from "./workflow-run-failure";
 import { testRunSkip } from "#src/lib/test-run-skip";
 import {
@@ -158,28 +170,96 @@ function RawData({
 }
 
 /**
- * The labels an action's catalog entry gives the keys of its recorded input,
- * from its config fields, and of its recorded output, from its top-level
- * output fields. A key the catalog does not name reads as itself, made
- * readable.
+ * How a step's recorded input or output reads: a label for each key, a label
+ * for each option value a key holds, and the keys only the engine reads,
+ * which stay in the raw data.
  */
-function actionFieldLabels(
+type ValuesReading = {
+  labels: ReadonlyMap<string, string>;
+  valueLabels: ReadonlyMap<string, ReadonlyMap<string, string>>;
+  hiddenKeys: ReadonlySet<string>;
+};
+
+const NO_HIDDEN_KEYS: ReadonlySet<string> = new Set();
+
+/** Option lists as a map from each option's value to its label. */
+function optionLabels(
+  options: readonly { value: string; label: string }[]
+): ReadonlyMap<string, string> {
+  return new Map(options.map((option) => [option.value, option.label]));
+}
+
+/** What a Wait records about how it ended, in the words its form uses. */
+const WAIT_OUTPUT_LABELS: ReadonlyMap<string, string> = new Map([
+  ["event", "Event that arrived"],
+  ["payload", "Event payload"],
+  ["timedOut", "Gave up waiting"],
+  ["resumedAt", "Continued at"],
+  ["skipped", "Ended this branch"],
+  ["skippedReason", "Why"],
+]);
+
+/** What the engine records on a Wait for itself: its mode and its hop count. */
+const WAIT_ENGINE_KEYS: ReadonlySet<string> = new Set(["hops", "waitType"]);
+
+/**
+ * How an action's recorded input and output read: the labels and option labels
+ * its form gives the keys of its input, from its catalog entry or, for a Wait,
+ * from the Wait form, and the labels its output fields give the keys of its
+ * output. A key nothing names reads as itself, made readable.
+ */
+function actionValueReadings(
   catalog: ExtensionCatalog,
   actionType: string
-): { input: ReadonlyMap<string, string>; output: ReadonlyMap<string, string> } {
+): { input: ValuesReading; output: ValuesReading } {
+  if (actionType === BUILT_IN_ACTION_IDS.wait) {
+    return {
+      input: {
+        labels: new Map(Object.entries(WAIT_FIELD_LABELS)),
+        valueLabels: new Map([
+          ["waitMode", optionLabels(WAIT_MODE_OPTIONS)],
+          ["waitDelayTimingMode", optionLabels(WAIT_DELAY_TIMING_OPTIONS)],
+          ["waitGateMode", optionLabels(WAIT_GATE_OPTIONS)],
+          ["waitAllowedHoursMode", optionLabels(WAIT_WINDOW_OPTIONS)],
+          ["waitTimeoutBehavior", optionLabels(WAIT_TIMEOUT_OPTIONS)],
+        ]),
+        hiddenKeys: NO_HIDDEN_KEYS,
+      },
+      output: {
+        labels: WAIT_OUTPUT_LABELS,
+        valueLabels: new Map([
+          [
+            "event",
+            new Map(catalog.events.map((event) => [event.name, event.label])),
+          ],
+        ]),
+        hiddenKeys: WAIT_ENGINE_KEYS,
+      },
+    };
+  }
   const action = findAction(catalog, actionType);
+  const fields = flattenConfigFields(action?.configFields ?? []);
   return {
-    input: new Map(
-      flattenConfigFields(action?.configFields ?? []).map((field) => [
-        field.key,
-        field.label,
-      ])
-    ),
-    output: new Map(
-      (action?.outputFields ?? [])
-        .filter((field) => !field.path.includes("."))
-        .map((field) => [field.path, referenceFieldLabel(field)])
-    ),
+    input: {
+      labels: new Map(fields.map((field) => [field.key, field.label])),
+      valueLabels: new Map(
+        fields.flatMap((field) =>
+          field.options && field.options.length > 0
+            ? [[field.key, optionLabels(field.options)] as const]
+            : []
+        )
+      ),
+      hiddenKeys: NO_HIDDEN_KEYS,
+    },
+    output: {
+      labels: new Map(
+        (action?.outputFields ?? [])
+          .filter((field) => !field.path.includes("."))
+          .map((field) => [field.path, referenceFieldLabel(field)])
+      ),
+      valueLabels: new Map(),
+      hiddenKeys: NO_HIDDEN_KEYS,
+    },
   };
 }
 
@@ -187,20 +267,26 @@ function actionFieldLabels(
 function LabeledValues({
   title,
   value,
-  labels,
+  reading,
   nodes,
   emptyText,
 }: {
   title: string;
   value: unknown;
-  labels: ReadonlyMap<string, string>;
+  reading: ValuesReading;
   nodes: readonly WorkflowNode[];
   emptyText: string;
 }) {
   return (
     <Section title={title}>
       {isNotNil(value) ? (
-        <JsonPropertyInspector labels={labels} nodes={nodes} value={value} />
+        <JsonPropertyInspector
+          hiddenKeys={reading.hiddenKeys}
+          labels={reading.labels}
+          nodes={nodes}
+          value={value}
+          valueLabels={reading.valueLabels}
+        />
       ) : (
         <p className="text-muted-foreground text-xs">{emptyText}</p>
       )}
@@ -341,14 +427,21 @@ function ConditionDecisionSections({
  * the result where it has one, then the input and the output as labeled
  * values under the action's field labels.
  */
-function StepValueSections({ execution }: { execution: ExecutionLog }) {
+function StepValueSections({
+  execution,
+  actionType,
+}: {
+  execution: ExecutionLog;
+  /** The step's action in the graph the run pinned, else what its log names. */
+  actionType: string;
+}) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
   const hasOutputDisplay = useHasOutputDisplay(
     execution.nodeType,
     execution.output
   );
-  const labels = actionFieldLabels(catalog, execution.nodeType);
+  const readings = actionValueReadings(catalog, actionType);
   return (
     <>
       {/* A failed step's result repeats the error the Error section states. */}
@@ -363,15 +456,15 @@ function StepValueSections({ execution }: { execution: ExecutionLog }) {
       ) : null}
       <LabeledValues
         emptyText="No input was recorded."
-        labels={labels.input}
         nodes={nodes}
+        reading={readings.input}
         title="Input"
         value={execution.input}
       />
       <LabeledValues
         emptyText="No output was recorded."
-        labels={labels.output}
         nodes={nodes}
+        reading={readings.output}
         title="Output"
         value={execution.output}
       />
@@ -464,6 +557,7 @@ export function WorkflowRunNodeEvidence({
   onContinueWait?: ((waitStateId: string) => void) | undefined;
 }) {
   const catalog = useExtensionCatalog();
+  const graphNodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
   const { shownExecution: shown, executions } = evidence;
   const status = stepRunStatusLabel(
     evidence.status,
@@ -643,7 +737,13 @@ export function WorkflowRunNodeEvidence({
           nodeId={evidence.nodeId}
         />
       ) : (
-        <StepValueSections execution={shown} />
+        <StepValueSections
+          actionType={
+            readConfigString(evidence.config ?? undefined, "actionType") ??
+            shown.nodeType
+          }
+          execution={shown}
+        />
       )}
 
       <Section title="Activity">
@@ -654,7 +754,17 @@ export function WorkflowRunNodeEvidence({
                 className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"
                 key={event.id}
               >
-                <span className="break-words text-sm">{event.message}</span>
+                <span className="break-words text-sm">
+                  {runActivitySentence({
+                    event,
+                    run: evidence.run,
+                    eventLabel: (name) => eventLabel(catalog, name),
+                    nodeName: (id) => {
+                      const node = graphNodes.find((item) => item.id === id);
+                      return node ? getNodeDisplayName(catalog, node) : null;
+                    },
+                  })}
+                </span>
                 <span className="text-muted-foreground text-xs">
                   {formatExactTime(event.createdAt)}
                 </span>

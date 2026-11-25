@@ -578,6 +578,13 @@ function withJsonKeys<Value extends JsonValue>(values: Value[]) {
 type ValueReading = {
   /** A label for each top-level key, such as an action's field labels. */
   labels?: ReadonlyMap<string, string> | undefined;
+  /**
+   * The label of each option a top-level key's value can hold, by key then
+   * value, such as "Log only (do nothing)" for `log_only`.
+   */
+  valueLabels?: ReadonlyMap<string, ReadonlyMap<string, string>> | undefined;
+  /** Top-level keys only the engine reads, left to the raw data. */
+  hiddenKeys?: ReadonlySet<string> | undefined;
   /** The graph the run pinned, which template references are read against. */
   nodes?: readonly WorkflowNode[] | undefined;
 };
@@ -585,9 +592,18 @@ type ValueReading = {
 function JsonFields({
   value,
   labels,
+  valueLabels,
+  hiddenKeys,
   nodes,
 }: ValueReading & { value: { [key: string]: JsonValue } }) {
-  const entries = Object.entries(value);
+  const entries = Object.entries(value)
+    .filter(([key]) => !hiddenKeys?.has(key))
+    .map(([key, fieldValue]): [string, JsonValue] => [
+      key,
+      (typeof fieldValue === "string"
+        ? valueLabels?.get(key)?.get(fieldValue)
+        : undefined) ?? fieldValue,
+    ]);
   if (entries.length === 0) {
     return <span className="text-muted-foreground text-xs italic">Empty</span>;
   }
@@ -721,6 +737,8 @@ function JsonProperty({
 export function JsonPropertyInspector({
   value,
   labels,
+  valueLabels,
+  hiddenKeys,
   nodes,
 }: ValueReading & { value: unknown }) {
   const json = readJsonValue(value);
@@ -737,7 +755,15 @@ export function JsonPropertyInspector({
   if (Array.isArray(json)) {
     return <JsonProperty label="Items" nodes={nodes} value={json} />;
   }
-  return <JsonFields labels={labels} nodes={nodes} value={json} />;
+  return (
+    <JsonFields
+      hiddenKeys={hiddenKeys}
+      labels={labels}
+      nodes={nodes}
+      valueLabels={valueLabels}
+      value={json}
+    />
+  );
 }
 
 /**
