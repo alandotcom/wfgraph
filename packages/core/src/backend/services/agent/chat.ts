@@ -11,12 +11,14 @@ import { Cause, Effect, Exit, Semaphore, Stream } from "effect";
 import type { Response } from "effect/ai";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import type { WorkflowOperationsService } from "@wfgraph/agent/operations";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
   AgentMessage,
   AgentStreamPart,
 } from "@wfgraph/shared/rpc/agent-stream";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import { workflowStepNumbers } from "@wfgraph/shared/graph/workflow-outline";
 import {
   AgentCapacity,
   AgentConfig,
@@ -209,17 +211,33 @@ export type PostAgentChatInput = {
 };
 
 /**
- * The selected nodes the graph holds, in graph order, each with its label.
- * An id the graph does not hold is dropped rather than named to the model.
+ * The attached nodes the graph holds, in graph order, each with its label and
+ * the step number `workflowStepNumbers` gives it, which is the number the
+ * editor's outline prints. An id the graph does not hold is dropped rather
+ * than named to the model.
  */
 export function selectedNodesOf(
   document: AgentDocument,
-  selectedNodeIds: readonly string[]
+  selectedNodeIds: readonly string[],
+  catalog: ExtensionCatalog
 ): WfGraphAgentSelectedNode[] {
   const selected = new Set(selectedNodeIds);
-  return document.nodes
-    .filter((node) => selected.has(node.id))
-    .map((node) => ({ id: node.id, label: node.data.label }));
+  const attached = document.nodes.filter((node) => selected.has(node.id));
+  if (attached.length === 0) {
+    return [];
+  }
+  const numbers = workflowStepNumbers({
+    nodes: document.nodes,
+    edges: document.edges,
+    catalog,
+  });
+  return attached.map((node) =>
+    omitUndefined({
+      id: node.id,
+      label: node.data.label,
+      stepNumber: numbers.get(node.id),
+    })
+  );
 }
 
 /**
@@ -281,7 +299,7 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
   );
   const stream = runAgentRunner(runner, {
     workflowId: input.workflowId,
-    selectedNodes: selectedNodesOf(opened, input.selectedNodeIds),
+    selectedNodes: selectedNodesOf(opened, input.selectedNodeIds, catalog),
     messages: input.messages,
     session,
     observeTrace: trace.observe,

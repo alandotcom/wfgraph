@@ -24,10 +24,16 @@ export type WfGraphAgentToolkit = Toolkit.WithHandler<
   Toolkit.Tools<typeof agentToolkit>
 >;
 
-/** A node selected on the canvas when the message was sent. */
+/** A step the person attached to the message they sent. */
 export type WfGraphAgentSelectedNode = {
   readonly id: string;
   readonly label: string;
+  /**
+   * The step's number in run order, as the editor's outline and canvas show
+   * it. Absent for a node the outline does not number, such as the Lifecycle
+   * Node or a Group.
+   */
+  readonly stepNumber?: number | undefined;
 };
 
 /** One turn, as a host's runner receives it. */
@@ -35,8 +41,8 @@ export type WfGraphAgentTurn = {
   /** The workflow the editor has open. */
   readonly workflowId: string;
   /**
-   * The nodes selected on the canvas, in graph order. The `prompt` already
-   * names them under the newest message.
+   * The steps the person attached to the newest message, in graph order. The
+   * `prompt` already names them under that message.
    */
   readonly selectedNodes: readonly WfGraphAgentSelectedNode[];
   /** The conversation as the browser sent it, the newest message last. */

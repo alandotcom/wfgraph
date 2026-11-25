@@ -17,6 +17,8 @@ The editor is easier to read and to operate.
 
 Fixes: duplicating a workflow that contains a Group no longer fails, a Wait Duration that cannot be read is a blocking issue, and deleting a Connection no longer rebinds its steps to another Connection.
 
+The build agent uses the step numbers the editor prints and reads what a test run does at each step from the workflow's own settings. `read_workflow` and `read_nodes` give each step its `stepNumber` and give an action step its `testRun`, the note under a message names each attached step by number and label, and a host runner's `turn.selectedNodes` carries `stepNumber`.
+
 Each run that `getExecutions`, `getExecutionsGlobal` and `getExecutionLogs` return carries `entity`: the tracked Entity's `type` and `id`, or null when the workflow tracks no Entity.
 
 The built-in integrations' setting "Test Mode Behavior" is labeled "In test runs". Its key and values are unchanged. Their field placeholders no longer show a `{{NodeName.field}}` syntax the editor does not read.

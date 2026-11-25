@@ -119,12 +119,23 @@ export function withTurnRecord(
 }
 
 /**
- * The newest message with the canvas selection named under it.
+ * One attached step as the note names it: its step number when the outline
+ * gives it one, then its label and id, such as `step 7 "Wait" (id n7)`.
+ */
+function attachedStep(node: WfGraphAgentSelectedNode): string {
+  const named = `${JSON.stringify(node.label)} (id ${node.id})`;
+  return node.stepNumber === undefined
+    ? named
+    : `step ${node.stepNumber} ${named}`;
+}
+
+/**
+ * The newest message with the steps the person attached to it named under it.
  *
- * The selection belongs to the moment the message was sent, so it rides on
- * that message alone: an older message's "this step" meant whatever was
- * selected then, which the browser no longer knows. Labels are quoted as JSON
- * strings, because they are text a person typed.
+ * The attachment belongs to the message it was sent with, so it rides on that
+ * message alone: an older message's "this step" meant whatever was attached
+ * then, which the browser no longer knows. Labels are quoted as JSON strings,
+ * because they are text a person typed.
  */
 export function withSelectionNote(
   content: string,
@@ -133,8 +144,8 @@ export function withSelectionNote(
   if (selectedNodes.length === 0) {
     return content;
   }
-  const named = quotedNodes(selectedNodes);
-  return `${content}\n\n[Selected on the canvas when this was sent: ${named}. "This", "this step" or "these" refers to them.]`;
+  const named = selectedNodes.map(attachedStep).join(", ");
+  return `${content}\n\n[The person attached these steps to this message: ${named}. "This", "this step" or "these" refers to them.]`;
 }
 
 /** The draft as the editor reads a graph, for a `graph` part. */

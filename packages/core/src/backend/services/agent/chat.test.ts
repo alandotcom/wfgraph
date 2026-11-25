@@ -12,6 +12,11 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  heroGraph,
+  outlineTestCatalog,
+} from "@wfgraph/shared/graph/workflow-outline-test-support";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
   makeAgentConfigLayer,
@@ -21,6 +26,7 @@ import { wfOpenAi } from "#src/backend/agent/providers/openai";
 import {
   makeAgentRunnerLayer,
   type AgentRunner,
+  type WfGraphAgentSelectedNode,
 } from "#src/backend/agent/runner";
 import { makeAgentTraceAccumulator } from "#src/backend/agent/trace";
 import {
@@ -219,7 +225,7 @@ describe("postAgentChat tool grants", () => {
 });
 
 describe("selectedNodesOf", () => {
-  it("names the selected nodes the graph holds, in graph order", () => {
+  it("names the attached nodes the graph holds, in graph order", () => {
     const node = (id: string, label: string) => ({
       id,
       type: "action" as const,
@@ -229,14 +235,73 @@ describe("selectedNodesOf", () => {
 
     expect(
       selectedNodesOf(
-        { nodes: [node("a", "First"), node("b", "Second")], edges: [] },
-        ["b", "missing", "a"]
+        {
+          nodes: [node("a", "First"), node("b", "Second")],
+          edges: [{ id: "a->b", source: "a", target: "b" }],
+        },
+        ["b", "missing", "a"],
+        emptyExtensionCatalog
       )
     ).toEqual([
-      { id: "a", label: "First" },
-      { id: "b", label: "Second" },
+      { id: "a", label: "First", stepNumber: 1 },
+      { id: "b", label: "Second", stepNumber: 2 },
     ]);
   });
+});
+
+describe("postAgentChat attached steps", () => {
+  // The seeded workflow stores its nodes in an order that differs from run
+  // order, so a number taken from anything but the outline over the host's
+  // catalog would name the wrong step.
+  it.effect("hands the runner each attached step with its outline number", () =>
+    Effect.gen(function* () {
+      let received: readonly WfGraphAgentSelectedNode[] = [];
+      const runner: AgentRunner = {
+        metadata: { provider: "test", model: "custom-runner" },
+        run: (input) => {
+          received = input.selectedNodes;
+          return Effect.succeed(Stream.succeed(reply));
+        },
+      };
+      const { nodes, edges } = heroGraph();
+
+      yield* postAgentChat({
+        workflowId: "workflow-1",
+        selectedNodeIds: ["Wait for deposit or reschedule", "lifecycle"],
+        auth: { allows: async () => true },
+        messages: [{ role: "user", content: "What does this wait for?" }],
+        graph: createSerializedWorkflowGraph({ nodes, edges }),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeAgentConfigLayer(
+              readAgentSettings(
+                wfOpenAi({
+                  apiKey: "test-key",
+                  model: "unused-built-in-model",
+                  reasoningEffort: "high",
+                })
+              )
+            ),
+            makeAgentRunnerLayer(runner),
+            stubExtensions({ catalog: outlineTestCatalog }),
+            stubIntegrationRepo({ listIdentities: Effect.succeed([]) }),
+            makeRecordingLogger().layer
+          )
+        ),
+        Effect.flatMap(Stream.runCollect)
+      );
+
+      expect(received).toEqual([
+        { id: "lifecycle", label: "Appointment booked" },
+        {
+          id: "Wait for deposit or reschedule",
+          label: "Wait for deposit or reschedule",
+          stepNumber: 7,
+        },
+      ]);
+    })
+  );
 });
 
 describe("agentTurnStatus", () => {

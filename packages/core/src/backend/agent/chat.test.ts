@@ -645,14 +645,17 @@ describe("streamAgentTurn", () => {
 });
 
 describe("agentPrompt", () => {
-  it("names the canvas selection under the newest message alone", () => {
+  it("names the attached steps under the newest message alone", () => {
     const prompt = agentPrompt({
       messages: [
         { role: "user", content: "Add a Slack step" },
         { role: "assistant", content: "Added it." },
         { role: "user", content: "Rename this step" },
       ],
-      selectedNodes: [{ id: "n3", label: 'Notify "ops"' }],
+      selectedNodes: [
+        { id: "n3", label: 'Notify "ops"', stepNumber: 7 },
+        { id: "lifecycle", label: "Appointment created" },
+      ],
     });
 
     const texts = prompt.content.map((message) =>
@@ -664,7 +667,7 @@ describe("agentPrompt", () => {
     );
     expect(texts[1]).toEqual(["Add a Slack step"]);
     expect(texts[3]).toEqual([
-      'Rename this step\n\n[Selected on the canvas when this was sent: "Notify \\"ops\\"" (id n3). "This", "this step" or "these" refers to them.]',
+      'Rename this step\n\n[The person attached these steps to this message: step 7 "Notify \\"ops\\"" (id n3), "Appointment created" (id lifecycle). "This", "this step" or "these" refers to them.]',
     ]);
   });
 });
