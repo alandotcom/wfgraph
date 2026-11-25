@@ -49,6 +49,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
+import { Kbd } from "#src/components/ui/kbd";
 import { Separator } from "#src/components/ui/separator";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
 import { CommandPalette } from "#src/components/workflow/command-palette";
@@ -191,12 +192,9 @@ export function CommandPaletteTrigger() {
       <span className="truncate">Search commands or add a step</span>
       {/* Hidden from the name: `aria-keyshortcuts` above already says this, and
           in the accessible name it read as part of what the button is called. */}
-      <kbd
-        aria-hidden="true"
-        className="ml-auto shrink-0 rounded-sm bg-muted-foreground/10 px-1 font-sans text-[0.625rem]"
-      >
+      <Kbd aria-hidden="true" className="ml-auto">
         {shortcuts.palette}
-      </kbd>
+      </Kbd>
     </Button>
   );
 }

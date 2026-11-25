@@ -207,7 +207,7 @@ Both families are self-hosted through Fontsource variable packages, imported in 
 - **Label** (500, 0.875rem, 1.25): Buttons, form labels, tabs, menu items.
 - **Body** (400, 0.875rem, 1.5): Descriptions, settings prose, run detail text. `text-base` (1rem) only on mobile inputs to prevent iOS zoom.
 - **Mono** (400, 0.8125rem, 1.5): Template expressions, cron strings, JSON output, execution logs.
-- **Caption** (400, 0.75rem, 1.35): Canvas edge labels, node status chips, handle labels, and secondary run metadata. The floor of the scale. Nothing renders below it; the 10px and 11px values that used to sit here were arbitrary rather than a step.
+- **Caption** (400, 0.75rem, 1.35): Canvas edge labels, node status chips, handle labels, and secondary run metadata. The floor of the scale. Nothing renders below it, and every shortcut hint is the `Kbd` keycap at this size, with a hairline border on Graphite Wash; the 10px and 11px values that used to sit here were arbitrary rather than a step.
 
 ### Named Rules
 

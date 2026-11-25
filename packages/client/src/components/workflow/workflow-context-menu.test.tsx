@@ -113,6 +113,18 @@ describe("WorkflowContextMenu", () => {
     expect(store.get(nodesAtom)[0]?.data.enabled).toBe(false);
   });
 
+  it("dims a disabled row's label and leaves its reason at full contrast", () => {
+    const { getByRole } = renderNodeMenu(actionNode());
+
+    const row = getByRole("button", { name: /^Group/ });
+    expect(row).toHaveProperty("disabled", true);
+    expect(row.className).not.toContain("opacity-50");
+    const label = within(row).getByText("Group");
+    const reason = within(row).getByText(/two steps/);
+    expect(label.className).toContain("opacity-50");
+    expect(reason.className).not.toContain("opacity-50");
+  });
+
   it("restores the default on state instead of writing enabled: true", () => {
     const { getByRole, store } = renderNodeMenu(actionNode(false));
 

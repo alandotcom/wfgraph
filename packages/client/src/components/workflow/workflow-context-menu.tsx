@@ -17,6 +17,7 @@ import { useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { Kbd } from "#src/components/ui/kbd";
 import { useDomEvent } from "#src/hooks/effects";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
@@ -511,19 +512,23 @@ function MenuItem({
         "hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
         variant === "destructive" &&
           "text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive",
-        disabled && "pointer-events-none opacity-50"
+        disabled && "pointer-events-none"
       )}
       disabled={disabled}
       onClick={onClick}
       title={hint}
       type="button"
     >
-      <span className="shrink-0">{icon}</span>
+      {/* A disabled row dims its icon and label and leaves the hint at full
+          muted contrast, since the hint is the reason the row is disabled. */}
+      <span className={cn("shrink-0", disabled && "opacity-50")}>{icon}</span>
       {/* The hint wraps rather than widening the menu, and a step named longer
           than the row truncates, since the row is what says which step this is
           and the name is repeated in the properties panel. */}
       <span className="flex min-w-0 flex-col items-start text-left">
-        <span className="w-full truncate">{label}</span>
+        <span className={cn("w-full truncate", disabled && "opacity-50")}>
+          {label}
+        </span>
         {hint ? (
           <span className="text-muted-foreground text-xs leading-tight">
             {hint}
@@ -533,8 +538,8 @@ function MenuItem({
       {/* A disabled row drops its shortcut: the key does nothing there, and the
           space it held is what the hint wraps into. */}
       {shortcut && !disabled ? (
-        <span className="ml-auto shrink-0 pl-4 text-muted-foreground text-xs tracking-widest">
-          {shortcut}
+        <span className="ml-auto shrink-0 pl-4">
+          <Kbd>{shortcut}</Kbd>
         </span>
       ) : null}
     </button>
