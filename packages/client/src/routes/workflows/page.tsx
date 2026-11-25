@@ -4,7 +4,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import {
+  getRouteApi,
+  Link,
+  useMatchRoute,
+  useNavigate,
+} from "@tanstack/react-router";
 import { Circle, Copy, MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -52,6 +57,8 @@ import { RUN_POLL_MS } from "#src/components/workflow/use-workflow-runs";
 import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
 import {
   filterRuns,
+  runFiltersFromSearch,
+  runFilterToSearch,
   toExecutionsQueryInput,
   uniqueNonEmpty,
   type RunFilter,
@@ -87,6 +94,8 @@ type ConfirmDeleteState = {
 
 // Above this many workflows, the delete dialog demands the count be typed back.
 const logger = getClientLogger("workflows");
+
+const workflowsRouteApi = getRouteApi("/");
 
 const DELETE_CHALLENGE_THRESHOLD = 3;
 
@@ -228,8 +237,38 @@ export default function WorkflowsPage() {
   const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<Set<string>>(
     new Set()
   );
-  const [runFilters, setRunFilters] = useState<RunFilter[]>([]);
-  const [runQuery, setRunQuery] = useState("");
+  // The All Runs filters and search text are written to the route search, so
+  // a reload, a shared link, and Back from a run keep them. Each change
+  // replaces the history entry, so Back leaves the page instead of undoing a
+  // filter. The page reads the URL once and then keeps its own copy, because
+  // the field is typed into and a value that waits for the router would move
+  // the caret. The search control can change the filters and the text in one
+  // handler, so the ref holds the latest pair for the second write to build on.
+  const routeSearch = workflowsRouteApi.useSearch();
+  const [runFilters, setRunFiltersState] = useState<RunFilter[]>(() =>
+    runFiltersFromSearch(routeSearch)
+  );
+  const [runQuery, setRunQueryState] = useState(routeSearch.q ?? "");
+  const runSearchRef = useRef({ filters: runFilters, q: runQuery });
+  const writeRunSearch = (patch: { filters?: RunFilter[]; q?: string }) => {
+    const next = { ...runSearchRef.current, ...patch };
+    runSearchRef.current = next;
+    setRunFiltersState(next.filters);
+    setRunQueryState(next.q);
+    void navigate({
+      to: "/",
+      replace: true,
+      search: omitUndefined({
+        filters:
+          next.filters.length > 0
+            ? next.filters.map(runFilterToSearch)
+            : undefined,
+        q: next.q === "" ? undefined : next.q,
+      }),
+    });
+  };
+  const setRunFilters = (filters: RunFilter[]) => writeRunSearch({ filters });
+  const setRunQuery = (q: string) => writeRunSearch({ q });
   const [showSelectedRunsOnly, setShowSelectedRunsOnly] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts and re-suggests a name. It stays

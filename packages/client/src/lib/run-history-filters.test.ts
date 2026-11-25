@@ -4,6 +4,9 @@ import {
   addRunFilter,
   autofillRemainder,
   createRunFilter,
+  runFiltersFromSearch,
+  runFilterToSearch,
+  validateWorkflowsSearch,
   DEFAULT_STATUS_OPTIONS,
   filterRuns,
   formatRunFilterValue,
@@ -344,5 +347,74 @@ describe("uniqueNonEmpty", () => {
       "alpha",
       "zebra",
     ]);
+  });
+});
+
+describe("validateWorkflowsSearch", () => {
+  // A reload or a shared link carries the filters in the URL, and the id each
+  // one had is derived again from its field, operator and value.
+  it("reads the filters and search text a URL holds", () => {
+    const search = validateWorkflowsSearch({
+      filters: [
+        {
+          field: "status",
+          operator: "is",
+          value: "failed",
+          valueLabel: "Failed",
+        },
+      ],
+      q: "reminder",
+    });
+
+    expect(search).toEqual({
+      filters: [
+        {
+          field: "status",
+          operator: "is",
+          value: "failed",
+          valueLabel: "Failed",
+        },
+      ],
+      q: "reminder",
+    });
+    expect(runFiltersFromSearch(search)).toEqual([
+      createRunFilter({
+        field: "status",
+        operator: "is",
+        value: "failed",
+        valueLabel: "Failed",
+      }),
+    ]);
+  });
+
+  it("drops an entry that is not a filter this list offers", () => {
+    expect(
+      validateWorkflowsSearch({
+        filters: [
+          { field: "colour", operator: "is", value: "red" },
+          { field: "status", operator: "contains", value: "fail" },
+          { field: "mode", operator: "is", value: "" },
+          "status:is:failed",
+          { field: "mode", operator: "is", value: "test" },
+          { field: "mode", operator: "is", value: "test" },
+        ],
+      })
+    ).toEqual({ filters: [{ field: "mode", operator: "is", value: "test" }] });
+    expect(validateWorkflowsSearch({ filters: "status" })).toEqual({});
+  });
+
+  // The router parses a value that looks like JSON, so "?q=7" arrives as 7.
+  it("keeps search text the router parsed as a number", () => {
+    expect(validateWorkflowsSearch({ q: 7 })).toEqual({ q: "7" });
+  });
+});
+
+describe("runFilterToSearch", () => {
+  it("writes a filter without its derived id", () => {
+    expect(
+      runFilterToSearch(
+        createRunFilter({ field: "entity", operator: "contains", value: "pat" })
+      )
+    ).toEqual({ field: "entity", operator: "contains", value: "pat" });
   });
 });

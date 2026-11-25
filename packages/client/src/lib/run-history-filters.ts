@@ -14,6 +14,8 @@ import {
   type WorkflowVersionKind,
 } from "@wfgraph/shared/graph/version-kinds";
 import { runGraphLabel } from "#src/lib/workflow-run-labels";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { isNotNil } from "es-toolkit/predicate";
 
 /**
  * The statuses this list asks for when nothing is ticked.
@@ -138,6 +140,11 @@ export function operatorsForField(
   return OPERATORS_BY_FIELD[field];
 }
 
+/**
+ * A filter with its id. The id is the field, operator and value together,
+ * which `addRunFilter` already keeps unique, so a filter read back from the
+ * URL gets the same id it had when it was added.
+ */
 export function createRunFilter(input: {
   field: RunFilterField;
   operator: RunFilterOperator;
@@ -145,12 +152,104 @@ export function createRunFilter(input: {
   valueLabel?: string | undefined;
 }): RunFilter {
   return {
-    id: crypto.randomUUID(),
+    id: `${input.field}:${input.operator}:${input.value}`,
     field: input.field,
     operator: input.operator,
     value: input.value,
     valueLabel: input.valueLabel,
   };
+}
+
+/** A run filter as the workflows page's URL holds it, without its derived id. */
+export type RunFilterSearch = Omit<RunFilter, "id">;
+
+/**
+ * The workflows page's route search: the All Runs filters and its search text.
+ * Holding them in the URL keeps them across a reload, a shared link, and Back
+ * from a run the list opened.
+ */
+export type WorkflowsRouteSearch = {
+  filters?: RunFilterSearch[] | undefined;
+  q?: string | undefined;
+};
+
+const RUN_FILTER_FIELD_SET: ReadonlySet<string> = new Set(RUN_FILTER_FIELDS);
+
+function isRunFilterField(value: unknown): value is RunFilterField {
+  return typeof value === "string" && RUN_FILTER_FIELD_SET.has(value);
+}
+
+/** One URL entry as a filter, or null when the entry is not one. */
+function runFilterFromSearch(entry: unknown): RunFilter | null {
+  if (typeof entry !== "object" || entry === null) {
+    return null;
+  }
+  const field: unknown = Reflect.get(entry, "field");
+  const operator: unknown = Reflect.get(entry, "operator");
+  const value: unknown = Reflect.get(entry, "value");
+  const valueLabel: unknown = Reflect.get(entry, "valueLabel");
+  if (!isRunFilterField(field) || typeof value !== "string" || isBlank(value)) {
+    return null;
+  }
+  const allowed = operatorsForField(field).find((item) => item === operator);
+  if (allowed === undefined) {
+    return null;
+  }
+  return createRunFilter({
+    field,
+    operator: allowed,
+    value,
+    valueLabel: typeof valueLabel === "string" ? valueLabel : undefined,
+  });
+}
+
+/**
+ * The filters a workflows page URL names, each with its derived id. An entry
+ * that is not a filter this list offers is dropped, and so is a duplicate.
+ */
+export function runFiltersFromSearch(
+  search: WorkflowsRouteSearch
+): RunFilter[] {
+  return (search.filters ?? [])
+    .map(runFilterFromSearch)
+    .filter(isNotNil)
+    .reduce<RunFilter[]>((filters, next) => addRunFilter(filters, next), []);
+}
+
+/**
+ * The route search for the workflows page, read from whatever the URL holds.
+ * The router parses a value that looks like JSON, so search text such as "7"
+ * arrives as a number and is turned back into text.
+ */
+export function validateWorkflowsSearch(search: unknown): WorkflowsRouteSearch {
+  if (typeof search !== "object" || search === null) {
+    return {};
+  }
+  const rawFilters: unknown = Reflect.get(search, "filters");
+  const rawQuery: unknown = Reflect.get(search, "q");
+  const filters = Array.isArray(rawFilters)
+    ? runFiltersFromSearch({ filters: rawFilters }).map(runFilterToSearch)
+    : [];
+  const query =
+    typeof rawQuery === "string" ||
+    typeof rawQuery === "number" ||
+    typeof rawQuery === "boolean"
+      ? String(rawQuery)
+      : "";
+  return omitUndefined({
+    filters: filters.length > 0 ? filters : undefined,
+    q: query === "" ? undefined : query,
+  });
+}
+
+/** A filter as the URL holds it: everything but the id, which is derived. */
+export function runFilterToSearch(filter: RunFilter): RunFilterSearch {
+  return omitUndefined({
+    field: filter.field,
+    operator: filter.operator,
+    value: filter.value,
+    valueLabel: filter.valueLabel,
+  });
 }
 
 export function addRunFilter(

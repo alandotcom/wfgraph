@@ -22,6 +22,7 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { orpcQuery } from "#src/lib/rpc-query";
 import WorkflowsPage from "#src/routes/workflows/page";
+import { validateWorkflowsSearch } from "#src/lib/run-history-filters";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -70,7 +71,7 @@ function stubFailingDashboardRpc() {
   );
 }
 
-async function renderWorkflowsPage() {
+async function renderWorkflowsPage(initialEntry = "/") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -78,6 +79,7 @@ async function renderWorkflowsPage() {
   const pageRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/",
+    validateSearch: validateWorkflowsSearch,
     component: WorkflowsPage,
   });
   // The editor route renders a marker, so a test can see where a click went.
@@ -88,7 +90,7 @@ async function renderWorkflowsPage() {
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([pageRoute, editorRoute]),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   const view = render(
@@ -393,5 +395,70 @@ describe("WorkflowsPage structure and states", () => {
     expect(view.getByRole("button", { name: "Delete" })).toBeTruthy();
     // The bulk actions take the workflow panel's Refresh slot; All Runs keeps its own.
     expect(view.getAllByRole("button", { name: "Refresh" })).toHaveLength(1);
+  });
+});
+
+describe("WorkflowsPage All Runs filters in the URL", () => {
+  beforeEach(() => {
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetAuthorizationGrantsForTests();
+  });
+
+  // A reload, a shared link, and Back from a run all arrive with the URL the
+  // list wrote, so the filters it names are on screen again.
+  it("restores the filters and search text the URL names", async () => {
+    stubDashboardRpc(null);
+    const filters = encodeURIComponent(
+      JSON.stringify([
+        {
+          field: "status",
+          operator: "is",
+          value: "failed",
+          valueLabel: "Failed",
+        },
+      ])
+    );
+    const { view } = await renderWorkflowsPage(
+      `/?filters=${filters}&q=reminder`
+    );
+
+    expect(
+      await view.findByRole("button", { name: "Remove Status is Failed" })
+    ).toBeTruthy();
+    expect(view.getByDisplayValue("reminder")).toBeTruthy();
+  });
+
+  it("writes a removed filter out of the URL, replacing the entry", async () => {
+    stubDashboardRpc(null);
+    const filters = encodeURIComponent(
+      JSON.stringify([
+        {
+          field: "status",
+          operator: "is",
+          value: "failed",
+          valueLabel: "Failed",
+        },
+        { field: "mode", operator: "is", value: "test", valueLabel: "Test" },
+      ])
+    );
+    const { view, router } = await renderWorkflowsPage(`/?filters=${filters}`);
+    const historyLength = router.history.length;
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Remove Status is Failed" })
+    );
+
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        filters: [
+          { field: "mode", operator: "is", value: "test", valueLabel: "Test" },
+        ],
+      })
+    );
+    expect(router.history.length).toBe(historyLength);
   });
 });

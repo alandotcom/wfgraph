@@ -29,6 +29,7 @@ import {
   workflowNotFoundAtom,
 } from "#src/lib/workflow-save-store";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
+import { validateWorkflowsSearch } from "#src/lib/run-history-filters";
 import {
   classifyWorkflowLoadFailure,
   authorizedWorkflowSearch,
@@ -96,6 +97,7 @@ const rootRoute = createRootRoute({
 const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
+  validateSearch: validateWorkflowsSearch,
   component: WorkflowsPage,
 });
 
