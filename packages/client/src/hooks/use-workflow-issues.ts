@@ -29,6 +29,7 @@ import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { expandGroupAtom } from "#src/lib/collapsed-groups";
 import {
   workspaceAddressFromSearch,
+  workspaceAddressId,
   workspaceRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
@@ -43,6 +44,7 @@ import {
 } from "#src/lib/workflow-issues-store";
 import { useProviderFieldIssues } from "#src/hooks/use-provider-field-issues";
 import {
+  activeWorkspaceAddressAtom,
   rememberedRouteSearchesAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
@@ -178,7 +180,15 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
         address,
         selection: { nodeIds: [nodeId], edgeIds: [] },
       });
-      void navigate({ search, replace: true });
+      // Navigate only from another workspace. Asking the router for the
+      // address the editor already shows applies the route again, and that
+      // clears the selection this call has just made.
+      if (
+        workspaceAddressId(store.get(activeWorkspaceAddressAtom)) !==
+        workspaceAddressId(address)
+      ) {
+        void navigate({ search, replace: true });
+      }
       // A phone's sheet takes focus to its title, so only a named field asks
       // for more there.
       const fieldTarget = node ? issueFocusTarget(node, fieldKey) : undefined;
