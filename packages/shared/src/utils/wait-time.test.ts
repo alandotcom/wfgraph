@@ -119,6 +119,21 @@ describe("parseDurationMs", () => {
     expect(parseDurationMs("P")).toBeNull();
     expect(parseDurationMs("PT")).toBeNull();
   });
+
+  it("reads duration tokens with or without spaces between them", () => {
+    expect(parseDurationMs("1h 30m")).toBe(5_400_000);
+    expect(parseDurationMs("1h30m")).toBe(5_400_000);
+    expect(parseDurationMs("250ms")).toBe(250);
+    expect(parseDurationMs("90")).toBe(90);
+  });
+
+  it("refuses a value holding any text besides duration tokens", () => {
+    expect(parseDurationMs("abc")).toBeNull();
+    expect(parseDurationMs("5sabc")).toBeNull();
+    expect(parseDurationMs("banana5s")).toBeNull();
+    expect(parseDurationMs("10s5sabc")).toBeNull();
+    expect(parseDurationMs("1h, 30m")).toBeNull();
+  });
 });
 
 describe("resolveWaitTarget", () => {

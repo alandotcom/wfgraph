@@ -6,6 +6,9 @@ import {
 } from "./wait-allowed-hours";
 
 const DURATION_TOKEN_PATTERN = /(-?\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)/gi;
+/** A value made of duration tokens alone, such as `1h 30m` or `90s`. */
+const DURATION_TOKENS_ONLY_PATTERN =
+  /^(?:-?\d+(?:\.\d+)?\s*(?:ms|s|m|h|d|w)\s*)+$/i;
 const ISO_OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/i;
 const NUMERIC_VALUE_PATTERN = /^-?\d+(?:\.\d+)?$/;
 const DIGITS_ONLY_PATTERN = /^\d+$/;
@@ -74,6 +77,12 @@ export function parseDurationMs(value: unknown): number | null {
   const isoDuration = Duration.fromIso(trimmed);
   if (Option.isSome(isoDuration)) {
     return Duration.toMillis(isoDuration.value);
+  }
+
+  // Text around or between the tokens makes the whole value unreadable, so
+  // `5sabc` is refused rather than read as five seconds.
+  if (!DURATION_TOKENS_ONLY_PATTERN.test(trimmed)) {
+    return null;
   }
 
   let total = 0;
