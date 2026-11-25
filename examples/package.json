@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "sh -c 'export NODE_ENV=development HOST=127.0.0.1 LOG_FORMAT=pretty; exec tsx watch --env-file-if-exists=../.env --env-file-if-exists=../.env.local app.ts'",
-    "start": "NODE_ENV=production tsx --env-file-if-exists=../.env --env-file-if-exists=../.env.local app.ts"
+    "start": "NODE_ENV=production tsx --tsconfig tsconfig.start.json --env-file-if-exists=../.env --env-file-if-exists=../.env.local app.ts"
   },
   "dependencies": {
     "@wfgraph/client": "workspace:*",
