@@ -38,14 +38,18 @@ const workflowRouteApi = getRouteApi("/workflows/$workflowId");
  * The tab title names the workflow and the workspace view, so Back and the
  * browser's history menu tell Draft and Runs apart.
  */
-function useEditorDocumentTitle(workflowNotFound: boolean): void {
+function useEditorDocumentTitle(
+  unavailable: "not-found" | "load-failed" | null
+): void {
   const workflowName = useAtomValue(currentWorkflowNameAtom);
   const view = workflowRouteApi.useSearch({ select: (search) => search.view });
   const name = isBlank(workflowName) ? "Untitled workflow" : workflowName;
   useDocumentTitle(
-    workflowNotFound
+    unavailable === "not-found"
       ? "Workflow not found"
-      : `${name} · ${WORKSPACE_LABELS[view ?? "draft"]}`
+      : unavailable === "load-failed"
+        ? "Couldn't load workflow"
+        : `${name} · ${WORKSPACE_LABELS[view ?? "draft"]}`
   );
 }
 
@@ -70,6 +74,29 @@ function WorkflowNotFound() {
   );
 }
 
+/**
+ * The page for a workflow the server did not return. Like the not-found page
+ * it draws none of the editor, whose title, outline, details and status strip
+ * would describe a workflow that never loaded. Try again reloads the page,
+ * which runs the route's load again.
+ */
+function WorkflowLoadFailure({ message }: { message: string }) {
+  return (
+    <main className="flex h-dvh w-full items-center justify-center bg-background p-4">
+      <div className="max-w-sm text-center">
+        <h1 className="font-semibold text-base">Couldn't load workflow</h1>
+        <p className="mt-1 text-muted-foreground text-sm">{message}</p>
+        <div className="mt-4 flex justify-center gap-2">
+          <Button onClick={() => window.location.reload()}>Try again</Button>
+          <Button render={<Link to="/" />} variant="outline">
+            Go to Workflows
+          </Button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
 const WorkflowEditor = () => {
   const endWorkflowEditorLifetime = useSetAtom(endWorkflowEditorLifetimeAtom);
   useUnmountCleanup(() => endWorkflowEditorLifetime());
@@ -77,10 +104,15 @@ const WorkflowEditor = () => {
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
-  useEditorDocumentTitle(workflowNotFound);
+  useEditorDocumentTitle(
+    workflowNotFound ? "not-found" : workflowLoadError ? "load-failed" : null
+  );
 
   if (workflowNotFound) {
     return <WorkflowNotFound />;
+  }
+  if (workflowLoadError) {
+    return <WorkflowLoadFailure message={workflowLoadError} />;
   }
 
   return (
@@ -99,9 +131,7 @@ const WorkflowEditor = () => {
           The frame carries the shadow outside that clip and the same radius, so
           the shell fills it exactly and the two curves are one curve. */}
       <div className="size-full bg-background md:rounded-xl md:shadow-xs">
-        {/* The editor shell: the toolbar over the canvas column. `relative`
-            because the load failure overlay measures itself against the
-            whole editor.
+        {/* The editor shell: the toolbar over the canvas column.
 
             Three things hold the contents inside the corner, and all three are
             needed. The radius and `overflow-clip` clip an ordinary child.
@@ -136,22 +166,6 @@ const WorkflowEditor = () => {
           {/* Open run → one evidence status per node, which step cards and
               Group cards both read. */}
           <RunStatusProjection />
-
-          {workflowLoadError && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center">
-              <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
-                <h1 className="mb-2 font-semibold text-2xl">
-                  Couldn't load workflow
-                </h1>
-                <p className="mb-6 text-muted-foreground">
-                  {workflowLoadError}
-                </p>
-                <Button onClick={() => window.location.reload()}>
-                  Try again
-                </Button>
-              </div>
-            </div>
-          )}
 
           {currentWorkflowId && (
             <WorkflowDraftSync workflowId={currentWorkflowId} />
