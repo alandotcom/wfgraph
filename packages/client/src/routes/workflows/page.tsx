@@ -43,7 +43,7 @@ import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-d
 import { copyWorkflowId } from "#src/components/workflow/workflow-toolbar-chrome";
 import { useDocumentTitle } from "#src/hooks/effects";
 import { useListRowKeys } from "#src/hooks/use-list-row-keys";
-import { WorkflowsPagePalette } from "#src/components/workflows/workflows-page-palette";
+import { normalizeSearchText } from "#src/lib/palette-search";
 import { opensRow } from "#src/lib/row-click";
 import { RunRetentionNote } from "#src/components/run-retention-note";
 import { RunHistorySearch } from "#src/components/workflows/run-history-search";
@@ -215,7 +215,7 @@ function WorkflowStateLabel({
  * A workflow with neither shows nothing. With `onShow`, each count is a
  * button that shows those runs in All Runs. The row's own keys open the
  * workflow, so the buttons are no Tab stop; the keyboard reaches the same
- * command through the row's actions menu (Shift+F10) and the page's palette.
+ * command through the row's actions menu (Shift+F10).
  */
 function WorkflowRunMarks({
   workflow,
@@ -392,6 +392,17 @@ export default function WorkflowsPage() {
     () => workflows.filter((workflow) => workflow.name !== "__current__"),
     [workflows]
   );
+  // The header's search field narrows All Workflows by name, ignoring case
+  // and accents.
+  const [workflowQuery, setWorkflowQuery] = useState("");
+  const shownWorkflowRows = useMemo(() => {
+    const needle = normalizeSearchText(workflowQuery);
+    return needle === ""
+      ? workflowRows
+      : workflowRows.filter((workflow) =>
+          normalizeSearchText(workflow.name).includes(needle)
+        );
+  }, [workflowQuery, workflowRows]);
 
   const selectedIds = useMemo(
     () => Array.from(selectedWorkflowIds),
@@ -407,8 +418,8 @@ export default function WorkflowsPage() {
   // fetched list, so a workflow that disappears server-side stops counting
   // without anyone writing to state during a fetch.
   const allSelected =
-    workflowRows.length > 0 &&
-    workflowRows.every((workflow) => selectedWorkflowIds.has(workflow.id));
+    shownWorkflowRows.length > 0 &&
+    shownWorkflowRows.every((workflow) => selectedWorkflowIds.has(workflow.id));
 
   const hasSelectedRunsFilter =
     showSelectedRunsOnly && selectedActionableIds.length > 0;
@@ -534,7 +545,7 @@ export default function WorkflowsPage() {
     }
 
     setSelectedWorkflowIds(
-      new Set(workflowRows.map((workflow) => workflow.id))
+      new Set(shownWorkflowRows.map((workflow) => workflow.id))
     );
   };
 
@@ -679,18 +690,18 @@ export default function WorkflowsPage() {
   const workflowRowsRef = useRef<HTMLTableSectionElement>(null);
   const workflowKeysHintId = useId();
   const workflowRowKeys = useListRowKeys({
-    count: workflowRows.length,
+    count: shownWorkflowRows.length,
     container: workflowRowsRef,
     actions: {
       open: (index) => {
-        const workflow = workflowRows[index];
+        const workflow = shownWorkflowRows[index];
         if (workflow && canOpenWorkflow) {
           openWorkflow(workflow.id);
         }
       },
       toggle: canBulkLifecycle
         ? (index) => {
-            const workflow = workflowRows[index];
+            const workflow = shownWorkflowRows[index];
             if (workflow) {
               toggleSelectOne(
                 workflow.id,
@@ -721,7 +732,7 @@ export default function WorkflowsPage() {
       );
     }
 
-    if (workflowsQuery.isPending && workflowRows.length === 0) {
+    if (workflowsQuery.isPending && shownWorkflowRows.length === 0) {
       return (
         <div className="p-6 text-muted-foreground text-sm">
           Loading workflows...
@@ -729,10 +740,12 @@ export default function WorkflowsPage() {
       );
     }
 
-    if (workflowRows.length === 0) {
+    if (shownWorkflowRows.length === 0) {
       return (
         <div className="p-6 text-muted-foreground text-sm">
-          No workflows found.
+          {workflowRows.length === 0
+            ? "No workflows found."
+            : "No workflow name matches the search."}
         </div>
       );
     }
@@ -770,7 +783,7 @@ export default function WorkflowsPage() {
             </tr>
           </thead>
           <tbody ref={workflowRowsRef}>
-            {workflowRows.map((workflow, index) => {
+            {shownWorkflowRows.map((workflow, index) => {
               const isSelected = selectedWorkflowIds.has(workflow.id);
               const isOpening = openingWorkflowId === workflow.id;
               const isTestMode = workflow.mode === "test";
@@ -973,11 +986,13 @@ export default function WorkflowsPage() {
         <header className="flex min-h-8 flex-wrap items-center justify-between gap-3">
           <h1 className="font-semibold text-base text-foreground">Workflows</h1>
           <div className="flex flex-wrap items-center gap-2">
-            <WorkflowsPagePalette
-              onNewWorkflow={canCreate ? openCreateDialog : undefined}
-              onOpenWorkflow={canOpenWorkflow ? openWorkflow : undefined}
-              onShowRuns={canOpenGlobalRuns ? showWorkflowRuns : undefined}
-              workflows={workflowRows}
+            <Input
+              aria-label="Search workflows"
+              className="w-64"
+              onChange={(event) => setWorkflowQuery(event.target.value)}
+              placeholder="Search workflows"
+              type="search"
+              value={workflowQuery}
             />
             {canCreate ? (
               <Button onClick={openCreateDialog} type="button">
@@ -1005,7 +1020,7 @@ export default function WorkflowsPage() {
                   <span className="ml-1.5 font-normal text-muted-foreground tabular-nums">
                     {selectedCount > 0
                       ? `${selectedCount} selected`
-                      : workflowRows.length}
+                      : shownWorkflowRows.length}
                   </span>
                 </h2>
                 {canBulkLifecycle && selectedCount > 0 ? (

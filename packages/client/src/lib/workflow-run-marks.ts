@@ -1,6 +1,6 @@
 /**
  * The run counts a Workflows row marks, in the words every way into them
- * uses: the mark on the row, the row's actions menu and the page's palette.
+ * uses: the mark on the row and the row's actions menu.
  */
 
 import { compact } from "es-toolkit/array";

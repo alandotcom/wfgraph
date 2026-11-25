@@ -107,7 +107,6 @@ export function shortcutReference(
     {
       title: "Anywhere",
       entries: [
-        { label: "Open the command palette", keys: [keys.palette] },
         { label: "Show keyboard shortcuts", keys: [SHORTCUT_REFERENCE_KEY] },
       ],
     },
@@ -127,6 +126,7 @@ export function shortcutReference(
     {
       title: "Editor",
       entries: [
+        { label: "Open the command palette", keys: [keys.palette] },
         { label: "Run draft", keys: [keys.run] },
         { label: "Undo", keys: [keys.undo] },
         { label: "Redo", keys: [keys.redo] },

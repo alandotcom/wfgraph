@@ -264,7 +264,7 @@ describe("WorkflowsPage workflow list", () => {
   });
 
   // The marks are no Tab stop, so the keyboard reaches the same command from
-  // the focused row's actions menu and from the page's palette.
+  // the focused row's actions menu.
   it("shows a row's failed runs from its actions menu, opened with Shift+F10", async () => {
     stubDashboardRpc(null, [
       summary("workflow_1", "Reminders", "version_1", {
@@ -291,44 +291,6 @@ describe("WorkflowsPage workflow list", () => {
             valueLabel: "Reminders",
           },
           { field: "status", operator: "is", value: "waiting" },
-        ],
-      })
-    );
-  });
-
-  it("shows a workflow's failed runs from the page's palette", async () => {
-    stubDashboardRpc(null, [
-      summary("workflow_1", "Reminders", "version_1", {
-        runCounts: { failedRecently: 2, waiting: 0 },
-      }),
-      summary("workflow_2", "Quiet", "version_2"),
-    ]);
-    const { view, router } = await renderWorkflowsPage();
-    await view.findByText("Reminders");
-
-    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
-    const input = await view.findByRole("combobox", {
-      name: "Search workflows and commands",
-    });
-    // A workflow with no failed or waiting runs offers no run command.
-    expect(view.queryByRole("option", { name: /runs of Quiet/ })).toBeNull();
-    fireEvent.change(input, { target: { value: "failed" } });
-    fireEvent.click(
-      await view.findByRole("option", {
-        name: /^Show failed runs of Reminders/,
-      })
-    );
-
-    await waitFor(() =>
-      expect(router.state.location.search).toEqual({
-        filters: [
-          {
-            field: "workflow",
-            operator: "is",
-            value: "workflow_1",
-            valueLabel: "Reminders",
-          },
-          { field: "status", operator: "is", value: "failed" },
         ],
       })
     );
@@ -493,31 +455,35 @@ describe("WorkflowsPage structure and states", () => {
     );
   });
 
-  it("opens a palette with the chord that opens a workflow by name", async () => {
+  // The header's search field narrows the list. There is no palette on this
+  // page, so the chord opens nothing.
+  it("narrows All Workflows to the names the search field holds", async () => {
     stubDashboardRpc(null, [
       workflow("workflow_1", "Welcome email"),
       workflow("workflow_2", "Renewal reminder"),
     ]);
-    const { view, router } = await renderWorkflowsPage();
+    const { view } = await renderWorkflowsPage();
     await view.findByText("Renewal reminder");
 
     fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
-    const input = await view.findByRole("combobox", {
-      name: "Search workflows and commands",
-    });
-    expect(view.getByRole("option", { name: "New workflow" })).toBeTruthy();
-    expect(view.getByRole("option", { name: /^Theme: Dark/ })).toBeTruthy();
-    expect(
-      view.getByRole("option", { name: /^Keyboard shortcuts/ })
-    ).toBeTruthy();
+    expect(view.queryByRole("dialog")).toBeNull();
 
-    fireEvent.change(input, { target: { value: "renew" } });
-    fireEvent.click(
-      await view.findByRole("option", { name: "Renewal reminder" })
+    fireEvent.change(
+      view.getByRole("searchbox", { name: "Search workflows" }),
+      {
+        target: { value: "renew" },
+      }
     );
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe("/workflows/workflow_2")
+    expect(view.getByText("Renewal reminder")).toBeTruthy();
+    expect(view.queryByText("Welcome email")).toBeNull();
+
+    fireEvent.change(
+      view.getByRole("searchbox", { name: "Search workflows" }),
+      {
+        target: { value: "nothing like it" },
+      }
     );
+    expect(view.getByText("No workflow name matches the search.")).toBeTruthy();
   });
 
   it("shows the bulk actions only once a workflow is selected", async () => {
