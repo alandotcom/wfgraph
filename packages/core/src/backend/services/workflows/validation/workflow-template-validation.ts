@@ -16,6 +16,7 @@ import {
 } from "@wfgraph/shared/conditions/conditions";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { currentTokenDisplayText } from "@wfgraph/shared/graph/node-display";
 import {
   type ExtensionCatalog,
   findAction,
@@ -240,7 +241,7 @@ export function validateWorkflowTemplates(input: {
         entitySource && reference.sourceType === entitySource.type
           ? referenceFieldForPath(entitySource.stateFields, reference.fieldPath)
           : undefined;
-      const where = `Node "${getNodeLabel(node)}" reads ${reference.displayText}`;
+      const where = `Node "${getNodeLabel(node)}" reads ${currentTokenDisplayText(reference, nodes, catalog)}`;
       if (!entitySource) {
         return {
           valid: false,

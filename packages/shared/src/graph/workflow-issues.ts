@@ -33,6 +33,10 @@ import {
   groupContractViolations,
 } from "#src/graph/group-contract";
 import { isWaitNode, readConfigTrimmedString } from "#src/graph/node-config";
+import {
+  currentTokenDisplayText,
+  getNodeDisplayName,
+} from "#src/graph/node-display";
 import { checkCancelFilters } from "#src/lifecycle/cancel-filters";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -628,7 +632,7 @@ function collectBrokenReferenceIssues(input: {
         fieldKey: ref.field,
         fieldLabel,
         referencedNodeId: ref.nodeId,
-        displayText: ref.displayText,
+        displayText: currentTokenDisplayText(ref, input.nodes, input.catalog),
         message: entityReference
           ? `Node "${nodeLabel}" references unavailable Entity data in ${fieldLabel}`
           : `Node "${nodeLabel}" references missing step in ${fieldLabel}`,
@@ -722,7 +726,9 @@ export function collectReferenceNotUpstreamIssues(input: {
       if (!referenced || readable(referenced)) {
         return [];
       }
-      const referencedLabel = labelOf(referenced);
+      // The message and `displayText` name the step by its current name. The
+      // label saved inside the reference is stale once the step is renamed.
+      const referencedLabel = getNodeDisplayName(input.catalog, referenced);
       const fieldLabel = referenceFieldLabelOf(reference, action);
       return [
         {
@@ -733,12 +739,11 @@ export function collectReferenceNotUpstreamIssues(input: {
           fieldKey: reference.field,
           fieldLabel,
           referencedNodeId: referenced.id,
-          // The step's current name, which the message also uses. The label
-          // saved inside the reference is stale once the step is renamed.
-          displayText: templateTokenDisplayText({
-            nodeLabel: referencedLabel,
-            fieldPath: reference.fieldPath,
-          }),
+          displayText: currentTokenDisplayText(
+            reference,
+            input.nodes,
+            input.catalog
+          ),
           message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${fieldLabel}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Reference only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
         },
       ];
@@ -769,11 +774,14 @@ export function collectReferenceNotUpstreamIssues(input: {
           },
         ];
       }
-      const referencedLabel = labelOf(referenced);
+      const referencedLabel = getNodeDisplayName(input.catalog, referenced);
       return [
         {
           ...base,
-          displayText: `${referencedLabel}.${reference.fieldPath}`,
+          displayText: templateTokenDisplayText({
+            nodeLabel: referencedLabel,
+            fieldPath: reference.fieldPath,
+          }),
           message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${CONDITION_MODEL_FIELD_LABEL}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Test only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
         },
       ];

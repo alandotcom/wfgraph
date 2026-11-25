@@ -554,6 +554,21 @@ describe("validateWorkflowTemplates Entity State", () => {
     expect(errorOf(result)).toContain('Entity "patient" does not declare');
   });
 
+  it("names the tracked Entity by its catalog label in the message", () => {
+    const result = check(
+      [
+        entryNode([CREATED], { eligibility: true }),
+        waitNode({ waitDuration: "{{@$entity:patient|Member.gone}}" }),
+      ],
+      [startedEdge],
+      entityCatalog
+    );
+
+    expect(errorOf(result)).toMatch(
+      /^Node ".*" reads Patient\.gone, which Entity "patient" does not declare\.$/
+    );
+  });
+
   it("ignores Entity references in Wait fields the current mode does not read", () => {
     expect(
       check(
