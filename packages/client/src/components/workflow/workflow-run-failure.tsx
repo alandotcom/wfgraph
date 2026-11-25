@@ -35,11 +35,18 @@ export function RunFailureText({
   error,
   nodeId,
   className,
+  detailClassName = "text-muted-foreground",
 }: {
   error: string;
   nodeId: string | null;
   /** The sentence's text classes, which differ between the band and Focus. */
   className?: string | undefined;
+  /**
+   * The stored error line's color. Muted by default; the failure band sets
+   * it in foreground text, since muted text on the band's red tint measures
+   * under 4.5:1.
+   */
+  detailClassName?: string | undefined;
 }) {
   const catalog = useExtensionCatalog();
   const { push } = useOverlay();
@@ -86,7 +93,7 @@ export function RunFailureText({
     <div className="space-y-1.5">
       <p className={cn("break-words", className)}>{failure.sentence}</p>
       {failure.detail === null ? null : (
-        <p className="break-words font-mono text-muted-foreground text-xs">
+        <p className={cn("break-words font-mono text-xs", detailClassName)}>
           {failure.detail}
         </p>
       )}

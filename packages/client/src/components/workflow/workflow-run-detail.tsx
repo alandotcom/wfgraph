@@ -417,6 +417,7 @@ export function WorkflowRunDetail({
               <div className="mt-1">
                 <RunFailureText
                   className="text-xs"
+                  detailClassName="text-foreground"
                   error={failedLog?.error ?? execution.error ?? ""}
                   nodeId={failedLog?.nodeId ?? null}
                 />
