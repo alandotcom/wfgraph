@@ -599,6 +599,9 @@ function CommandPaletteDialog({
         // itself by default, which leaves ⌘K opening a palette that ignores the
         // next thing typed into it.
         initialFocus={inputRef}
+        // No scrim: the palette acts on the canvas behind it, so the canvas
+        // stays visible while a command is chosen.
+        overlayClassName="bg-transparent"
         showCloseButton={false}
       >
         <DialogTitle className="sr-only">Command palette</DialogTitle>
