@@ -90,7 +90,7 @@ describe("WorkflowVersionUsage", () => {
     const view = renderUsage([publishedUsage({ activeRunCount: 2 })]);
 
     expect(
-      view.getByRole("button", { name: "Migrate active runs" })
+      view.getByRole("button", { name: "Migrate waiting runs" })
     ).toBeDefined();
   });
 
@@ -98,7 +98,7 @@ describe("WorkflowVersionUsage", () => {
     const view = renderUsage([publishedUsage({ activeRunCount: 2 })]);
 
     expect(
-      view.queryByRole("button", { name: "Migrate active runs" })
+      view.queryByRole("button", { name: "Migrate waiting runs" })
     ).toBeNull();
   });
 
@@ -110,7 +110,7 @@ describe("WorkflowVersionUsage", () => {
     const view = renderUsage([publishedUsage({ activeRunCount: 2 })]);
 
     expect(
-      view.queryByRole("button", { name: "Migrate active runs" })
+      view.queryByRole("button", { name: "Migrate waiting runs" })
     ).toBeNull();
   });
 
@@ -123,7 +123,7 @@ describe("WorkflowVersionUsage", () => {
     const view = renderUsage([draftUsage()]);
 
     expect(
-      view.queryByRole("button", { name: "Migrate active runs" })
+      view.queryByRole("button", { name: "Migrate waiting runs" })
     ).toBeNull();
   });
 

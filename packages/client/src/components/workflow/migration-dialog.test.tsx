@@ -147,12 +147,10 @@ describe("MigrationDialog", () => {
     const view = renderDialog();
 
     expect(
-      view.getByRole("dialog", { name: "Migrate active runs" })
+      view.getByRole("dialog", { name: "Migrate waiting runs" })
     ).toBeTruthy();
     await waitFor(() =>
-      expect(
-        view.getByText("Runs parked on a Wait move to version 8.")
-      ).toBeTruthy()
+      expect(view.getByText("Waiting runs move to version 8.")).toBeTruthy()
     );
     expect(view.getByText("Ready to move").nextSibling?.textContent).toBe("2");
     expect(view.getByText("Cannot move").nextSibling?.textContent).toBe("3");
@@ -161,7 +159,7 @@ describe("MigrationDialog", () => {
     ).toBe("4");
     expect(
       view.getByText(
-        "Not parked on a Wait. Try again once the run reaches one."
+        "Not waiting at a Wait. Try again once the run reaches one."
       )
     ).toBeTruthy();
     expect(view.getByText("This run is on a draft.")).toBeTruthy();

@@ -71,7 +71,7 @@ export function WorkflowVersionUsage({ workflowId }: { workflowId: string }) {
               type="button"
               variant="outline"
             >
-              Migrate active runs
+              Migrate waiting runs
             </Button>
           ) : null}
         </div>

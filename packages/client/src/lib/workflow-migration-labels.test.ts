@@ -12,13 +12,13 @@ import {
 describe("migrationRefusalSentence", () => {
   it("names the target version for a Wait the target graph does not have", () => {
     expect(migrationRefusalSentence({ reason: "wait_node_missing" }, 8)).toBe(
-      "The Wait this run is parked on is not in version 8."
+      "The Wait this run is waiting at is not in version 8."
     );
   });
 
   it("tells the reader to ask again once a running run parks", () => {
     expect(migrationRefusalSentence({ reason: "executing" }, 8)).toBe(
-      "Not parked on a Wait. Try again once the run reaches one."
+      "Not waiting at a Wait. Try again once the run reaches one."
     );
   });
 
@@ -38,7 +38,7 @@ describe("migrationRefusalSentence", () => {
         8
       )
     ).toBe(
-      "Version 8 puts the Wait this run is parked on behind the Canceled outlet."
+      "Version 8 puts the Wait this run is waiting at behind the Canceled outlet."
     );
   });
 

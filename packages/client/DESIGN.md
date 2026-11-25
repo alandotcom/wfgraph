@@ -915,8 +915,12 @@ draft**, which asks for confirmation that the published version stays the
 same. The version published now says "v2 is the current version." and offers
 no restore.
 
-The **Migrate active runs** command sits in the **In use** section, because
-that section is where a builder reads how many runs sit on older versions. The
+The **Migrate waiting runs** command sits in the **In use** section, because
+that section is where a builder reads how many runs sit on older versions. A run paused at a Wait is "waiting" wherever a person reads it: the
+Workflows page's count, the run list, the migration and its refusals. "Active
+runs" stays where every run still in progress is counted, running and waiting
+together: the In use counts and the publish review's "1 active run stays on
+v1". The
 toolbar's trailing group holds **Run** and **Publish**, the commands a builder
 uses on every visit, and a Migration is a rare action taken after reading the
 version usage it acts on.

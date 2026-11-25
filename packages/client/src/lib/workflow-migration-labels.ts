@@ -29,9 +29,9 @@ export function migrationRefusalSentence(
     case "draft_run":
       return "This run is on a draft.";
     case "executing":
-      return "Not parked on a Wait. Try again once the run reaches one.";
+      return "Not waiting at a Wait. Try again once the run reaches one.";
     case "wait_node_missing":
-      return `The Wait this run is parked on is not in version ${targetVersionNumber}.`;
+      return `The Wait this run is waiting at is not in version ${targetVersionNumber}.`;
     case "node_added_above_wait":
       return `Version ${targetVersionNumber} adds a node that would run before this run's Wait.`;
     case "waits_nested":
@@ -45,7 +45,7 @@ export function migrationRefusalSentence(
     case "entity_incompatible":
       return `Version ${targetVersionNumber} has Entity configuration that is incompatible with this run.`;
     case "wait_moved_to_canceled_outlet":
-      return `Version ${targetVersionNumber} puts the Wait this run is parked on behind the Canceled outlet.`;
+      return `Version ${targetVersionNumber} puts the Wait this run is waiting at behind the Canceled outlet.`;
     case "not_requested_version":
       return "This run moved or ended before the migration reached it.";
     default: {

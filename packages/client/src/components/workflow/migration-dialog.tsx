@@ -105,11 +105,11 @@ export function MigrationDialog({
     >
       <DialogContent className="sm:max-w-lg" showCloseButton={!isMigrating}>
         <DialogHeader>
-          <DialogTitle>Migrate active runs</DialogTitle>
+          <DialogTitle>Migrate waiting runs</DialogTitle>
           <DialogDescription>
             {report
-              ? `Runs parked on a Wait move to version ${report.targetVersionNumber}.`
-              : "Runs parked on a Wait move to the published version."}
+              ? `Waiting runs move to version ${report.targetVersionNumber}.`
+              : "Waiting runs move to the published version."}
           </DialogDescription>
         </DialogHeader>
 
