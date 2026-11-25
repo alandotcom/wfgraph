@@ -12,11 +12,25 @@
  */
 export const COMPACT_MARK_PX = 22;
 
-/** The box a compact card gives its title, in canvas pixels. */
-export const COMPACT_TITLE_BOX = { width: 164, height: 76 } as const;
+/** The gap between a compact card's lead row and its title, in canvas pixels. */
+export const COMPACT_TITLE_GAP_PX = 4;
 
-/** A compact title's line height, as a multiple of its type size. */
-export const COMPACT_TITLE_LINE_HEIGHT = 1.1;
+/**
+ * The box a compact card gives its title, in canvas pixels. Its height is
+ * what the 112px card leaves below the lead row at the compact tier's lowest
+ * zoom: 4px of padding above and below, a border of up to 4px on each side
+ * (held at 2px on screen, 3.8px of canvas at zoom 0.52), the 24px lead row
+ * and `COMPACT_TITLE_GAP_PX`. A title that fills it still clears the lead row
+ * and the bottom handle.
+ */
+export const COMPACT_TITLE_BOX = { width: 164, height: 68 } as const;
+
+/**
+ * A compact title's line height, as a multiple of its type size. Three lines
+ * fit the box only at the smallest size, 21px, and every larger size draws
+ * at most two.
+ */
+export const COMPACT_TITLE_LINE_HEIGHT = 1.05;
 
 /**
  * The smallest size a compact title draws at unless one word is wider than
@@ -70,8 +84,8 @@ function lineCount(
 
 /**
  * The largest size at which every word of `title` fits on a line and the
- * whole title fits the box, breaking only between words: 24px on two lines,
- * or down to 21px on three. Only a title that does not fit three lines at
+ * whole title fits the box, breaking only between words: 24px down to 22px on
+ * two lines, or 21px on three. Only a title that does not fit three lines at
  * 21px ends in an ellipsis. A word wider than the box at 21px shrinks the
  * title until it fits, and below 16px it breaks with a hyphen instead.
  *
@@ -127,7 +141,9 @@ function canvasFontFamily(stack: string): string {
 }
 
 /**
- * Measures text in the canvas cards' semibold sans, read from the page's own
+ * Measures text in the canvas cards' sans at semibold, wider than the medium
+ * weight titles draw in so the measure errs toward a smaller size, read from
+ * the page's own
  * font stack, with 3% added for the difference between a canvas measure and
  * the page's own line breaking. Without a 2D canvas, or when the canvas
  * refuses the font, it estimates 0.62em a character, which is wider than the

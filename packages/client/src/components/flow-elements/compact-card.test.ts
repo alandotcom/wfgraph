@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import {
   COMPACT_TITLE_BOX,
+  COMPACT_TITLE_GAP_PX,
   COMPACT_TITLE_LINE_HEIGHT,
   COMPACT_TITLE_MIN_PX,
   fitCompactTitle,
@@ -83,11 +85,26 @@ describe("fitCompactTitle", () => {
     expect(fit.hyphenate).toBe(true);
   });
 
-  it("leaves out the largest sizes the page has ruled out, keeping three whole lines", () => {
+  it("leaves out the largest sizes the page has ruled out", () => {
     expect(fitCompactTitle("Enough time for reminders?", measure, 1)).toEqual({
       fontPx: 23,
-      maxLines: 3,
+      maxLines: 2,
       hyphenate: false,
     });
+  });
+
+  it("draws three lines only at the smallest size, so every size clears the lead row and the bottom handle", () => {
+    // The card's 112px less 4px of padding above and below, a border of 4px
+    // on each side at the compact tier's lowest zoom, the 24px lead row and
+    // the gap under it.
+    expect(
+      COMPACT_TITLE_BOX.height + 8 + 8 + 24 + COMPACT_TITLE_GAP_PX
+    ).toBeLessThanOrEqual(WORKFLOW_NODE_HEIGHT);
+    expect(
+      3 * COMPACT_TITLE_MIN_PX * COMPACT_TITLE_LINE_HEIGHT
+    ).toBeLessThanOrEqual(COMPACT_TITLE_BOX.height);
+    expect(
+      3 * 22 * COMPACT_TITLE_LINE_HEIGHT
+    ).toBeGreaterThan(COMPACT_TITLE_BOX.height);
   });
 });

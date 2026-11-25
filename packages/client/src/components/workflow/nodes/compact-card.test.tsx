@@ -584,7 +584,8 @@ describe("captions while cards are compact", () => {
 describe("a compact title the page breaks onto more lines than measured", () => {
   it("steps down to a size that shows the whole title before the card paints", () => {
     // happy-dom lays nothing out, so the title reports overflow itself while
-    // it draws above 23px, as a browser did for "Enough time / for…".
+    // it draws above 22px, as a browser does for a title it breaks onto one
+    // more line than the measure predicted.
     const scrollHeight = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
       "scrollHeight"
@@ -593,7 +594,7 @@ describe("a compact title the page breaks onto more lines than measured", () => 
       configurable: true,
       get(this: HTMLElement) {
         return this.dataset.slot === "node-compact-title" &&
-          Number.parseFloat(this.style.fontSize) > 23
+          Number.parseFloat(this.style.fontSize) > 22
           ? 100
           : 0;
       },
@@ -602,7 +603,7 @@ describe("a compact title the page breaks onto more lines than measured", () => 
       const { view } = renderAtZoom({
         card: (
           <ActionNode
-            data={{ ...reminder, label: "Enough time for reminders?" }}
+            data={{ ...reminder, label: "Send intake form" }}
             id="enough"
             type="action"
             {...requiredNodeProps}
@@ -613,8 +614,8 @@ describe("a compact title the page breaks onto more lines than measured", () => 
       const title = view.container.querySelector<HTMLElement>(
         "[data-slot='node-compact-title']"
       );
-      expect(title?.style.fontSize).toBe("23px");
-      expect(title?.className).toContain("line-clamp-3");
+      expect(title?.style.fontSize).toBe("22px");
+      expect(title?.className).toContain("line-clamp-2");
     } finally {
       if (scrollHeight) {
         Object.defineProperty(

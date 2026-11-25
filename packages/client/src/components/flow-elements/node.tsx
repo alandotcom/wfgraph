@@ -32,6 +32,7 @@ import {
 import {
   COMPACT_MARK_PX,
   COMPACT_TITLE_BOX,
+  COMPACT_TITLE_GAP_PX,
   COMPACT_TITLE_LINE_HEIGHT,
   type CompactTitleFit,
   fitCompactTitle,
@@ -625,7 +626,10 @@ const NodeCompactTitle = ({ title }: { title: string }) => {
   return (
     <div
       className="flex min-h-0 flex-1 items-center"
-      style={{ maxHeight: COMPACT_TITLE_BOX.height }}
+      style={{
+        marginTop: COMPACT_TITLE_GAP_PX,
+        maxHeight: COMPACT_TITLE_BOX.height,
+      }}
     >
       <span
         className={cn(
