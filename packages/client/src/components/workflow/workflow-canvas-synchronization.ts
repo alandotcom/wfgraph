@@ -2,7 +2,6 @@ import { useRef } from "react";
 import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowGraphUpdate } from "#src/lib/workflow-ui-store";
-import { workflowFitViewOptions } from "./workflow-viewport";
 export { lifecycleAnchorViewport } from "./workflow-viewport";
 
 type InternalLifecycleAnchor = {
@@ -25,8 +24,6 @@ export function canvasFitViewKey({
   }
   return `${workflowId}:${lifecycleNode.id}:${lifecycleNode.position.x}:${lifecycleNode.position.y}`;
 }
-
-export const keyboardFitViewOptions = workflowFitViewOptions(0);
 
 export function synchronizedLifecycleAnchor(
   lifecycleNode: WorkflowNode | null,

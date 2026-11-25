@@ -133,8 +133,12 @@ export function usableAboveSheet(input: {
   });
 }
 
-/** Elements floating over the canvas that a placed step must not sit under. */
+/**
+ * Elements floating over the canvas that a placed step must not sit under,
+ * including the agent's prompt line at the bottom of the canvas.
+ */
 const OBSTACLE_SELECTORS = [
+  '[data-slot="agent-composer"]',
   `[data-slot="${CANVAS_OBSTACLE_SLOTS.controls}"]`,
   `[data-slot="${CANVAS_OBSTACLE_SLOTS.groupScopeBar}"]`,
   ".react-flow__minimap",
@@ -143,7 +147,10 @@ const OBSTACLE_SELECTORS = [
 /** Where each obstacle sits, relative to the canvas element's top left. */
 export function measureObstacles(canvas: HTMLElement): Rect[] {
   const origin = canvas.getBoundingClientRect();
-  const canvasArea = canvas.parentElement ?? canvas;
+  const canvasArea =
+    canvas.closest('[data-slot="canvas-box"]') ??
+    canvas.parentElement ??
+    canvas;
   return OBSTACLE_SELECTORS.flatMap((selector) =>
     [...canvasArea.querySelectorAll(selector)].map((element) => {
       const rect = element.getBoundingClientRect();

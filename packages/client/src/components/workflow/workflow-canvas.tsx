@@ -98,7 +98,6 @@ import { accessibleGraphElements } from "./workflow-canvas-accessibility";
 import {
   canvasSynchronizationKey,
   canvasViewportCorrectionKey,
-  keyboardFitViewOptions,
   synchronizeCanvasGraph,
   useFitWorkflowGraph,
   useSynchronizedCanvas,
@@ -462,7 +461,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         editorChordAllowed(event, { inTextFields: false })
       ) {
         event.preventDefault();
-        void fitView(keyboardFitViewOptions);
+        void fitView(workflowFitViewOptions(0));
       }
     },
     [fitView]

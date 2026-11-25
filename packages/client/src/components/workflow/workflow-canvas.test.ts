@@ -6,17 +6,13 @@ import {
   canvasFitViewKey,
   canvasSynchronizationKey,
   canvasViewportCorrectionKey,
-  keyboardFitViewOptions,
   lifecycleAnchorViewport,
   synchronizeCanvasGraph,
   synchronizedLifecycleAnchor,
   useFitWorkflowGraph,
   useSynchronizedCanvas,
 } from "#src/components/workflow/workflow-canvas-synchronization";
-import {
-  openingViewport,
-  workflowFitViewOptions,
-} from "#src/components/workflow/workflow-viewport";
+import { openingViewport } from "#src/components/workflow/workflow-viewport";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 function lifecycleNode(x: number): WorkflowNode {
@@ -551,11 +547,5 @@ describe("useFitAgentGraph", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-describe("keyboardFitViewOptions", () => {
-  it("fits immediately for the keyboard shortcut", () => {
-    expect(keyboardFitViewOptions).toEqual(workflowFitViewOptions(0));
   });
 });

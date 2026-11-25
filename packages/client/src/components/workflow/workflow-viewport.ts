@@ -22,15 +22,50 @@ type Viewport = { x: number; y: number; zoom: number };
 type Bounds = { x: number; y: number; width: number; height: number };
 type CanvasSize = { width: number; height: number };
 
-/** Every fit uses the same limits so a control cannot strand a large workflow. */
+/** Screen pixels a fit keeps between the graph and the agent's prompt line. */
+const AGENT_COMPOSER_FIT_GAP_PX = 24;
+
+/**
+ * The screen pixels the agent's prompt line covers at the bottom of the canvas
+ * box, measured, or 0 while it does not show, as under the review sheet.
+ */
+function agentComposerCoveredHeight(): number {
+  const line = document.querySelector<HTMLElement>(
+    '[data-slot="agent-composer"]'
+  );
+  const box = line?.closest('[data-slot="canvas-box"]');
+  if (!line || !box || line.getClientRects().length === 0) {
+    return 0;
+  }
+  return Math.max(
+    0,
+    box.getBoundingClientRect().bottom - line.getBoundingClientRect().top
+  );
+}
+
+/**
+ * Every fit uses the same limits so a control cannot strand a large workflow.
+ * While the agent's prompt line shows, the fit keeps the graph above it.
+ */
 export function workflowFitViewOptions(duration: number): {
-  padding: number;
+  padding:
+    | number
+    | { top: number; left: number; right: number; bottom: `${number}px` };
   minZoom: number;
   maxZoom: number;
   duration: number;
 } {
+  const covered = agentComposerCoveredHeight();
   return {
-    padding: WORKFLOW_FIT_VIEW_PADDING,
+    padding:
+      covered > 0
+        ? {
+            top: WORKFLOW_FIT_VIEW_PADDING,
+            left: WORKFLOW_FIT_VIEW_PADDING,
+            right: WORKFLOW_FIT_VIEW_PADDING,
+            bottom: `${Math.round(covered + AGENT_COMPOSER_FIT_GAP_PX)}px`,
+          }
+        : WORKFLOW_FIT_VIEW_PADDING,
     minZoom: WORKFLOW_CANVAS_MIN_ZOOM,
     maxZoom: WORKFLOW_FIT_VIEW_MAX_ZOOM,
     duration,

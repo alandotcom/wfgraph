@@ -340,3 +340,42 @@ describe("revealViewport", () => {
     ).toBe(viewport);
   });
 });
+
+describe("workflowFitViewOptions and the agent's prompt line", () => {
+  function rect(top: number, bottom: number): DOMRect {
+    return {
+      top,
+      bottom,
+      left: 0,
+      right: 1200,
+      width: 1200,
+      height: bottom - top,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    };
+  }
+
+  it("keeps a fit above the prompt line while it shows", () => {
+    const box = document.createElement("div");
+    box.dataset.slot = "canvas-box";
+    const line = document.createElement("div");
+    line.dataset.slot = "agent-composer";
+    box.append(line);
+    document.body.append(box);
+    box.getBoundingClientRect = () => rect(0, 800);
+    line.getBoundingClientRect = () => rect(736, 788);
+    line.getClientRects = () => [rect(736, 788)] as unknown as DOMRectList;
+    try {
+      expect(workflowFitViewOptions(0).padding).toEqual({
+        top: WORKFLOW_FIT_VIEW_PADDING,
+        left: WORKFLOW_FIT_VIEW_PADDING,
+        right: WORKFLOW_FIT_VIEW_PADDING,
+        bottom: "88px",
+      });
+    } finally {
+      box.remove();
+    }
+    expect(workflowFitViewOptions(0).padding).toBe(WORKFLOW_FIT_VIEW_PADDING);
+  });
+});
