@@ -76,6 +76,16 @@ describe("Runs Browse run list and selected run", () => {
     expect(view.getByRole("status").textContent).toBe("Completed in 30s");
     // One is the Event row's label and the other is the Source row's value.
     expect(view.getAllByText("Event")).toHaveLength(2);
+    // The summary's pairs sit on the one grid a step's evidence uses.
+    const summaryColumns = new Set(
+      [...(aside()?.querySelectorAll("dt") ?? [])].map(
+        (term) =>
+          term.parentElement?.className.match(/grid-cols-\[[^\]]+\]/u)?.[0]
+      )
+    );
+    expect(summaryColumns).toEqual(
+      new Set(["grid-cols-[6.5rem_minmax(0,1fr)]"])
+    );
     expect(view.getByText("Started")).toBeTruthy();
   });
 

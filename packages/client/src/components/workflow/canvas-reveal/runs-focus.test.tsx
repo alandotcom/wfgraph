@@ -936,6 +936,19 @@ describe("Runs Focus node evidence", () => {
     expect(shown.getByText("Message ID")).toBeTruthy();
     expect(shown.queryByRole("button", { name: "Copy" })).toBeNull();
 
+    // The step's record, its input and its output share one label column
+    // with the run summary, so their pairs line up down the column.
+    const columns = (root: Element) =>
+      new Set(
+        [...root.querySelectorAll("dt")].map(
+          (term) =>
+            term.parentElement?.className.match(/grid-cols-\[[^\]]+\]/u)?.[0]
+        )
+      );
+    expect(columns(evidence())).toEqual(
+      new Set(["grid-cols-[6.5rem_minmax(0,1fr)]"])
+    );
+
     fireEvent.click(shown.getByRole("button", { name: "Show raw data" }));
     expect(shown.getAllByRole("button", { name: "Copy" })).toHaveLength(3);
     expect(shown.getByText(/"toAddress"/)).toBeTruthy();

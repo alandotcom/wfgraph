@@ -422,6 +422,16 @@ function findOutputComponent(
   ];
 }
 
+/**
+ * The one grid a run's label and value pairs sit on: the run summary, a
+ * step's record in the run, its input and output, and exit and executor
+ * details. One label column and one value size, so their pairs line up when
+ * the details column shows them one under another.
+ */
+export const RUN_FIELD_COLUMNS = "grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3";
+export const RUN_FIELD_LABEL = "text-muted-foreground text-xs leading-5";
+export const RUN_FIELD_VALUE = "min-w-0 break-words text-sm leading-5";
+
 export const JSON_PRE_CLASS =
   "min-w-max whitespace-pre p-3 font-mono text-[0.8125rem] leading-relaxed";
 
@@ -637,12 +647,15 @@ function CollectionDisclosure({
     <div className="border-t first:border-t-0">
       <button
         aria-expanded={open}
-        className="grid min-h-11 w-full grid-cols-[minmax(5.5rem,0.85fr)_minmax(0,1.15fr)] items-center gap-3 py-2 text-left transition-colors duration-100 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 md:min-h-9"
+        className={cn(
+          "grid min-h-11 w-full items-center gap-y-0 py-2 text-left transition-colors duration-100 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30 md:min-h-9",
+          RUN_FIELD_COLUMNS
+        )}
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        <span className="text-muted-foreground text-xs">{label}</span>
-        <span className="flex min-w-0 items-center justify-between gap-2 text-xs">
+        <span className={RUN_FIELD_LABEL}>{label}</span>
+        <span className="flex min-w-0 items-center justify-between gap-2 text-sm leading-5">
           <span>{summary}</span>
           <ChevronRight
             className={cn(
@@ -670,9 +683,9 @@ function JsonProperty({
 }) {
   if (isScalar(value)) {
     return (
-      <div className="grid min-h-9 grid-cols-[minmax(5.5rem,0.85fr)_minmax(0,1.15fr)] items-start gap-3 py-2 text-xs">
-        <dt className="text-muted-foreground">{label}</dt>
-        <dd className="min-w-0">
+      <div className={cn("grid min-h-9 items-start py-2", RUN_FIELD_COLUMNS)}>
+        <dt className={RUN_FIELD_LABEL}>{label}</dt>
+        <dd className={RUN_FIELD_VALUE}>
           <ScalarValue nodes={nodes} value={value} />
         </dd>
       </div>
@@ -685,9 +698,9 @@ function JsonProperty({
     }
     if (value.length <= 4 && areScalars(value)) {
       return (
-        <div className="grid min-h-9 grid-cols-[minmax(5.5rem,0.85fr)_minmax(0,1.15fr)] items-start gap-3 py-2 text-xs">
-          <dt className="text-muted-foreground">{label}</dt>
-          <dd className="flex min-w-0 flex-wrap gap-x-1.5">
+        <div className={cn("grid min-h-9 items-start py-2", RUN_FIELD_COLUMNS)}>
+          <dt className={RUN_FIELD_LABEL}>{label}</dt>
+          <dd className={cn(RUN_FIELD_VALUE, "flex flex-wrap gap-x-1.5")}>
             {withJsonKeys(value).map((entry, index) => (
               <span className="inline-flex gap-1.5" key={entry.key}>
                 {index > 0 ? <span aria-hidden="true">·</span> : null}

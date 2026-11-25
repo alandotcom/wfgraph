@@ -33,7 +33,12 @@ import {
 import { eventLabel } from "./config/lifecycle-policy-summary";
 import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
 import { ConditionSummary } from "./config/condition-summary";
-import { CollapsibleSection } from "./workflow-run-shared";
+import {
+  CollapsibleSection,
+  RUN_FIELD_COLUMNS,
+  RUN_FIELD_LABEL,
+  RUN_FIELD_VALUE,
+} from "./workflow-run-shared";
 import {
   getRunOutcome,
   retryingLog,
@@ -146,18 +151,11 @@ function RunExecutorSection({
         </p>
       )}
       <CollapsibleSection title="Executor details">
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
+        <dl className={cn("grid gap-y-1", RUN_FIELD_COLUMNS)}>
           {executorDetails({ schedule, nowMs }).map((fact) => (
             <Fragment key={fact.term}>
-              <dt className="text-muted-foreground text-xs leading-5">
-                {fact.term}
-              </dt>
-              <dd
-                className={cn(
-                  "break-words text-sm leading-5",
-                  fact.mono && "font-mono text-xs"
-                )}
-              >
+              <dt className={RUN_FIELD_LABEL}>{fact.term}</dt>
+              <dd className={cn(RUN_FIELD_VALUE, fact.mono && "font-mono")}>
                 {fact.value}
               </dd>
             </Fragment>
@@ -363,23 +361,17 @@ export function WorkflowRunDetail({
               </p>
               {exit ? (
                 <>
-                  <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
-                    <dt className="text-muted-foreground text-xs leading-5">
-                      Entity
-                    </dt>
-                    <dd className="text-sm leading-5">{exitEntityLabel}</dd>
-                    <dt className="text-muted-foreground text-xs leading-5">
-                      Result
-                    </dt>
-                    <dd className="text-sm leading-5">
+                  <dl className={cn("grid gap-y-1", RUN_FIELD_COLUMNS)}>
+                    <dt className={RUN_FIELD_LABEL}>Entity</dt>
+                    <dd className={RUN_FIELD_VALUE}>{exitEntityLabel}</dd>
+                    <dt className={RUN_FIELD_LABEL}>Result</dt>
+                    <dd className={RUN_FIELD_VALUE}>
                       {exit.reason === "entity_not_found"
                         ? "Entity not found"
                         : "Eligibility rule did not match"}
                     </dd>
-                    <dt className="text-muted-foreground text-xs leading-5">
-                      Checked
-                    </dt>
-                    <dd className="text-sm leading-5">
+                    <dt className={RUN_FIELD_LABEL}>Checked</dt>
+                    <dd className={RUN_FIELD_VALUE}>
                       {formatExactTime(exit.checkedAt)}
                     </dd>
                   </dl>

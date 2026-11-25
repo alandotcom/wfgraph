@@ -28,6 +28,9 @@ import {
   runStatusTone,
   statusToneDotClass,
   statusToneTextClass,
+  RUN_FIELD_COLUMNS,
+  RUN_FIELD_LABEL,
+  RUN_FIELD_VALUE,
 } from "./workflow-run-shared";
 import { useListActivityLabel } from "./use-list-activity-label";
 
@@ -330,9 +333,9 @@ function lateScheduledSlot(execution: WorkflowExecution): Date | null {
 
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 text-xs">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words text-foreground">{value}</dd>
+    <div className={cn("grid", RUN_FIELD_COLUMNS)}>
+      <dt className={RUN_FIELD_LABEL}>{label}</dt>
+      <dd className={RUN_FIELD_VALUE}>{value}</dd>
     </div>
   );
 }
@@ -403,7 +406,7 @@ function HeaderSummary({
         ) : null}
       </div>
 
-      <dl className="mt-3 space-y-1.5 pl-6">
+      <dl className="mt-3 space-y-1">
         {eventLine === null ? null : (
           <MetadataRow label="Event" value={eventLine} />
         )}

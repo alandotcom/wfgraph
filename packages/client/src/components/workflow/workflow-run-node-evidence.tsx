@@ -61,6 +61,9 @@ import {
   JsonWithLinks,
   OutputDisplay,
   useHasOutputDisplay,
+  RUN_FIELD_COLUMNS,
+  RUN_FIELD_LABEL,
+  RUN_FIELD_VALUE,
 } from "./workflow-run-shared";
 
 /** A notice at the top of the evidence about what it can and cannot show. */
@@ -617,29 +620,28 @@ export function WorkflowRunNodeEvidence({
                 statuses={evidence.executionStatuses}
               />
             ) : null}
-            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
-              <dt className="text-muted-foreground text-xs leading-5">
-                Status
-              </dt>
-              <dd className={cn("leading-5", statusToneTextClass(status.tone))}>
+            <dl className={cn("grid gap-y-1", RUN_FIELD_COLUMNS)}>
+              <dt className={RUN_FIELD_LABEL}>Status</dt>
+              <dd
+                className={cn(
+                  RUN_FIELD_VALUE,
+                  statusToneTextClass(status.tone)
+                )}
+              >
                 {status.text}
               </dd>
-              <dt className="text-muted-foreground text-xs leading-5">
-                Started
-              </dt>
-              <dd className="leading-5">{formatExactTime(shown.startedAt)}</dd>
-              <dt className="text-muted-foreground text-xs leading-5">
-                Finished
-              </dt>
-              <dd className="leading-5">
+              <dt className={RUN_FIELD_LABEL}>Started</dt>
+              <dd className={RUN_FIELD_VALUE}>
+                {formatExactTime(shown.startedAt)}
+              </dd>
+              <dt className={RUN_FIELD_LABEL}>Finished</dt>
+              <dd className={RUN_FIELD_VALUE}>
                 {shown.completedAt
                   ? formatExactTime(shown.completedAt)
                   : "Not finished"}
               </dd>
-              <dt className="text-muted-foreground text-xs leading-5">
-                Duration
-              </dt>
-              <dd className="font-mono leading-5 tabular-nums">
+              <dt className={RUN_FIELD_LABEL}>Duration</dt>
+              <dd className={cn(RUN_FIELD_VALUE, "tabular-nums")}>
                 {shown.duration ? formatDuration(shown.duration) : "None"}
               </dd>
             </dl>
