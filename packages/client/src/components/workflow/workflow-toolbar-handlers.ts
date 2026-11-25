@@ -246,6 +246,8 @@ export function useWorkflowActions(
   // create or a delete elsewhere invalidates the same key.
   const loadWorkflows = () => refreshWorkflowList(queryClient);
 
+  // No errorMessage: each refused duplicate carries a server sentence naming
+  // the cause and what to do next, and the mutation cache falls back to it.
   const duplicateWorkflow = useMutation(
     orpcQuery.workflow.duplicate.mutationOptions({
       onSuccess: async (payload) => {
@@ -256,7 +258,6 @@ export function useWorkflowActions(
           params: { workflowId: payload.id },
         });
       },
-      meta: { errorMessage: "Failed to duplicate workflow. Please try again." },
     })
   );
 

@@ -12,15 +12,131 @@ import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import {
+  compileConditionModel,
+  nodeOutputConditionPath,
+  parseConditionModel,
+  parseNodeOutputConditionPath,
+  serializeConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  readConfigString,
+  readConfigTrimmedString,
+} from "@wfgraph/shared/graph/node-config";
+import {
+  formatTemplateToken,
+  mapTemplateTokens,
+} from "@wfgraph/shared/graph/node-references";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 
 /**
- * Fresh ids for every node. Connection ids are stripped separately, just before
- * the row is written, so the copy starts unbound.
+ * The graph under fresh node and edge ids, with every reference to a node id
+ * moved onto the copy: an edge's ends, a member's `parentId`, each
+ * `{{@nodeId:...}}` token in a config, and each Condition rule naming a node's
+ * output. Connection ids are stripped separately, just before the row is
+ * written, so the copy starts unbound.
  */
-function withFreshNodeIds(nodes: WorkflowNode[]): WorkflowNode[] {
-  return nodes.map((node) => ({ ...node, id: generateId() }));
+function withFreshNodeIds(
+  nodes: readonly WorkflowNode[],
+  edges: readonly WorkflowEdge[]
+): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  // A Map, because node ids are text the builder or the build agent chose.
+  const idMap = new Map(nodes.map((node) => [node.id, generateId()]));
+  const freshId = (nodeId: string) => idMap.get(nodeId) ?? nodeId;
+
+  return {
+    nodes: nodes.map((node) => {
+      const copy: WorkflowNode = {
+        ...node,
+        id: freshId(node.id),
+        data: {
+          ...node.data,
+          config: node.data.config && remapConfig(node.data.config, idMap),
+        },
+      };
+      if (node.parentId !== undefined) {
+        copy.parentId = freshId(node.parentId);
+      }
+      return copy;
+    }),
+    edges: edges.map((edge) => ({
+      ...edge,
+      id: generateId(),
+      source: freshId(edge.source),
+      target: freshId(edge.target),
+    })),
+  };
+}
+
+/** A node config with each node id it names replaced by that node's copy. */
+function remapConfig(
+  config: Record<string, unknown>,
+  idMap: ReadonlyMap<string, string>
+): Record<string, unknown> {
+  const remapped = mapTemplateTokens(config, (token) => {
+    const nodeId = idMap.get(token.nodeId);
+    return nodeId === undefined
+      ? undefined
+      : formatTemplateToken({
+          nodeId,
+          nodeLabel: token.nodeLabel,
+          fieldPath: token.fieldPath,
+        });
+  });
+  return readConfigString(remapped, ACTION_TYPE_CONFIG_KEY) ===
+    BUILT_IN_ACTION_IDS.condition
+    ? remapConditionNodeIds(remapped, idMap)
+    : remapped;
+}
+
+/**
+ * A Condition config whose rules read the copied nodes' outputs.
+ *
+ * A rule stores the node it reads as `$node:<id>.<path>`, and the compiled
+ * expression beside the model names the same id. Save refuses a model and an
+ * expression that disagree, so the expression is compiled again from the
+ * rewritten model. A blank expression marks a Condition still being built and
+ * stays blank.
+ */
+function remapConditionNodeIds(
+  config: Record<string, unknown>,
+  idMap: ReadonlyMap<string, string>
+): Record<string, unknown> {
+  const parsed = parseConditionModel(config.conditionModel);
+  if (!parsed.valid) {
+    return config;
+  }
+
+  const groups = mapOrSame(parsed.model.groups, (group) => {
+    const conditions = mapOrSame(group.conditions, (rule) => {
+      const reference = parseNodeOutputConditionPath(rule.field);
+      const nodeId = reference && idMap.get(reference.nodeId);
+      const field =
+        reference && nodeId
+          ? nodeOutputConditionPath(nodeId, reference.fieldPath)
+          : null;
+      return field === null || field === rule.field ? rule : { ...rule, field };
+    });
+    return conditions === group.conditions ? group : { ...group, conditions };
+  });
+  if (groups === parsed.model.groups) {
+    return config;
+  }
+
+  const model = { ...parsed.model, groups };
+  const compiled = compileConditionModel(model);
+  return {
+    ...config,
+    conditionModel: serializeConditionModel(model),
+    condition:
+      compiled.valid && readConfigTrimmedString(config, "condition")
+        ? compiled.expression
+        : config.condition,
+  };
 }
 
 /**
@@ -43,24 +159,6 @@ function stripIntegrationIds(nodes: WorkflowNode[]): WorkflowNode[] {
       },
     };
   });
-}
-
-function updateEdgeReferences(
-  edges: WorkflowEdge[],
-  oldNodes: WorkflowNode[],
-  newNodes: WorkflowNode[]
-): WorkflowEdge[] {
-  const idMap = new Map<string, string>();
-  oldNodes.forEach((oldNode, index) => {
-    idMap.set(oldNode.id, newNodes[index].id);
-  });
-
-  return edges.map((edge) => ({
-    ...edge,
-    id: generateId(),
-    source: idMap.get(edge.source) || edge.source,
-    target: idMap.get(edge.target) || edge.target,
-  }));
 }
 
 /** This module's logger, as the Effect that produces it (see `workflow.ts`). */
@@ -89,12 +187,16 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
       yield* logger.error("Stored workflow graph is invalid on duplicate", {
         reason: sourceValidation.error,
       });
-      return yield* new InternalFailure({ error: "Workflow graph is invalid" });
+      return yield* new InternalFailure({
+        error:
+          "This workflow's saved graph cannot be read, so it cannot be copied.",
+      });
     }
 
-    const { nodes: oldNodes, edges: oldEdges } = sourceValidation;
-    const newNodes = withFreshNodeIds(oldNodes);
-    const newEdges = updateEdgeReferences(oldEdges, oldNodes, newNodes);
+    const { nodes: newNodes, edges: newEdges } = withFreshNodeIds(
+      sourceValidation.nodes,
+      sourceValidation.edges
+    );
     const newGraph = createSerializedWorkflowGraph({
       nodes: newNodes,
       edges: newEdges,
@@ -108,7 +210,7 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
         workflowName,
       });
       return yield* new Conflict({
-        error: `Workflow name "${workflowName}" already exists`,
+        error: `A workflow named "${workflowName}" already exists. Rename it, then duplicate again.`,
       });
     }
 
@@ -131,7 +233,8 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
               Effect.andThen(
                 Effect.fail(
                   new InternalFailure({
-                    error: "Duplicated workflow graph is invalid",
+                    error:
+                      "The copy failed the graph check and was not saved. Report this as a bug.",
                   })
                 )
               )
@@ -173,7 +276,8 @@ export const postWorkflowDuplicate = Effect.fn("postWorkflowDuplicate")(
         "DatabaseError",
         internalFailureFromCause(
           loggerFor(workflowId),
-          "Failed to duplicate workflow"
+          "Failed to duplicate workflow",
+          "The database refused the request, so the workflow was not copied."
         )
       )
     )
