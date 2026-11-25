@@ -438,6 +438,18 @@ tarball installed without `inngest`. Verify a packaging change with `pnpm pack` 
 the extracted manifest. `docs/embedding.md` ("Package exports") is the one home of the
 core entry points.
 
+**A dynamic `import()` of bundled code slows a Worker's startup.** Wrangler bundles a Worker
+into one file with esbuild, and esbuild wraps the target of an `import()` it bundles, along
+with every module that target imports statically, in a lazy initializer. The wrapping
+reaches the `effect` modules that target shares with the rest of the bundle, so the Worker
+grows and starts slower, and esbuild can no longer tree-shake what the target pulled in.
+Nothing reachable from `@wfgraph/core/worker` or from an integration entry of
+`@wfgraph/plugins` uses `import()`: import a module statically, and give an optional
+dependency an entry of its own, the way `@wfgraph/core/inngest` holds the Inngest SDK.
+`scripts/plugins/worker-bundle.test.ts` bundles each of those entries with wrangler's
+settings, fails on an `import()` of bundled code, and holds each integration to its row of
+`ADDED_KIB_CEILING`.
+
 ## Code cleanliness
 
 - Remove unused imports, variables, and functions. knip reports them.

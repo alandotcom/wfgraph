@@ -66,7 +66,10 @@ the outer policy beyond it.
 
 An SDK earns its place only where it carries protocol logic worth borrowing. `svix` is the
 one vendor dependency this package has: `resend/webhook.ts` uses it to verify the signature
-on a Resend webhook. Every call to a vendor's API goes through `callExternal`.
+on a Resend webhook. Every call to a vendor's API goes through `callExternal`. A new vendor
+dependency has to fit under the integration's byte ceiling in
+`scripts/plugins/worker-bundle.test.ts`, which measures what the integration adds to a
+Worker bundle.
 
 ## OAuth adapters
 
@@ -213,8 +216,11 @@ pattern, and a field-derivation test alone catches none of what a vendor type ge
    `scripts/plugins/workspace-source-aliases.ts`.
 3. Add an entry to the `integrationUi` record in `src/ui.ts`.
 4. Add the integration to the list in `src/integrations.test.ts`.
-5. `pnpm run type-check && pnpm run test && pnpm run fix`.
-6. Import it in `examples/app.ts`, then `pnpm run dev`, add a connection, build a workflow
+5. Add a row for the integration to `ADDED_KIB_CEILING` in
+   `scripts/plugins/worker-bundle.test.ts`. Set the ceiling about 25 percent over the
+   size, in KiB, that the test reports for the integration.
+6. `pnpm run type-check && pnpm run test && pnpm run fix`.
+7. Import it in `examples/app.ts`, then `pnpm run dev`, add a connection, build a workflow
    on the action, and run it.
 
 Naming: the folder is the integration `type` in kebab-case; the credential type is
