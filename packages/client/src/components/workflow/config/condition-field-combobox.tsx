@@ -15,7 +15,7 @@ import {
   conditionFieldForPath,
   type ConditionSelectableField,
 } from "#src/lib/upstream-node-fields";
-import { unavailableFieldLabel } from "./condition-field-label";
+import { namedBySource, unavailableFieldLabel } from "./condition-field-label";
 
 /** One section in the picker: the node (or Event) the fields belong under. */
 type ConditionFieldGroup = {
@@ -67,7 +67,9 @@ function pickerItems(
   valuePath: string
 ): { selected: ConditionSelectableField; groups: ConditionFieldGroup[] } {
   const groups = groupsBySource(fields);
-  const chosen = conditionFieldForPath(fields, valuePath);
+  // The input names the chosen field with its step when another field shares
+  // its label; the list already sits under each step's heading.
+  const chosen = conditionFieldForPath(namedBySource(fields), valuePath);
   if (chosen) {
     return { selected: chosen, groups };
   }

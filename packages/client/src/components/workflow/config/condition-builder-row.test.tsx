@@ -551,12 +551,43 @@ describe("ConditionBuilderRow rules naming their source node", () => {
     const onChange = vi.fn();
     const view = renderRow(SCORE_FIELDS, storedModel("score"), onChange);
 
+    // Two inputs are called Score, so the field names the step it reads.
     expect(
       (view.getByLabelText("Select field") as HTMLInputElement).value
-    ).toBe("Score");
+    ).toBe("Score · Score Applicant");
 
     chooseField(view, "Lifecycle");
     expect(writtenRule(onChange)?.field).toBe("$node:lifecycle.score");
+  });
+
+  it("names a field by its step when another input shares its name", () => {
+    const fields = [
+      field("patient.status", "Patient State", { label: "Status" }),
+      field("booking.status", "Send booking confirmation", { label: "Status" }),
+      field("amount", "Patient State", { label: "Amount" }),
+    ];
+
+    const editing = renderRow(fields, storedModel("booking.status"));
+    expect(
+      (editing.getByLabelText("Select field") as HTMLInputElement).value
+    ).toBe("Status · Send booking confirmation");
+    editing.unmount();
+
+    const reading = renderRow(
+      fields,
+      storedModel("patient.status"),
+      undefined,
+      {
+        disabled: true,
+      }
+    );
+    expect(reading.getByText("Status · Patient State")).toBeTruthy();
+    reading.unmount();
+
+    const unique = renderRow(fields, storedModel("amount"));
+    expect(
+      (unique.getByLabelText("Select field") as HTMLInputElement).value
+    ).toBe("Amount");
   });
 
   it("marks a rule naming a node the graph no longer offers", () => {

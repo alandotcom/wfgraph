@@ -17,3 +17,24 @@ export function enumOptionLabel(
 ): string {
   return enumLabelForValue(field?.enumLabels, value) ?? value;
 }
+
+/**
+ * `fields` with each label two or more of them share followed by the step it
+ * comes from, "Status · Patient State", so a rule that names one says which.
+ * A label no other field has is left alone.
+ */
+export function namedBySource(
+  fields: readonly ConditionSelectableField[]
+): ConditionSelectableField[] {
+  // A Map, since a label can be text a person typed on a step.
+  const shared = new Set(
+    [...Map.groupBy(fields, (field) => field.label)]
+      .filter(([, group]) => group.length > 1)
+      .map(([label]) => label)
+  );
+  return fields.map((field) =>
+    shared.has(field.label)
+      ? { ...field, label: `${field.label} · ${field.sourceNodeLabel}` }
+      : field
+  );
+}

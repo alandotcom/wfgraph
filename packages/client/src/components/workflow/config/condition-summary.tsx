@@ -29,6 +29,7 @@ import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   enumOptionLabel,
   unavailableFieldLabel,
+  namedBySource,
 } from "./condition-field-label";
 
 /**
@@ -72,6 +73,8 @@ export function ConditionSummary({
    */
   setOperatorsRequireEnumValues?: boolean | undefined;
 }) {
+  // A rule names a field with its step when another field shares its label.
+  const named = namedBySource(fields);
   const onlyGroup = model.groups.length === 1 ? model.groups[0] : undefined;
   const onlyCondition =
     onlyGroup?.conditions.length === 1 ? onlyGroup.conditions[0] : undefined;
@@ -81,7 +84,7 @@ export function ConditionSummary({
       <ul>
         <RuleLine
           condition={onlyCondition}
-          field={conditionFieldForPath(fields, onlyCondition.field)}
+          field={conditionFieldForPath(named, onlyCondition.field)}
           joiner={null}
           nodes={nodes}
           detail={ruleDetails?.get(onlyCondition.id)}
@@ -113,7 +116,7 @@ export function ConditionSummary({
             {group.conditions.map((condition, conditionIndex) => (
               <RuleLine
                 condition={condition}
-                field={conditionFieldForPath(fields, condition.field)}
+                field={conditionFieldForPath(named, condition.field)}
                 joiner={conditionIndex > 0 ? logicLabel(group.logic) : null}
                 key={condition.id}
                 nodes={nodes}
