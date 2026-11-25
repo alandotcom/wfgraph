@@ -225,13 +225,17 @@ describe("a card's kind glyph", () => {
   });
 });
 
+/** The canvas's insert commands, as a Draft that offers adding steps fills them. */
+const afterOutlet = vi.fn();
+const insertingSlot = { onEdge: vi.fn(), afterOutlet };
+
 describe("the + at an open end", () => {
   function renderWithInserting(input: {
     data: WorkflowNodeData;
     zoom: number;
     insertsSteps?: boolean;
   }) {
-    const afterOutlet = vi.fn();
+    afterOutlet.mockClear();
     const card = (
       <ActionNode
         data={input.data}
@@ -245,7 +249,7 @@ describe("the + at an open end", () => {
         input.insertsSteps === false ? (
           card
         ) : (
-          <InsertStepSlot.Provider value={{ onEdge: vi.fn(), afterOutlet }}>
+          <InsertStepSlot.Provider value={insertingSlot}>
             {card}
           </InsertStepSlot.Provider>
         ),
@@ -253,11 +257,11 @@ describe("the + at an open end", () => {
     });
     const pluses = () =>
       rendered.view.queryAllByRole("button", { name: "Add a step here" });
-    return { ...rendered, afterOutlet, pluses };
+    return { ...rendered, pluses };
   }
 
   it("draws a + under an outlet nothing leaves, at the sizes that draw a title, which adds a step there", () => {
-    const { pluses, setZoom, afterOutlet } = renderWithInserting({
+    const { pluses, setZoom } = renderWithInserting({
       data: reminder,
       zoom: 1,
     });
@@ -275,7 +279,7 @@ describe("the + at an open end", () => {
   });
 
   it("draws one + under each open branch of a Condition", () => {
-    const { pluses, afterOutlet } = renderWithInserting({
+    const { pluses } = renderWithInserting({
       data: {
         label: "Eligible?",
         type: "action",
