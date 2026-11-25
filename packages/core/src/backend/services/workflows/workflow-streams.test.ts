@@ -37,16 +37,21 @@ const beta: WorkflowSummaryRow = {
 };
 
 /**
- * The shared pollers over stubbed repositories, reading every millisecond.
- * Every workflow has no runs unless `executions` counts some.
+ * The shared pollers over stubbed repositories, reading every millisecond
+ * unless `runCountPollIntervalMs` slows the run counts. Every workflow has no
+ * runs unless `executions` counts some.
  */
 function streamsOver(
   repo: Partial<WorkflowRepo["Service"]>,
   executions: Partial<ExecutionRepo["Service"]> = {
     countRunStatesByWorkflow: Effect.succeed([]),
-  }
+  },
+  runCountPollIntervalMs = 1
 ) {
-  return makeWorkflowStreamsLayer({ pollIntervalMs: 1 }).pipe(
+  return makeWorkflowStreamsLayer({
+    pollIntervalMs: 1,
+    runCountPollIntervalMs,
+  }).pipe(
     Layer.provide(
       Layer.mergeAll(
         SilentAppLoggerLayer,
@@ -213,6 +218,43 @@ describe("streamWorkflowSummaries run counts", () => {
           ),
           [[NO_RUNS], [{ failedRecently: 1, waiting: 2 }]]
         );
+      })
+  );
+});
+
+describe("streamWorkflowSummaries run count cadence", () => {
+  // The count reads every workflow's runs, so it keeps a slower cadence than
+  // the summaries: three list changes, one count read.
+  effectIt.live(
+    "reads the run counts on their own cadence while the list changes",
+    () =>
+      Effect.gen(function* () {
+        const snapshots = [[alpha], [beta, alpha], [beta]];
+        let summaryReads = 0;
+        let countReads = 0;
+
+        const events = yield* streamWorkflowSummaries().pipe(
+          Effect.flatMap((stream) => Stream.runCollect(Stream.take(stream, 3))),
+          Effect.provide(
+            streamsOver(
+              {
+                listSummariesNewestFirst: Effect.sync(
+                  () => snapshots[summaryReads++] ?? [beta]
+                ),
+              },
+              {
+                countRunStatesByWorkflow: Effect.sync(() => {
+                  countReads += 1;
+                  return [];
+                }),
+              },
+              3_600_000
+            )
+          )
+        );
+
+        assert.strictEqual(Array.from(events).length, 3);
+        assert.strictEqual(countReads, 1);
       })
   );
 });

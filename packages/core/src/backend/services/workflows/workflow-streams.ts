@@ -22,13 +22,27 @@ import type {
   InternalFailure,
   NotFound,
 } from "#src/backend/lib/effect/failures";
-import { getWorkflows } from "#src/backend/services/workflows/list";
+import {
+  listWorkflowSummaries,
+  readWorkflowRunCounts,
+  withRunCounts,
+} from "#src/backend/services/workflows/list";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { getWorkflowDraftRevision } from "#src/backend/services/workflows/workflow";
 import type { WorkflowListItemPayload } from "@wfgraph/shared/graph/api-contracts";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 const DEFAULT_POLL_INTERVAL_MS = 500;
+
+/**
+ * How often the list poller reads the workflows' run counts. The count reads
+ * up to the newest 50 live runs of every workflow and fetches each one's
+ * status from the table, which no index holds, so it runs on this slower
+ * cadence while the summaries keep the list's. A failed or waiting mark on a
+ * row then appears within ten seconds, which is soon enough for a mark that
+ * tells a person which workflow to open.
+ */
+const RUN_COUNT_POLL_INTERVAL_MS = 10_000;
 
 type DraftRevision = {
   readonly workflowId: string;
@@ -65,10 +79,14 @@ const shareLatest = <A, E, R>(
 
 /**
  * The shared pollers, held for the life of the runtime that builds this
- * Layer. `pollIntervalMs` is how often a running poller reads the database.
+ * Layer. `pollIntervalMs` is how often a running poller reads the database,
+ * and `runCountPollIntervalMs` how often the list poller reads run counts.
  */
 export const makeWorkflowStreamsLayer = (
-  options: { readonly pollIntervalMs?: number } = {}
+  options: {
+    readonly pollIntervalMs?: number;
+    readonly runCountPollIntervalMs?: number;
+  } = {}
 ): Layer.Layer<
   WorkflowStreams,
   never,
@@ -83,13 +101,26 @@ export const makeWorkflowStreamsLayer = (
 
       // The list has one key. An RcMap rather than one `Stream.share` keeps the
       // start-on-first and stop-after-last lifecycle identical for both maps.
+      // The list emits when either the summaries or the run counts change,
+      // each read on its own cadence.
       const summaryPolls = yield* RcMap.make({
         lookup: (_key: "summaries") =>
           shareLatest(
-            ticks.pipe(
-              Stream.mapEffect(() => getWorkflows()),
-              Stream.changesWith(isEqual)
-            )
+            Stream.zipLatestWith(
+              ticks.pipe(
+                Stream.mapEffect(() => listWorkflowSummaries()),
+                Stream.changesWith(isEqual)
+              ),
+              Stream.tick(
+                Duration.millis(
+                  options.runCountPollIntervalMs ?? RUN_COUNT_POLL_INTERVAL_MS
+                )
+              ).pipe(
+                Stream.mapEffect(() => readWorkflowRunCounts()),
+                Stream.changesWith(isEqual)
+              ),
+              withRunCounts
+            ).pipe(Stream.changesWith(isEqual))
           ),
       });
       const draftPolls = yield* RcMap.make({
