@@ -777,7 +777,11 @@ function OutlineRowView({
       aria-expanded={expanded}
       aria-level={row.depth + 1}
       aria-selected={selected}
-      className={cn(rowClass, outcome && "items-start")}
+      className={cn(
+        rowClass,
+        (outcome || (nodeRow.kind === "lifecycle" && nodeRow.overlap)) &&
+          "items-start"
+      )}
       data-node-id={nodeRow.nodeId}
       id={outlineRowElementId(row.key)}
       onClick={onChoose}
@@ -821,6 +825,26 @@ function OutlineRowView({
                 · {outcome.time}
               </span>
             ) : null}
+          </span>
+        </span>
+      ) : nodeRow.kind === "lifecycle" && nodeRow.overlap !== null ? (
+        // What starts a run, then what a newer start does to the run already
+        // going, whole, since a person cannot see it anywhere else.
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate">
+            <span className="font-medium">{nodeRow.label}</span>
+            {nodeRow.summary ? (
+              <span className="text-muted-foreground">
+                {" "}
+                · {nodeRow.summary}
+              </span>
+            ) : null}
+          </span>
+          <span
+            className="break-words text-muted-foreground"
+            data-slot="overlap"
+          >
+            {nodeRow.overlap}
           </span>
         </span>
       ) : (

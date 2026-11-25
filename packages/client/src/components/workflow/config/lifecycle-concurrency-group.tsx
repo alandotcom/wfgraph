@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "#src/components/ui/select";
 import { whenChosen } from "#src/lib/select-choice";
+import { overlappingRunsSentence } from "@wfgraph/shared/graph/workflow-summary";
 import {
   type Concurrency,
   type LifecycleRules,
@@ -34,6 +35,8 @@ export function LifecycleConcurrencyGroup({
 }) {
   const catalog = useExtensionCatalog();
   const relatedRunsDescription = describeRelatedRuns(rules, catalog);
+  // What the chosen rule does to this workflow's runs, in its own nouns.
+  const consequence = overlappingRunsSentence(rules, catalog);
 
   return (
     <ConfigGroup
@@ -82,6 +85,11 @@ export function LifecycleConcurrencyGroup({
             )?.description
           }
         </p>
+        {consequence === null ? null : (
+          <p className="text-sm" data-slot="overlap-consequence">
+            {consequence}
+          </p>
+        )}
 
         <div className="space-y-2 border-t pt-3">
           <p className="font-medium text-sm">Manual starts</p>

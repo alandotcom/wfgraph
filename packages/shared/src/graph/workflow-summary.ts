@@ -34,6 +34,7 @@ import {
 import {
   type ExtensionCatalog,
   findAction,
+  findEntity,
   findEvent,
 } from "#src/extensions/catalog";
 import { isGroupNode } from "#src/graph/group-boundary";
@@ -882,6 +883,34 @@ export function stopClauses(
     subject: orList(group.eventNames.map((name) => eventLabel(catalog, name))),
     condition: filterCondition(group, catalog),
   }));
+}
+
+/**
+ * What the Overlapping runs rule does to a run in progress, in the workflow's
+ * own nouns: its Start Events and the Entity it tracks, such as "A newer
+ * Appointment created for the same Patient ends the run in progress. Its
+ * steps not yet reached never run." Null when every arrival starts a run of
+ * its own, which ends nothing.
+ */
+export function overlappingRunsSentence(
+  rules: LifecycleRules | undefined,
+  catalog: ExtensionCatalog
+): string | null {
+  if (!rules || rules.concurrency === "unlimited") {
+    return null;
+  }
+  const tracked = rules.trackedEntity;
+  const entity = tracked
+    ? (findEntity(catalog, tracked.type)?.label ?? tracked.type)
+    : null;
+  const arrival =
+    rules.startEvents.length > 0
+      ? orList(rules.startEvents.map((name) => eventLabel(catalog, name)))
+      : "start";
+  const same = entity === null ? "" : ` for the same ${entity}`;
+  return rules.concurrency === "newest-wins"
+    ? `A newer ${arrival}${same} ends the run in progress. Its steps not yet reached never run.`
+    : `While a run is in progress, a newer ${arrival}${same} starts no run.`;
 }
 
 function startSentences(

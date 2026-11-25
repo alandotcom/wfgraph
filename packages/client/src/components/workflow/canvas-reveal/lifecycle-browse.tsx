@@ -1,3 +1,4 @@
+import { overlappingRunsSentence } from "@wfgraph/shared/graph/workflow-summary";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ReactNode } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -379,6 +380,7 @@ export function LifecyclePolicySections({
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const concurrency = concurrencySummary(rules);
+  const overlap = overlappingRunsSentence(rules, catalog);
   const isOpen = (section: LifecycleSectionId) =>
     editing?.open === section && editing.editors !== undefined;
   const editAction = (title: string, section: LifecycleSectionId) => {
@@ -451,6 +453,7 @@ export function LifecyclePolicySections({
                 {concurrency.description}
               </p>
             ) : null}
+            {overlap === null ? null : <p className="text-sm">{overlap}</p>}
             <dl>
               <Row label="Manual runs">
                 {rules.allowManualStart ? "Allowed" : "Not allowed"}
