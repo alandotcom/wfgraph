@@ -211,6 +211,25 @@ export function payloadFromFormValues(
 }
 
 /**
+ * The fields the Event requires that `payload` leaves without a value, in the
+ * order the Event declares them. A field the Event marks as nullable may stay
+ * empty, and every other field the form draws must hold a value, so this is the
+ * check the run dialog makes before it sends a run the Event would refuse.
+ */
+export function missingRequiredFields(
+  fields: readonly TestPayloadField[],
+  payload: JsonObject
+): TestPayloadField[] {
+  return fields.filter((field) => {
+    if (field.optional) {
+      return false;
+    }
+    const value = getValueByPath(payload, field.path);
+    return value === undefined || value === null;
+  });
+}
+
+/**
  * A payload read back out of the JSON pane. Anything that is not a JSON object
  * is a mistake the pane reports where it was typed, so the failure is a message
  * rather than a thrown error.

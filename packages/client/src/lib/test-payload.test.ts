@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { EventMetadata } from "@wfgraph/shared/extensions/catalog";
 import {
   formValuesFromPayload,
+  missingRequiredFields,
   nextTestPayloads,
   parseTestPayload,
   payloadFromFormValues,
@@ -188,5 +189,42 @@ describe("nextTestPayloads", () => {
     expect(nextTestPayloads({}, { input: { plan: "premium" } })).toEqual({
       manual: { plan: "premium" },
     });
+  });
+});
+
+describe("missingRequiredFields", () => {
+  const fields = testPayloadFields(appointmentCreated);
+
+  it("names each required field the payload leaves without a value, in declared order", () => {
+    const missing = missingRequiredFields(fields, {
+      appointment: { id: "appt_1", seats: null },
+    });
+
+    expect(missing.map((field) => field.path)).toEqual([
+      "appointment.startsAt",
+      "appointment.seats",
+      "appointment.channel",
+    ]);
+  });
+
+  it("lets a nullable field stay empty", () => {
+    const missing = missingRequiredFields(fields, {});
+
+    expect(missing.map((field) => field.path)).not.toContain(
+      "appointment.confirmed"
+    );
+  });
+
+  it("finds nothing missing once every required field holds a value", () => {
+    expect(
+      missingRequiredFields(fields, {
+        appointment: {
+          id: "appt_1",
+          startsAt: "2026-11-25T09:00:00.000Z",
+          seats: 0,
+          channel: "sms",
+        },
+      })
+    ).toEqual([]);
   });
 });

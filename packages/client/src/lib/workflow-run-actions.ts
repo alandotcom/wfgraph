@@ -1,13 +1,12 @@
 /**
  * Run-time side of the toolbar: status animation, remembering the test payload,
- * and turning an execute response into canvas + toast state.
+ * and turning an execute response into canvas and toast state.
  *
  * Issue collection lives in `@wfgraph/shared/graph/workflow-issues`; this module
  * only drives a run once the builder has cleared (or bypassed) those checks.
  */
 
 import { toast } from "sonner";
-import { getClientLogger } from "#src/lib/logger";
 import type { RunRequest } from "#src/components/overlays/run-overlay";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -22,8 +21,6 @@ import {
 
 // The `satisfies` is the exhaustiveness check: a reason added to the shared
 // union fails to compile here until it has user-facing copy.
-const logger = getClientLogger("workflow", "run");
-
 export const IGNORED_REASON_MESSAGES = {
   workflow_paused: "The workflow is paused, so it can't start runs.",
   concurrency_first_wins:
@@ -119,12 +116,18 @@ type ExecuteWorkflowRunParams = {
   /**
    * Opens the new run in the URL, which is what the Runs view and the
    * canvas overlay both read (#33). Called only once a run has actually
-   * started: the ignored and error paths below leave the URL exactly where
-   * it stood, because neither one created an execution for it to point at.
+   * started: the ignored and error paths leave the URL exactly where it
+   * stood, because neither one created an execution for it to point at.
    */
   navigateToExecution: (executionId: string) => Promise<void>;
 };
 
+/**
+ * Sends the run request and turns its answer into canvas and toast state. The
+ * canvas and the URL change only once the server says a run started: an
+ * ignored request leaves both as they stood, and a rejected request throws to
+ * the caller, which reports it where the request was made.
+ */
 export async function executeWorkflowRun({
   runWorkflow,
   nodes,
@@ -132,53 +135,42 @@ export async function executeWorkflowRun({
   runLabel,
   navigateToExecution,
 }: ExecuteWorkflowRunParams) {
-  updateNodesStatus(nodes, setNodeStatuses, "none");
+  const result = await runWorkflow();
 
-  // Instant visual feedback before the first poll lands.
+  if (result.status !== "running" || !result.executionId) {
+    toast.message(
+      result.status === "ignored"
+        ? IGNORED_REASON_MESSAGES[result.reason]
+        : "No run started."
+    );
+    return;
+  }
+
+  // The new run starts at its Lifecycle Node. Painting that now, before its
+  // first status read lands, shows the run moving as soon as it exists.
+  updateNodesStatus(nodes, setNodeStatuses, "none");
   setNodeStatuses(
     nodes
       .filter((node) => node.data.type === "lifecycle")
       .map((node) => ({ nodeId: node.id, status: "running" }))
   );
 
-  try {
-    const result = await runWorkflow();
-
-    if (result.status !== "running" || !result.executionId) {
-      toast.message(
-        result.status === "ignored"
-          ? IGNORED_REASON_MESSAGES[result.reason]
-          : "No run started."
-      );
-
-      // No execution was created, so there is no id for the URL to own.
-      // Whatever run was already open (or not) is left as it stands.
-      updateNodesStatus(nodes, setNodeStatuses, "none");
-      return;
-    }
-
-    if (
-      typeof result.supersededExecutions === "number" &&
-      result.supersededExecutions > 0
-    ) {
-      const replaced =
-        result.supersededExecutions === 1
-          ? "1 earlier run for this entity was replaced"
-          : `${result.supersededExecutions} earlier runs for this entity were replaced`;
-      toast.success(`${runLabel} started. ${replaced}.`);
-    } else {
-      // One toast per start, naming the command. The canvas paints the same
-      // statuses for either run, so this toast says which graph is running.
-      toast.success(`${runLabel} started`);
-    }
-
-    // The URL is the one writer of which run is open; the Runs view and the
-    // canvas overlay both derive their selection from it.
-    await navigateToExecution(result.executionId);
-  } catch (error) {
-    // The mutation cache has already toasted the message. What is left is the
-    // canvas, which still shows the Lifecycle Node running.
-    logger.error("Failed to execute the workflow", { error });
-    updateNodesStatus(nodes, setNodeStatuses, "error");
+  if (
+    typeof result.supersededExecutions === "number" &&
+    result.supersededExecutions > 0
+  ) {
+    const replaced =
+      result.supersededExecutions === 1
+        ? "1 earlier run for this entity was replaced"
+        : `${result.supersededExecutions} earlier runs for this entity were replaced`;
+    toast.success(`${runLabel} started. ${replaced}.`);
+  } else {
+    // One toast per start, naming the command. The canvas paints the same
+    // statuses for either run, so this toast says which graph is running.
+    toast.success(`${runLabel} started`);
   }
+
+  // The URL is the one writer of which run is open; the Runs view and the
+  // canvas overlay both derive their selection from it.
+  await navigateToExecution(result.executionId);
 }

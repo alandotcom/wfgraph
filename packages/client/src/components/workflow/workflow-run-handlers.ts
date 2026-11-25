@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useSetAtom } from "jotai";
 import { toast } from "sonner";
+import { getClientLogger } from "#src/lib/logger";
 import {
   RunOverlay,
   type RunRequest,
@@ -81,6 +82,18 @@ import type { WorkflowToolbarState } from "#src/components/workflow/workflow-too
 /** The status an oRPC conflict arrives as, which `ApiError` carries. */
 const CONFLICT_STATUS = 409;
 
+/** The status a request the server refused as malformed arrives as. */
+const BAD_REQUEST_STATUS = 400;
+
+/**
+ * Whether the server refused the run request itself, such as a payload the
+ * Event does not accept. No run exists, so the run dialog that sent the
+ * request shows the server's sentence and stays open.
+ */
+function isRefusedRunRequest(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === BAD_REQUEST_STATUS;
+}
+
 /**
  * Whether a refused run is the one the staleness gate turned away.
  *
@@ -100,6 +113,8 @@ function isStalePublishedRun(
     error.status === CONFLICT_STATUS
   );
 }
+
+const logger = getClientLogger("workflow", "run");
 
 /** One toast id, so a held Cmd+Enter replaces the notice instead of stacking. */
 export const PREFLIGHT_TOAST_ID = "workflow-preflight-busy";
@@ -224,11 +239,13 @@ export function useWorkflowHandlers({
       .catch(() => undefined);
   };
 
-  // No errorMessage: a rejected run carries a server message worth reading, and
-  // the mutation cache falls back to it. Every other outcome arrives as a
-  // successful response with a status on it, which executeWorkflowRun reads.
+  // No errorMessage: a rejected run carries a server message worth reading.
+  // The run dialog shows a refused request itself, and the mutation cache
+  // toasts every other failure. Every other outcome arrives as a successful
+  // response with a status on it, which executeWorkflowRun reads.
   const runWorkflow = useMutation(
     orpcQuery.workflow.execute.mutationOptions({
+      meta: { errorShownByCaller: isRefusedRunRequest },
       // A started run belongs in both run lists, and the dashboard's is the one
       // nobody is looking at when this fires.
       onSuccess: () => refreshRunHistory(queryClient),
@@ -248,16 +265,21 @@ export function useWorkflowHandlers({
     })
   );
 
+  /**
+   * Sends one run request from the run dialog. It resolves with the server's
+   * sentence when the server refused the request, so the dialog can show it,
+   * and with null otherwise.
+   */
   const executeWorkflow = async (
     target: WorkflowRunTarget,
     request: RunRequest
-  ) => {
+  ): Promise<string | null> => {
     if (!canExecute || (target.graph === "draft" && !canUpdate)) {
-      return;
+      return null;
     }
     if (!currentWorkflowId) {
       toast.error("Please save the workflow before executing");
-      return;
+      return null;
     }
 
     // Run draft executes the canvas, and the server reads that canvas from the
@@ -268,7 +290,7 @@ export function useWorkflowHandlers({
     if (target.graph === "draft" && hasUnsavedChanges) {
       const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
       if (saved && !saved.ok) {
-        return;
+        return null;
       }
     }
 
@@ -280,19 +302,6 @@ export function useWorkflowHandlers({
     if (target.graph === "draft") {
       rememberTestPayload({ nodes, updateNodeData, request });
     }
-
-    // Show the run list while the run starts. The run list is its own
-    // workspace address, so its selection starts empty and Draft keeps its own.
-    void navigate({
-      to: "/workflows/$workflowId",
-      params: { workflowId: currentWorkflowId },
-      search: { view: "runs" },
-      replace: true,
-    });
-
-    // Drop any run overlay so optimistic status paints the draft until the new
-    // run's pinned graph arrives.
-    setExecutionOverlay(null);
 
     setRunStartInFlight(true);
     try {
@@ -323,6 +332,9 @@ export function useWorkflowHandlers({
         // flight through the started run's first status read, so Run is never
         // free while the run it just started reads as unknown.
         navigateToExecution: async (executionId) => {
+          // Drop any run overlay so the start paints the draft until the new
+          // run's pinned graph arrives.
+          setExecutionOverlay(null);
           await navigate({
             to: "/workflows/$workflowId",
             params: { workflowId: currentWorkflowId },
@@ -331,6 +343,14 @@ export function useWorkflowHandlers({
           await readFirstRunStatus(executionId);
         },
       });
+      return null;
+    } catch (error) {
+      if (isRefusedRunRequest(error)) {
+        return error.message;
+      }
+      // The mutation cache has already toasted the message.
+      logger.error("Failed to execute the workflow", { error });
+      return null;
     } finally {
       setRunStartInFlight(false);
     }
@@ -347,9 +367,7 @@ export function useWorkflowHandlers({
     openOverlay(RunOverlay, {
       target,
       ...facts,
-      onRun: (request: RunRequest) => {
-        void executeWorkflow(target, request);
-      },
+      onRun: (request: RunRequest) => executeWorkflow(target, request),
     });
   };
 

@@ -127,14 +127,25 @@ describe("executeWorkflowRun", () => {
     };
   }
 
-  it("marks every node idle, then only the Lifecycle Node running, before the run resolves", async () => {
+  it("marks every node idle, then only the Lifecycle Node running, once the run starts", async () => {
     const setNodeStatuses = vi.fn();
     const nodes = [lifecycleNode("t"), actionNode("a")];
+    let answer: (result: WorkflowExecuteResult) => void = () => undefined;
+    const runWorkflow = vi.fn(
+      () =>
+        new Promise<WorkflowExecuteResult>((resolve) => {
+          answer = resolve;
+        })
+    );
 
-    await executeWorkflowRun(baseParams({ nodes, setNodeStatuses }));
+    const started = executeWorkflowRun(
+      baseParams({ nodes, setNodeStatuses, runWorkflow })
+    );
+    // Nothing is painted while the server has not said a run exists.
+    expect(setNodeStatuses).not.toHaveBeenCalled();
 
-    // Instant feedback happens before the mutation is awaited: reset first,
-    // then show the entrypoint moving, both ahead of any server answer.
+    answer(runningResult);
+    await started;
     expect(setNodeStatuses).toHaveBeenNthCalledWith(1, [
       { nodeId: "t", status: "none" },
       { nodeId: "a", status: "none" },
@@ -209,7 +220,7 @@ describe("executeWorkflowRun", () => {
   // MAINTAINER DECISION (#33): an ignored run created no execution, so there is
   // no id for the URL to own. Whatever run was already open -- or not -- stays
   // open, rather than being cleared.
-  it("resets every node to idle and leaves the URL alone when the run was ignored", async () => {
+  it("paints nothing and leaves the URL alone when the run was ignored", async () => {
     const setNodeStatuses = vi.fn();
     const navigateToExecution = vi.fn(async () => {});
     const runWorkflow = vi.fn(async (): Promise<WorkflowExecuteResult> => ({
@@ -227,34 +238,32 @@ describe("executeWorkflowRun", () => {
       })
     );
 
-    expect(setNodeStatuses).toHaveBeenLastCalledWith([
-      { nodeId: "t", status: "none" },
-    ]);
+    expect(setNodeStatuses).not.toHaveBeenCalled();
     expect(navigateToExecution).not.toHaveBeenCalled();
   });
 
   // Same decision, the other branch that starts nothing: the mutation itself
-  // failed, so there is likewise no new execution for the URL to point at.
-  it("marks every node error and leaves the URL alone when the run mutation rejects", async () => {
+  // failed, so there is no run whose steps could have failed, and no new
+  // execution for the URL to point at. The caller reports the rejection.
+  it("paints nothing, leaves the URL alone, and hands back a rejected run request", async () => {
     const setNodeStatuses = vi.fn();
     const navigateToExecution = vi.fn(async () => {});
     const runWorkflow = vi.fn(async (): Promise<WorkflowExecuteResult> => {
       throw new Error("boom");
     });
 
-    await executeWorkflowRun(
-      baseParams({
-        runWorkflow,
-        nodes: [lifecycleNode("t"), actionNode("a")],
-        setNodeStatuses,
-        navigateToExecution,
-      })
-    );
+    await expect(
+      executeWorkflowRun(
+        baseParams({
+          runWorkflow,
+          nodes: [lifecycleNode("t"), actionNode("a")],
+          setNodeStatuses,
+          navigateToExecution,
+        })
+      )
+    ).rejects.toThrow("boom");
 
-    expect(setNodeStatuses).toHaveBeenLastCalledWith([
-      { nodeId: "t", status: "error" },
-      { nodeId: "a", status: "error" },
-    ]);
+    expect(setNodeStatuses).not.toHaveBeenCalled();
     expect(navigateToExecution).not.toHaveBeenCalled();
   });
 });

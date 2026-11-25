@@ -28,10 +28,12 @@ const testCatalog: ExtensionCatalog = {
         {
           path: "appointment.startsAt",
           type: "timestamp",
+          nullable: true,
         },
         {
           path: "appointment.kind",
           type: "string",
+          nullable: true,
           enumValues: ["appointmentReminders", "followUp"],
           enumLabels: {
             appointmentReminders: "Appointment reminders",
@@ -63,9 +65,13 @@ function renderOverlay(
     sends?: RunSends;
     startEvents?: readonly string[];
     target?: WorkflowRunTarget;
+    /** What the server answers the run request with: a refusal, or none. */
+    refusal?: string;
   } = {}
 ) {
-  const onRun = vi.fn<(request: RunRequest) => void>();
+  const onRun = vi.fn<(request: RunRequest) => Promise<string | null>>(
+    async () => overrides.refusal ?? null
+  );
 
   render(
     <ExtensionCatalogProvider value={testCatalog}>
@@ -180,7 +186,7 @@ describe("RunOverlay", () => {
       "The appointment's stable identifier."
     );
     expect(appointmentId.getAttribute("aria-describedby")).toBe(description.id);
-    expect(screen.getByLabelText("Starts at")).toBeTruthy();
+    expect(screen.getByLabelText(/^Starts at/)).toBeTruthy();
     expect(screen.getByText("appointment.id")).toBeTruthy();
     expect(screen.getByText("appointment.startsAt")).toBeTruthy();
   });
@@ -188,7 +194,10 @@ describe("RunOverlay", () => {
   it("shows an enum label and sends its stored value", () => {
     const { onRun } = renderOverlay();
 
-    fireEvent.click(screen.getByLabelText("Kind"));
+    fireEvent.change(screen.getByLabelText("Appointment ID"), {
+      target: { value: "appt_1" },
+    });
+    fireEvent.click(screen.getByLabelText(/^Kind/));
     const option = screen.getByRole("option", {
       name: "Appointment reminders",
     });
@@ -198,7 +207,7 @@ describe("RunOverlay", () => {
 
     expect(onRun).toHaveBeenCalledWith({
       eventName: "app/appointment.created",
-      input: { appointment: { kind: "appointmentReminders" } },
+      input: { appointment: { id: "appt_1", kind: "appointmentReminders" } },
     });
   });
 
@@ -264,5 +273,53 @@ describe("RunOverlay", () => {
 
     expect(screen.getByText("This is not valid JSON.")).toBeTruthy();
     expect(onRun).not.toHaveBeenCalled();
+  });
+
+  // The Event refuses a payload missing a required field, and a refused
+  // request starts no run, so the dialog names the field before sending.
+  it("names an empty required field and sends nothing", () => {
+    const { onRun } = renderOverlay();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
+
+    expect(onRun).not.toHaveBeenCalled();
+    const field = screen.getByLabelText("Appointment ID");
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    const message = screen.getByText("Appointment ID is required.");
+    expect(field.getAttribute("aria-describedby")).toContain(message.id);
+    // A nullable field may stay empty.
+    expect(screen.queryByText("Starts at is required.")).toBeNull();
+
+    fireEvent.change(field, { target: { value: "appt_1" } });
+    expect(screen.queryByText("Appointment ID is required.")).toBeNull();
+  });
+
+  it("names the empty required fields of a JSON payload", () => {
+    const { onRun } = renderOverlay();
+
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    fireEvent.change(screen.getByLabelText("Payload JSON"), {
+      target: { value: "{}" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
+
+    expect(onRun).not.toHaveBeenCalled();
+    expect(screen.getByText("Enter a value for Appointment ID.")).toBeTruthy();
+  });
+
+  it("keeps the dialog open with the server's sentence when the server refuses the run", async () => {
+    renderOverlay({
+      refusal: "Payload refused for Event: appointment.id is not a string",
+    });
+
+    fireEvent.change(screen.getByLabelText("Appointment ID"), {
+      target: { value: "appt_1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Payload refused for Event: appointment.id is not a string"
+    );
+    expect(screen.getByRole("button", { name: "Run draft" })).toBeTruthy();
   });
 });

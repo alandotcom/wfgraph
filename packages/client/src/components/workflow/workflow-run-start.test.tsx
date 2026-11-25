@@ -15,6 +15,7 @@ import {
 } from "@tanstack/react-router";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
+import { useState } from "react";
 import { Provider as JotaiProvider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
@@ -61,8 +62,9 @@ function RunProbe() {
   const actions = useWorkflowActions(workflowState);
   const { stack } = useOverlay();
   const top = stack.at(-1) as
-    | { props: { onRun?: (request: RunRequest) => void } }
+    | { props: { onRun?: (request: RunRequest) => Promise<string | null> } }
     | undefined;
+  const [answer, setAnswer] = useState("unanswered");
   return (
     <>
       <button
@@ -71,9 +73,17 @@ function RunProbe() {
       >
         Run published
       </button>
-      <button onClick={() => top?.props.onRun?.({ input: {} })} type="button">
+      <button
+        onClick={() =>
+          void top?.props.onRun?.({ input: {} }).then((refusal) => {
+            setAnswer(refusal ?? "none");
+          })
+        }
+        type="button"
+      >
         Confirm run
       </button>
+      <output aria-label="run answer">{answer}</output>
       <output aria-label="run busy">{String(workflowState.isExecuting)}</output>
       <output aria-label="overlay count">{stack.length}</output>
       <output aria-label="published version">
@@ -209,7 +219,7 @@ async function renderWithOpenRun(search: WorkflowRouteSearch) {
 }
 
 describe("starting a run with another run open", () => {
-  it("holds Run busy and keeps the start painted until the new run's status is read", async () => {
+  it("holds Run busy until the new run's status is read, and paints nothing before the run exists", async () => {
     const { view, store, router } = await renderWithOpenRun({
       view: "runs",
       executionId: "exec_a",
@@ -222,11 +232,14 @@ describe("starting a run with another run open", () => {
     fireEvent.click(view.getByRole("button", { name: "Confirm run" }));
 
     await waitFor(() => expect(executeCalls).toHaveLength(1));
-    await waitFor(() =>
-      expect(router.state.location.search).toEqual({ view: "runs" })
-    );
+    // Until the server answers there is no run, so the open run stays on
+    // screen and nothing is painted for the new one.
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_a",
+    });
     expect(busy().textContent).toBe("true");
-    expect(store.get(runNodeEvidenceStatusesAtom).get("lifecycle_1")).toBe(
+    expect(store.get(runNodeEvidenceStatusesAtom).get("lifecycle_1")).not.toBe(
       "running"
     );
 
@@ -319,5 +332,51 @@ describe("starting a run with another run open", () => {
       await heldExecute.promise;
     });
     await waitFor(() => expect(busy().textContent).toBe("false"));
+  });
+
+  // A request the server refuses starts no run: the dialog gets the server's
+  // sentence back, the open run stays open, and no step is painted Failed.
+  it("hands a refused request back to the dialog without painting or navigating", async () => {
+    const { view, store, router } = await renderWithOpenRun({
+      view: "runs",
+      executionId: "exec_a",
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Run published" }));
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "overlay count" }).textContent
+      ).toBe("1")
+    );
+    fireEvent.click(view.getByRole("button", { name: "Confirm run" }));
+    await waitFor(() => expect(executeCalls).toHaveLength(1));
+
+    await act(async () => {
+      heldExecute.resolve(
+        rpcErrorResponse({
+          code: "BAD_REQUEST",
+          status: 400,
+          message: "Payload refused for Event",
+          data: { error: "Payload refused for Event" },
+        })
+      );
+      await heldExecute.promise;
+    });
+
+    await waitFor(() =>
+      expect(view.getByRole("status", { name: "run answer" }).textContent).toBe(
+        "Payload refused for Event"
+      )
+    );
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_a",
+    });
+    expect(
+      [...store.get(runNodeEvidenceStatusesAtom).values()].includes("error")
+    ).toBe(false);
+    expect(view.getByRole("status", { name: "run busy" }).textContent).toBe(
+      "false"
+    );
   });
 });

@@ -1,5 +1,8 @@
+import { compact } from "es-toolkit/array";
 import { Send } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { useUnmountCleanup } from "#src/hooks/effects";
 import { Button } from "#src/components/ui/button";
 import { Checkbox } from "#src/components/ui/checkbox";
 import { Input } from "#src/components/ui/input";
@@ -14,6 +17,7 @@ import {
 import { whenChosen } from "#src/lib/select-choice";
 import {
   formValuesFromPayload,
+  missingRequiredFields,
   parseTestPayload,
   payloadFromFormValues,
   type TestPayloadField,
@@ -72,7 +76,12 @@ type RunOverlayProps = OverlayComponentProps<{
    * run displays it, counted from that version's own nodes.
    */
   sends: RunSends;
-  onRun: (request: RunRequest) => void;
+  /**
+   * Starts the run. It resolves with the server's sentence when the server
+   * refused the request and no run exists, which the dialog shows while it
+   * stays open, and with null once the dialog can close.
+   */
+  onRun: (request: RunRequest) => Promise<string | null>;
 }>;
 
 function FieldControl({
@@ -80,16 +89,21 @@ function FieldControl({
   value,
   onChange,
   descriptionId,
+  invalid,
 }: {
   field: TestPayloadField;
   value: string;
   onChange: (next: string) => void;
   descriptionId?: string | undefined;
+  /** Whether the field is required and holds no value. */
+  invalid: boolean;
 }) {
+  const ariaInvalid = invalid ? true : undefined;
   if (field.control === "checkbox") {
     return (
       <Checkbox
         aria-describedby={descriptionId}
+        aria-invalid={ariaInvalid}
         checked={value === "true"}
         id={field.path}
         onCheckedChange={(checked) => onChange(checked ? "true" : "false")}
@@ -107,6 +121,7 @@ function FieldControl({
       >
         <SelectTrigger
           aria-describedby={descriptionId}
+          aria-invalid={ariaInvalid}
           className="w-full"
           id={field.path}
         >
@@ -126,6 +141,7 @@ function FieldControl({
   return (
     <Input
       aria-describedby={descriptionId}
+      aria-invalid={ariaInvalid}
       id={field.path}
       onChange={(event) => onChange(event.target.value)}
       type={
@@ -145,12 +161,15 @@ function PayloadForm({
   values,
   onChange,
   hasEvent,
+  missingPaths,
 }: {
   fields: readonly TestPayloadField[];
   values: TestPayloadFormValues;
   onChange: (path: string, next: string) => void;
   /** Whether the run stands in for an Event. The Event declares the fields. */
   hasEvent: boolean;
+  /** The required fields the last Run press found empty, by path. */
+  missingPaths: readonly string[];
 }) {
   if (fields.length === 0) {
     return (
@@ -166,9 +185,13 @@ function PayloadForm({
   return (
     <div className="space-y-4">
       {fields.map((field) => {
-        const descriptionId = field.description
-          ? `${field.path}-description`
-          : undefined;
+        const missing = missingPaths.includes(field.path);
+        const errorId = `${field.path}-error`;
+        const descriptionId =
+          compact([
+            missing ? errorId : null,
+            field.description ? `${field.path}-description` : null,
+          ]).join(" ") || undefined;
 
         return (
           <div className="space-y-2" key={field.path}>
@@ -188,11 +211,20 @@ function PayloadForm({
             <FieldControl
               descriptionId={descriptionId}
               field={field}
+              invalid={missing}
               onChange={(next) => onChange(field.path, next)}
               value={values[field.path] ?? ""}
             />
+            {missing ? (
+              <p className="text-destructive text-xs" id={errorId}>
+                {field.label} is required.
+              </p>
+            ) : null}
             {field.description ? (
-              <p className="text-muted-foreground text-xs" id={descriptionId}>
+              <p
+                className="text-muted-foreground text-xs"
+                id={`${field.path}-description`}
+              >
                 {field.description}
               </p>
             ) : null}
@@ -254,6 +286,17 @@ export function RunOverlay({
     JSON.stringify(savedPayload ?? {}, null, 2)
   );
   const [jsonError, setJsonError] = useState<string | null>(null);
+  // The required fields the last Run press found empty, and the sentence the
+  // server refused the last request with. Either keeps the dialog open.
+  const [missingPaths, setMissingPaths] = useState<readonly string[]>([]);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  // A dialog dismissed while its request was in flight is gone when the
+  // answer arrives, so a refusal then goes to a toast.
+  const dismissedRef = useRef(false);
+  useUnmountCleanup(() => {
+    dismissedRef.current = true;
+  });
 
   // The form writes into the same payload the JSON pane holds, so a path with
   // no matching form field survives the round trip.
@@ -273,6 +316,8 @@ export function RunOverlay({
     setJsonText(JSON.stringify(payload, null, 2));
     setBasePayload(payload);
     setJsonError(null);
+    setMissingPaths([]);
+    setRefusal(null);
   };
 
   /** The form's values as a payload, merged over whatever the JSON pane holds. */
@@ -301,22 +346,45 @@ export function RunOverlay({
   const eventIsRequired = hasEventSplit;
   const canRun = !eventIsRequired || eventName !== undefined;
 
-  const handleRun = () => {
+  const handleRun = async () => {
+    let input: JsonObject;
     if (pane === "json") {
       const parsed = parseTestPayload(jsonText);
       if (!parsed.ok) {
         setJsonError(parsed.error);
         return;
       }
+      input = parsed.payload;
+    } else {
+      input = currentPayload();
+    }
 
-      onRun({ eventName, input: parsed.payload });
-      closeAll();
+    const missing = missingRequiredFields(fields, input);
+    setMissingPaths(missing.map((field) => field.path));
+    setRefusal(null);
+    if (missing.length > 0) {
       return;
     }
 
-    onRun({ eventName, input: currentPayload() });
-    closeAll();
+    setIsStarting(true);
+    const refused = await onRun({ eventName, input });
+    if (dismissedRef.current) {
+      if (refused !== null) {
+        toast.error(refused);
+      }
+      return;
+    }
+    setIsStarting(false);
+    if (refused === null) {
+      closeAll();
+      return;
+    }
+    setRefusal(refused);
   };
+
+  const missingLabels = fields
+    .filter((field) => missingPaths.includes(field.path))
+    .map((field) => field.label);
 
   // A manual-only workflow has one way to start and no Event to stand in for,
   // so the select would offer a single unchangeable choice. A graph with an
@@ -345,8 +413,9 @@ export function RunOverlay({
         { label: "Cancel", variant: "outline", onClick: closeAll },
         {
           label: copy.confirmLabel,
-          onClick: handleRun,
+          onClick: () => void handleRun(),
           disabled: !canRun,
+          loading: isStarting,
         },
       ]}
       description={copy.description}
@@ -444,9 +513,13 @@ export function RunOverlay({
             <PayloadForm
               fields={fields}
               hasEvent={eventName !== undefined}
-              onChange={(path, next) =>
-                setValues((current) => ({ ...current, [path]: next }))
-              }
+              missingPaths={missingPaths}
+              onChange={(path, next) => {
+                setValues((current) => ({ ...current, [path]: next }));
+                setMissingPaths((current) =>
+                  current.filter((missing) => missing !== path)
+                );
+              }}
               values={values}
             />
           ) : (
@@ -456,6 +529,7 @@ export function RunOverlay({
               onChange={(event) => {
                 setJsonText(event.target.value);
                 setJsonError(null);
+                setMissingPaths([]);
               }}
               spellCheck={false}
               value={jsonText}
@@ -463,7 +537,18 @@ export function RunOverlay({
           )}
 
           {jsonError && <p className="text-destructive text-xs">{jsonError}</p>}
+          {pane === "json" && missingLabels.length > 0 ? (
+            <p className="text-destructive text-xs">
+              Enter a value for {missingLabels.join(", ")}.
+            </p>
+          ) : null}
         </div>
+
+        {refusal === null ? null : (
+          <p className="break-words text-destructive text-sm" role="alert">
+            {refusal}
+          </p>
+        )}
       </div>
     </Overlay>
   );
