@@ -1,3 +1,9 @@
+import {
+  extractRpcProcedurePath,
+  rpcJsonResponse,
+  rpcUrl,
+} from "#src/lib/rpc-fetch-test-support";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -395,25 +401,47 @@ describe("WorkflowToolbarChrome", () => {
     expect(workflow.className).toContain("min-w-0");
   });
 
-  // Published mode lives in the status strip, beside the version it governs.
-  // The toolbar renders neither the setting nor the version.
-  it("leaves Published mode out of the toolbar", async () => {
-    const { findByRole, queryByRole } = renderChrome(WorkflowToolbarChrome, {
-      state: {
-        workflowMode: "test",
-        publication: {
-          isPublished: true,
-          isPaused: false,
-          hasUnpublishedChanges: false,
-          publishedVersionId: "version_7",
-          publishedVersion: 7,
-          publishedAt: "2026-08-23T15:00:00.000Z",
-        },
-      },
-    });
+  // The publication state is stated once, beside the workflow's name, in
+  // the Workflows list's words.
+  it("states the publication in one chip beside the workflow's name", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        extractRpcProcedurePath(rpcUrl(input)) === "workflow/getById"
+          ? rpcJsonResponse({
+              id: "workflow_1",
+              name: "Appointment reminders",
+              isPaused: false,
+              mode: "live",
+              visibility: "private",
+              createdAt: "2026-03-01T09:00:00.000Z",
+              updatedAt: "2026-03-01T09:30:00.000Z",
+              graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+              hasUnpublishedChanges: true,
+              publishedVersionId: "version_2",
+              publishedVersion: 2,
+            })
+          : new Response("{}", { status: 404 })
+      )
+    );
+    try {
+      const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
-    await findByRole("button", { name: "Publish v8" });
-    expect(queryByRole("button", { name: /^Published mode/ })).toBeNull();
+      const workflow = await findByRole("menuitem", { name: "Workflow" });
+      // In the menu bar the chip's trigger is one of its menu items.
+      const chip = await findByRole("menuitem", {
+        name: "Publication: Live · v2 · changes not published",
+      });
+      expect(
+        chip.closest("[data-slot='workflow-toolbar-left']")
+      ).not.toBeNull();
+      expect(
+        workflow.compareDocumentPosition(chip) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   // Below `md` the trailing group is one button, so it must hold every desktop

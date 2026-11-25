@@ -1,8 +1,8 @@
 /**
- * The one place that changes a workflow's Published mode. The status strip is
- * the only surface that calls this hook. A switch in either direction takes
- * one press: the mode is a setting the strip states at all times, and it
- * sends nothing on its own. The write uses the save queue, then refreshes the
+ * The one place that changes a workflow's Published mode. The publication
+ * chip beside the workflow's name is the only surface that calls this hook. A
+ * switch in either direction takes one press: the mode is a setting the chip
+ * states at all times, and it sends nothing on its own. The write uses the save queue, then refreshes the
  * workflow list.
  */
 

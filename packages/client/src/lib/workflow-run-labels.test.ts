@@ -11,6 +11,7 @@ import {
   runSendsLabel,
   runCommandLabel,
   workflowRunTarget,
+  publicationChipLabel,
 } from "#src/lib/workflow-run-labels";
 
 /**
@@ -225,5 +226,37 @@ describe("runGraphRecipientsLabel", () => {
         runMode: "test",
       })
     ).toBe("v7 · Test");
+  });
+});
+
+describe("publicationChipLabel", () => {
+  const base = {
+    isPaused: false,
+    isPublished: true,
+    workflowMode: "live" as const,
+    publishedVersion: 2,
+    hasUnpublishedChanges: false,
+  };
+
+  it("names the state in the Workflows list's words, then the version", () => {
+    expect(publicationChipLabel(base)).toBe("Live · v2");
+    expect(publicationChipLabel({ ...base, hasUnpublishedChanges: true })).toBe(
+      "Live · v2 · changes not published"
+    );
+    expect(publicationChipLabel({ ...base, workflowMode: "test" })).toBe(
+      "Test · v2"
+    );
+  });
+
+  it("says Never published or Paused alone, since neither reaches anyone", () => {
+    expect(
+      publicationChipLabel({
+        ...base,
+        isPublished: false,
+        publishedVersion: undefined,
+        hasUnpublishedChanges: true,
+      })
+    ).toBe("Never published");
+    expect(publicationChipLabel({ ...base, isPaused: true })).toBe("Paused");
   });
 });

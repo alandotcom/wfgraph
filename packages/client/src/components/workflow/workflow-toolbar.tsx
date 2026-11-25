@@ -22,6 +22,7 @@ import {
   ToolbarActions,
   ToolbarPublishControls,
   WorkflowMenuComponent,
+  WorkflowPublicationChip,
 } from "#src/components/workflow/workflow-toolbar-chrome";
 import {
   useWorkflowActions,
@@ -265,6 +266,11 @@ export function WorkflowToolbarChrome({
             orientation="vertical"
           />
           <WorkflowMenuComponent
+            actions={actions}
+            state={state}
+            workflowId={workflowId}
+          />
+          <WorkflowPublicationChip
             actions={actions}
             state={state}
             workflowId={workflowId}

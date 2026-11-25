@@ -413,8 +413,8 @@ function PublishConsequence({ version }: { version: number }) {
     : null;
   return (
     <p className="flex items-start gap-2 text-muted-foreground">
-      {/* The dot the status strip's Published mode control wears: filled
-          Amber for Test, an outline for Live. */}
+      {/* The Published mode's dot: filled Amber for Test, an outline for
+          Live. */}
       <Circle
         aria-hidden
         className={cn(

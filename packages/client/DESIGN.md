@@ -172,7 +172,7 @@ Signal Red and the confirmation dialog are the two loudest things the editor own
 
 **Do not explain one control in the copy of another.** If a control needs a sentence about what its neighbor does, move or regroup the controls.
 
-**A setting is a control, not a command.** It lives where its state is shown, which for Published mode is the status strip. Published mode never appears in the workflow's menu or the command palette.
+**A setting is a control, not a command.** It lives where its state is shown, which for Published mode is the publication chip beside the workflow's name. Published mode never appears in the workflow's menu or the command palette.
 
 **Rows offering the same kind of repair use the same button weight.** Filling one button ranks it above the others, and the reader picks the row that matches the problem.
 
@@ -354,8 +354,7 @@ The details column's header reads **Details**. It shows what the selection
 shows, under a header naming the object, the path from the workflow through
 any Group to it, and its status. With nothing
 selected in Draft it shows the workflow's own details: its name with
-**Rename**, its description, its publication state and Published mode, and its
-issues, each with an **Edit** that selects the step and puts the cursor in the
+**Rename**, its description, and its issues, each with an **Edit** that selects the step and puts the cursor in the
 field the issue names.
 
 The build agent works on the whole workflow, so it sits on the canvas rather
@@ -680,13 +679,18 @@ selects that step on the canvas and opens its evidence over the run's sheet.
 
 A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
 hairline top border, and one line that never wraps. While the draft is on
-screen, the strip names the published version and carries **Published mode** one
-divider from it, as a ghost menu button reading Live or Test behind a dot. The
-dot is an outline for Live and a filled Signal Amber for Test. The setting sits
-there because the badge beside it already names the version the mode governs.
-Before the first publish the button reads "Live on publish" or "Test on
-publish". While the workflow is paused, the strip reads Paused after the mode,
-with **Resume** beside it.
+screen, the strip says whether the draft is saved, and holds the issue count.
+
+The publication state is stated once, in a chip beside the workflow's name in
+the toolbar, in the words the Workflows list uses: "Live · v2 · changes not
+published", "Test · v3", "Never published" or "Paused", behind the list's dot,
+filled green for Live, filled Signal Amber for Test and an outline otherwise.
+Its menu holds **Published mode** (Live or Test, each with its recipients, and
+"Takes effect on publish" before the first publish), **Pause workflow** or
+**Resume workflow** once a version is published, **Version history** and
+**Review changes**. A viewer who may not edit sees the mode and cannot change
+it. The chip renders nothing until the workflow has loaded, since Live is a
+claim about real recipients.
 The strip also identifies **Runs**, explains that editing is
 off, and provides **Back to draft**. With a read-only view on the canvas, the
 strip tints toward `--info`. Its height remains constant because the strip and
@@ -826,7 +830,7 @@ description, and a step moved into, out of, or between Groups with its
 connections unchanged. They start open when no edit changes what runs.
 
 The footer states the consequence in one line beside the Published mode dot
-the status strip uses: "Live. New runs use v3 and reach real recipients. 1
+the publication chip uses: "Live. New runs use v3 and reach real recipients. 1
 active run stays on v1." It then offers **Keep editing** and the filled
 **Publish v3**. Cmd+Enter anywhere in the sheet publishes, and Escape takes the
 sheet back one page or keeps editing. Publish sends the exact draft the sheet

@@ -120,8 +120,8 @@ describe("workflowCommands", () => {
     expect(input.callbacks.groupSelection).toHaveBeenCalledOnce();
   });
 
-  // Published mode is a setting, and the status strip is where it is read and
-  // written. A command that flipped it would be a second writer.
+  // Published mode is a setting, and the publication chip is where it is read
+  // and written. A command that flipped it would be a second writer.
   it("offers no command that changes Published mode", () => {
     const commands = workflowCommands(commandInput());
 

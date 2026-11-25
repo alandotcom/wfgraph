@@ -83,7 +83,12 @@ import {
   workflowListQueryOptions,
 } from "#src/lib/rpc-query";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
-import { publishedModeWord } from "#src/lib/workflow-run-labels";
+import {
+  publishedModeWord,
+  WORKFLOW_PUBLICATION_STATE_LABELS,
+  type WorkflowPublicationState,
+  workflowPublicationState,
+} from "#src/lib/workflow-run-labels";
 import {
   formatExactTime,
   getCompactRelativeTime,
@@ -161,40 +166,23 @@ const OPENABLE_ROW_CLASS = "cursor-pointer hover:bg-muted/60 active:bg-muted";
 const FOCUSABLE_ROW_CLASS =
   "outline-none focus-visible:bg-muted/60 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring";
 
-/**
- * The one status a workflow row states, answering whether it reaches anyone
- * now. A paused workflow starts no run, and a workflow with no published
- * version has nothing an Event can start, so neither shows a Published mode.
- * Otherwise the row shows the Published mode, Live or Test.
- */
-type WorkflowRowState = "paused" | "never_published" | "live" | "test";
-
 function workflowRowState(
   workflow: Pick<
     WorkflowSummaryPayload,
     "isPaused" | "publishedVersionId" | "mode"
   >
-): WorkflowRowState {
-  if (workflow.isPaused) {
-    return "paused";
-  }
-  if (workflow.publishedVersionId === undefined) {
-    return "never_published";
-  }
-  return workflow.mode;
+): WorkflowPublicationState {
+  return workflowPublicationState({
+    isPaused: workflow.isPaused,
+    isPublished: workflow.publishedVersionId !== undefined,
+    workflowMode: workflow.mode,
+  });
 }
-
-const WORKFLOW_ROW_STATE_LABELS: Record<WorkflowRowState, string> = {
-  paused: "Paused",
-  never_published: "Never published",
-  live: publishedModeWord("live"),
-  test: publishedModeWord("test"),
-};
 
 /**
  * A workflow's state as a dot beside a word in foreground text. A Live
  * workflow reaches real recipients, so its dot is filled green; Test fills
- * Amber, as the status strip's Published mode does. Paused and Never published
+ * Amber, as the editor's publication chip does. Paused and Never published
  * reach no one and keep an outline dot in the muted tone.
  */
 function WorkflowStateLabel({
@@ -215,7 +203,7 @@ function WorkflowStateLabel({
             "text-muted-foreground"
         )}
       />
-      {WORKFLOW_ROW_STATE_LABELS[state]}
+      {WORKFLOW_PUBLICATION_STATE_LABELS[state]}
     </span>
   );
 }

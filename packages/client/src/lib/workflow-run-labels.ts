@@ -50,6 +50,66 @@ export function publishedModeWord(workflowMode: WorkflowMode): string {
 }
 
 /**
+ * The one state a workflow is in, as the Workflows list and the editor's
+ * publication chip both state it. A paused workflow starts no run, and one
+ * with no published version has nothing an Event can start, so neither has a
+ * Published mode to state. Otherwise the state is the Published mode.
+ */
+export type WorkflowPublicationState =
+  | "paused"
+  | "never_published"
+  | "live"
+  | "test";
+
+export function workflowPublicationState(input: {
+  isPaused: boolean;
+  isPublished: boolean;
+  workflowMode: WorkflowMode;
+}): WorkflowPublicationState {
+  if (input.isPaused) {
+    return "paused";
+  }
+  if (!input.isPublished) {
+    return "never_published";
+  }
+  return input.workflowMode;
+}
+
+export const WORKFLOW_PUBLICATION_STATE_LABELS: Record<
+  WorkflowPublicationState,
+  string
+> = {
+  paused: "Paused",
+  never_published: "Never published",
+  live: publishedModeWord("live"),
+  test: publishedModeWord("test"),
+};
+
+/**
+ * The editor's publication chip: the state in the list's words, then the
+ * published version and whether the draft holds changes it does not, as
+ * "Live · v2 · changes not published", "Test · v3", "Never published" or
+ * "Paused".
+ */
+export function publicationChipLabel(input: {
+  isPaused: boolean;
+  isPublished: boolean;
+  workflowMode: WorkflowMode;
+  publishedVersion: number | undefined;
+  hasUnpublishedChanges: boolean;
+}): string {
+  const state = workflowPublicationState(input);
+  if (state === "paused" || state === "never_published") {
+    return WORKFLOW_PUBLICATION_STATE_LABELS[state];
+  }
+  return compact([
+    WORKFLOW_PUBLICATION_STATE_LABELS[state],
+    input.publishedVersion === undefined ? null : `v${input.publishedVersion}`,
+    input.hasUnpublishedChanges ? "changes not published" : null,
+  ]).join(" · ");
+}
+
+/**
  * The target a run command starts. Returns `null` when the command asks for the
  * published version of a workflow that has never been published.
  */

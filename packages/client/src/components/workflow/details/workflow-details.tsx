@@ -2,40 +2,30 @@ import { useQuery } from "@tanstack/react-query";
 import { useAtomValue, useSetAtom } from "jotai";
 import { AlertTriangle, Pencil } from "lucide-react";
 import { Button } from "#src/components/ui/button";
-import { publicationLabel } from "#src/components/workflow/workflow-publication-badge";
 import { workflowIssuesLabel } from "#src/components/workflow/workflow-issues-chip";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import { can } from "#src/lib/authorization";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
-import { publishedModeWord } from "#src/lib/workflow-run-labels";
 import {
   currentWorkflowIdAtom,
-  currentWorkflowModeAtom,
   currentWorkflowNameAtom,
 } from "#src/lib/workflow-save-store";
 import { openRenameWorkflowDialogAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { cn } from "@wfgraph/shared/utils";
-import { compact } from "es-toolkit/array";
 
 /** What the panel reads off the workflow's `getById` payload. */
 function selectWorkflowFacts(payload: WorkflowApiPayload) {
   return {
     description: payload.description,
-    publication: publicationLabel({
-      isPublished: Boolean(payload.publishedVersionId),
-      hasUnpublishedChanges: payload.hasUnpublishedChanges,
-      publishedVersion: payload.publishedVersion,
-    }),
-    isPaused: payload.isPaused,
   };
 }
 
 /**
- * The workflow's description and publication state, from the `getById` entry
+ * The workflow's description, from the `getById` entry
  * the editor already holds, so this reads no request of its own.
  */
 function useWorkflowFacts(workflowId: string | null) {
@@ -51,14 +41,14 @@ function useWorkflowFacts(workflowId: string | null) {
 
 /**
  * The Details tab with nothing selected in Draft: the workflow's name and
- * description, its publication state and Published mode, and its issues. Each
+ * description, and its issues. Its publication state is the chip beside the
+ * workflow's name in the toolbar. Each
  * issue's Edit selects the step it names and puts the cursor in the field the
  * issue names.
  */
 export function WorkflowDetails() {
   const workflowId = useAtomValue(currentWorkflowIdAtom);
   const name = useAtomValue(currentWorkflowNameAtom);
-  const mode = useAtomValue(currentWorkflowModeAtom);
   const issues = useAtomValue(workflowIssuesAtom);
   const openRename = useSetAtom(openRenameWorkflowDialogAtom);
   const goToStep = useGoToStep();
@@ -92,15 +82,6 @@ export function WorkflowDetails() {
         </div>
         {facts?.description && !isBlank(facts.description) ? (
           <p className="text-muted-foreground text-xs">{facts.description}</p>
-        ) : null}
-        {facts ? (
-          <p className="text-muted-foreground text-xs">
-            {compact([
-              facts.publication,
-              `Published mode: ${publishedModeWord(mode)}`,
-              facts.isPaused ? "Paused" : null,
-            ]).join(" · ")}
-          </p>
         ) : null}
       </section>
       <section aria-labelledby="workflow-details-issues" className="space-y-2">

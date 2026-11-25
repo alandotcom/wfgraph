@@ -1,8 +1,7 @@
 /**
- * The strip's two states, and the three things it is the only surface for: the
- * way out of a pinned run with no panel on screen (#96), the unload guard that
- * used to unmount with the draft state, and the mode label that must say nothing
- * until it knows what to say.
+ * The strip's two states, and the two things it is the only surface for: the
+ * way out of a pinned run with no panel on screen (#96), and the unload guard
+ * that used to unmount with the draft state.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -240,14 +239,21 @@ afterEach(() => {
 });
 
 describe("WorkflowStatusStrip", () => {
-  it("reports publication and save state in the fixed status row", async () => {
-    const { view } = await renderStrip({ mode: "test", published: true });
-
-    await waitFor(() => {
-      expect(view.getByText("Unpublished changes since v1")).toBeTruthy();
+  // The publication state is the chip beside the workflow's name, so the
+  // strip says only whether the draft is saved, and how many issues it has.
+  it("says whether the draft is saved and nothing about publication", async () => {
+    const { view } = await renderStrip({
+      mode: "test",
+      published: true,
+      paused: true,
     });
-    expect(view.queryByText("Test mode")).toBeNull();
-    expect(view.getByText("Saved")).toBeTruthy();
+
+    await waitFor(() => expect(view.getByText("Saved")).toBeTruthy());
+    expect(
+      view.queryByText(/Unpublished changes|Published|Never published/)
+    ).toBeNull();
+    expect(view.queryByRole("button", { name: /Published mode/ })).toBeNull();
+    expect(view.queryByText("Paused")).toBeNull();
     expect(view.queryByText("Back to draft")).toBeNull();
   });
 
@@ -292,115 +298,6 @@ describe("WorkflowStatusStrip", () => {
 
     act(() => store.set(lastSaveErrorAtom, new Error("The network dropped")));
     expect(view.queryByText("Draft changed elsewhere")).toBeNull();
-  });
-
-  it("keeps execution mode out of the status row", async () => {
-    const { view } = await renderStrip({ mode: "test", published: true });
-
-    // The status row only exists once `getById` has answered. Waiting for the
-    // mode button is what makes the missing label mean anything.
-    expect(
-      await view.findByRole("button", { name: "Published mode: Test" })
-    ).toBeTruthy();
-    expect(view.queryByText("Test mode")).toBeNull();
-  });
-
-  // Published mode lives in this row, one divider from the badge that names
-  // the version it governs.
-  it("carries Published mode beside the publication badge", async () => {
-    const { view } = await renderStrip({ mode: "test", published: true });
-
-    const mode = await view.findByRole("button", {
-      name: "Published mode: Test",
-    });
-    expect(mode.textContent).toContain("Test");
-    expect(mode.className).toContain("text-warning");
-
-    const badge = view.getByText("Unpublished changes since v1");
-    expect(
-      badge.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-  });
-
-  it("says Paused beside the version and mode, with Resume, while the workflow is paused", async () => {
-    const { view } = await renderStrip({ published: true, paused: true });
-
-    const mode = await view.findByRole("button", {
-      name: "Published mode: Live",
-    });
-    const paused = view.getByText("Paused");
-    expect(
-      mode.compareDocumentPosition(paused) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(view.getByRole("button", { name: "Resume" })).toBeTruthy();
-  });
-
-  it("says nothing about pausing while the workflow runs", async () => {
-    const { view } = await renderStrip({ published: true });
-
-    await view.findByRole("button", { name: "Published mode: Live" });
-    expect(view.queryByText("Paused")).toBeNull();
-    expect(view.queryByRole("button", { name: "Resume" })).toBeNull();
-  });
-
-  it("describes each mode in one clause", async () => {
-    const { view } = await renderStrip({ published: true });
-
-    const mode = await view.findByRole("button", {
-      name: "Published mode: Live",
-    });
-    await waitFor(() => expect(mode.hasAttribute("disabled")).toBe(false));
-    fireEvent.keyDown(mode, { key: "ArrowDown" });
-    fireEvent.keyUp(mode, { key: "ArrowDown" });
-
-    const live = view.getByRole("menuitemradio", { name: /Real recipients/ });
-    expect(live.getAttribute("aria-checked")).toBe("true");
-    expect(
-      view.getByRole("menuitemradio", { name: /Test recipients/ })
-    ).toBeTruthy();
-    // A version is published, so the setting is already in force and the menu
-    // adds no note about when it takes effect.
-    expect(view.queryByText("Takes effect on publish")).toBeNull();
-  });
-
-  // The mode can be set before the first publish, and the menu is where the
-  // reader learns it takes effect at that publish.
-  it("says when the mode takes effect before the first publish", async () => {
-    const { view } = await renderStrip();
-
-    // "Never published" beside a bare "Live" read as sending to real people,
-    // so the face itself says the mode waits for the first publish.
-    const mode = await view.findByRole("button", {
-      name: "Published mode: Live on publish",
-    });
-    expect(mode.textContent).toContain("Live on publish");
-    fireEvent.keyDown(mode, { key: "ArrowDown" });
-    fireEvent.keyUp(mode, { key: "ArrowDown" });
-
-    expect(view.getByText("Takes effect on publish")).toBeTruthy();
-  });
-
-  it("disables the mode for a viewer and gives the reason", async () => {
-    const { view } = await renderStrip({ canUpdate: false, published: true });
-
-    const mode = await view.findByRole("button", {
-      name: "Published mode: Live",
-    });
-    expect(mode.hasAttribute("disabled")).toBe(true);
-    // The tooltip is the one surface for the reason. A `title` beside it would
-    // paint the browser's own tooltip over the same sentence.
-    expect(mode.hasAttribute("title")).toBe(false);
-
-    const trigger = mode.closest("[data-slot='tooltip-trigger']");
-    expect(trigger).toBeTruthy();
-    fireEvent.pointerEnter(trigger as Element, { pointerType: "mouse" });
-    fireEvent.mouseEnter(trigger as Element);
-
-    expect(
-      await view.findByText(
-        "You do not have permission to update this workflow."
-      )
-    ).toBeTruthy();
   });
 
   it("switches to the run state and offers the way back to the draft", async () => {

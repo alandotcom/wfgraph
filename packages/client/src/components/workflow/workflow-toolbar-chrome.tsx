@@ -56,6 +56,7 @@ import {
 import type { PaletteMenuCommand } from "#src/hooks/use-app-commands";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
 import { CommandPalette } from "#src/components/workflow/command-palette";
+import { PublicationChip } from "#src/components/workflow/publication-chip";
 import { useSetWorkflowPaused } from "#src/hooks/use-set-workflow-paused";
 import { can, canUseBuildAgent } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
@@ -751,6 +752,20 @@ function usePublicationCommands(
       commands.find((command) => command.id === id)
     )
   );
+}
+
+/** The publication chip beside the workflow's name. */
+export function WorkflowPublicationChip({
+  workflowId,
+  state,
+  actions,
+}: {
+  workflowId?: string | undefined;
+  state: WorkflowToolbarState;
+  actions: WorkflowToolbarActions;
+}) {
+  const commands = usePublicationCommands(state, actions);
+  return <PublicationChip commands={commands} workflowId={workflowId} />;
 }
 
 /** One command as a menu row, with its icon and its own disabled state. */
