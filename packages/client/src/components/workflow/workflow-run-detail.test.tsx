@@ -28,6 +28,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   cancelledAt: null,
   completedAt: null,
   entityValue: null,
+  entity: null,
   duration: null,
   error: null,
   id: "exec_1",

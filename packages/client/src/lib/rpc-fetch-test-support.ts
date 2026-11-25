@@ -92,6 +92,8 @@ type RawExecution = {
   duration: string | null;
   error: string | null;
   entityValue: string | null;
+  /** A tracked run's Entity. Absent reads as a run that tracks none. */
+  entity?: { type: string; id: string } | null;
   startEventName: string | null;
   runMode: string;
   startSource: string;
@@ -146,9 +148,10 @@ export async function answerWorkflowRunRpc(
           ? served.items
           : served.items.filter((item) => item.status !== "superseded")
         ).map((item) => ({
-          // The server answers an activity and a slot on every row, null when
-          // it has nothing to say, and these fixtures name neither by default.
+          // The server answers an activity, a slot and an Entity on every
+          // row, null when it has none, and these fixtures name none by default.
           activity: null,
+          entity: null,
           scheduledFor: null,
           scheduleDescription: null,
           ...item,
@@ -181,6 +184,7 @@ export async function answerWorkflowRunRpc(
               : (listed?.versionNumber ?? 7),
           startEventName: listed?.startEventName ?? null,
           entityValue: listed?.entityValue ?? null,
+          entity: listed?.entity ?? null,
           error: null,
           startedAt: listed?.startedAt ?? "2026-03-01T10:00:00.000Z",
           scheduledFor: listed?.scheduledFor ?? null,

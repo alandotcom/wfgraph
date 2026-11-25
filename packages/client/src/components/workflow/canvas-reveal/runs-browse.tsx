@@ -93,7 +93,7 @@ type RunsHeaderTarget =
 
 /**
  * The Runs header model. The run list names the workflow and Runs with no
- * Back. A run is titled by `runTitle`, its Event label and start time, and
+ * Back. A run is titled by `runTitle`, its Entity and start time, and
  * carries its status and Back; the path's Runs segment then opens the run
  * list through `openRunList`. A node or Group target adds itself to the path
  * and is titled by its name. A node carries the shown execution's status, or

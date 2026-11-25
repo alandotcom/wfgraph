@@ -21,6 +21,37 @@ function render(ui: ReactElement) {
   });
 }
 
+/** Renders `ui` inside a catalog that declares one Entity and one Event. */
+function renderWithCatalog(ui: ReactElement) {
+  return renderWithoutCatalog(ui, {
+    wrapper: ({ children }) => (
+      <ExtensionCatalogProvider
+        value={{
+          entities: [
+            {
+              type: "patient",
+              label: "Patient",
+              stateFields: [],
+              stateSchemaDigest: "digest",
+            },
+          ],
+          events: [
+            {
+              name: "appointment.created",
+              label: "Appointment created",
+              payloadFields: [],
+            },
+          ],
+          actions: [],
+          integrations: [],
+        }}
+      >
+        {children}
+      </ExtensionCatalogProvider>
+    ),
+  });
+}
+
 function run(
   overrides: Partial<RunHistoryTableRow> & { id: string }
 ): RunHistoryTableRow {
@@ -162,9 +193,37 @@ describe("RunHistoryTable", () => {
     );
 
     expect(
-      view.getByText("Every weekday at 9:00 AM (America/New_York)")
+      view.getByText(
+        "Scheduled run · Every weekday at 9:00 AM (America/New_York)"
+      )
     ).toBeTruthy();
     expect(view.queryByText("workflow:wf_1")).toBeNull();
+  });
+
+  it("names a tracked run by its Entity, then the Event that started it", () => {
+    const view = renderWithCatalog(
+      <RunHistoryTable
+        hasNextPage={false}
+        isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
+        isLoadingMore={false}
+        onLoadMore={() => undefined}
+        onOpenRun={() => undefined}
+        runs={[
+          run({
+            id: "exec_tracked",
+            startSource: "event",
+            startEventName: "appointment.created",
+            entity: { type: "patient", id: "pat_20418" },
+          }),
+        ]}
+      />
+    );
+
+    expect(
+      view.getByText("Patient pat_20418 · Appointment created")
+    ).toBeTruthy();
   });
 
   it("names a scheduled run by its source in place of the workflow's own Entity Value", () => {

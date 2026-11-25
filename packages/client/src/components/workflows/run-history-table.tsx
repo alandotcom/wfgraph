@@ -209,13 +209,13 @@ function createRunHistoryColumns(
             >
               {run.workflowName}
             </button>
-            {/* The run as the Runs view titles it: by its Event's label, or
-                for a scheduled run, whose Entity Value is the workflow's own
-                id, by the schedule that started it. */}
+            {/* The run as the Runs view names it, such as "Patient
+                pat_20418 · Appointment created": its Entity, then the Event
+                or schedule that started it. */}
             <div className="truncate text-muted-foreground text-xs">
-              {run.startSource === "schedule"
-                ? (identity.context ?? identity.title)
-                : identity.title}
+              {identity.startedBy === null
+                ? identity.title
+                : `${identity.title} · ${identity.startedBy}`}
             </div>
           </div>
         );

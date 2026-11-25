@@ -84,11 +84,15 @@ function startedAtFor(id: string): string {
 }
 
 /**
- * The title the Runs header gives a run `execution` built: its Event, which
- * the test catalog does not label, and its start time.
+ * The title the Runs header gives a run `execution` built: its Entity Value
+ * when `name` passes one, otherwise its Event, which the test catalog does not
+ * label, and then its start time.
  */
-export function runHeading(id: string): string {
-  return `app/appointment.created · ${formatExactTime(new Date(startedAtFor(id)))}`;
+export function runHeading(
+  id: string,
+  name = "app/appointment.created"
+): string {
+  return `${name} · ${formatExactTime(new Date(startedAtFor(id)))}`;
 }
 
 export function execution(

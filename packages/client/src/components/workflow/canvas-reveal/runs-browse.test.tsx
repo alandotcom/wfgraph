@@ -58,7 +58,8 @@ describe("Runs Browse run list and selected run", () => {
       view: "runs",
     });
 
-    await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
+    // The run is named by its Entity Value, and its Event is a detail row.
+    await waitFor(() => expect(title()).toBe(runHeading("exec_b", "appt_2")));
     expect(router.state.location.search).toEqual({
       view: "runs",
       executionId: "exec_b",
@@ -66,14 +67,15 @@ describe("Runs Browse run list and selected run", () => {
     expect(router.history.canGoBack()).toBe(false);
     expect(aside()?.getAttribute("aria-label")).toBe("Runs inspector");
     expect(path()).toBe(
-      `Appointment reminders › Runs › ${runHeading("exec_b")}`
+      `Appointment reminders › Runs › ${runHeading("exec_b", "appt_2")}`
     );
     expect(aside()?.querySelector("header")?.textContent).toContain(
       "Completed"
     );
-    expect(view.getByRole("heading", { name: "app/appointment.created" }));
+    expect(view.getByRole("heading", { name: "appt_2" }));
     expect(view.getByRole("status").textContent).toBe("Completed in 30s");
-    expect(view.getByText("appt_2")).toBeTruthy();
+    // One is the Event row's label and the other is the Source row's value.
+    expect(view.getAllByText("Event")).toHaveLength(2);
     expect(view.getByText("Started")).toBeTruthy();
   });
 

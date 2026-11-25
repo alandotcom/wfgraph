@@ -444,13 +444,17 @@ Cancellation Failures, a muted line naming the host's run retention window when
 the host deletes old runs, and the run rows. The All Runs list on the workflows
 page states the same window under its title. Selecting a run adds a browser history
 entry and puts the graph version the run pinned on the canvas. The header then
-titles the run by the label of the Event that started it and its start time,
-such as "Appointment created · Nov 25, 7:42 AM", shows its status, and offers
-**Back**. The path and the phone's Back label use the same title, and the
-path's **Runs** segment opens the run list the way **Back** does. A run's row
-leads with the same label and start time and prints no id. The short id, the
-last eight characters of the run's id, is a detail row of the run's summary and
-appears in the status strip.
+titles the run by its Entity and its start time, such as "Patient pat_20418 ·
+Nov 25, 7:42 AM", shows its status, and offers **Back**. A run's Entity is the
+Entity's label and the id the host supplied. A workflow that tracks no Entity
+names its runs by their Entity Value, and a run with neither, such as a manual
+run with no payload, by its Event's label, or as a scheduled or manual run. The
+path and the phone's Back label use the same title, and the path's **Runs**
+segment opens the run list the way **Back** does. A run's row leads with the
+same title, puts the Event's label or the schedule and the start time on its
+second line, and prints no id. All Runs puts the title and the Event under the
+workflow's name. The short id, the last eight characters of the run's id, is a
+detail row of the run's summary and appears in the status strip.
 Browse holds the run's start identity, outcome, timing, and entity, then its
 active waits with **Resume now**, **Cancel**, exit details, the failure summary,
 the node journey, and activity. The failure summary states the cause once, in a

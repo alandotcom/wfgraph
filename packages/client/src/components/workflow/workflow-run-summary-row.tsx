@@ -6,6 +6,7 @@ import { cn } from "@wfgraph/shared/utils";
 import { formatExactTime } from "@wfgraph/shared/utils/time";
 import {
   type ExtensionCatalog,
+  findEntity,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -47,14 +48,19 @@ type WorkflowRunSummaryRowProps = {
 };
 
 /**
- * A run's title, the line beneath it with the label the overview gives that
- * line, and the machine name of the Event that started it when the title is
- * that Event's label. A run with no line beneath its title has no label either.
+ * How a run is named. `title` is the run's Entity, such as "Patient
+ * pat_20418", or how the run started when it has no Entity. `startedBy` is
+ * the line beneath the title, which names the Event or the schedule that
+ * started the run, and is null when the title already says it. `event` is the
+ * starting Event's machine name and catalog label, and `schedule` the starting
+ * schedule in words; each is null for a run something else started.
  */
-type RunIdentity = { eventName: string | null } & (
-  | { title: string; context: null }
-  | { title: string; context: string; contextLabel: "Entity" | "Schedule" }
-);
+type RunIdentity = {
+  title: string;
+  startedBy: string | null;
+  event: { name: string; label: string } | null;
+  schedule: string | null;
+};
 
 /** The fields of a run its identity is read from. */
 type RunIdentitySource = Pick<
@@ -62,41 +68,61 @@ type RunIdentitySource = Pick<
   | "id"
   | "startEventName"
   | "entityValue"
+  | "entity"
   | "startSource"
   | "scheduleDescription"
   | "workflowId"
 >;
 
 /**
- * The run's title and the line beneath it. A run an Event started is titled
- * by the Event's label in `catalog`, the words the Lifecycle editors use for
- * it, and keeps the Event's machine name as `eventName`. A scheduled run
- * carries no payload and its Entity Value is the workflow's own
- * (`workflow:<id>`), so it is titled by its source, with the schedule that
- * started it beneath. A run nothing else names is titled "Run".
+ * The run's name and the line beneath it, which every run list, the run
+ * summary and `runTitle` read. A run of a workflow that tracks an Entity is
+ * named by the Entity's label in `catalog` and its id. A run of a workflow
+ * that tracks none is named by its Entity Value, the payload value its
+ * Correlation Path selected. A run with neither is named by the label of the
+ * Event that started it, or as a scheduled, manual or plain run. The Entity
+ * Value of a run started with no payload is the workflow's own
+ * (`workflow:<id>`), which names no Entity and so is never a title.
  */
 export function getRunIdentity(
   execution: RunIdentitySource,
   catalog: ExtensionCatalog
 ): RunIdentity {
   const eventName = execution.startEventName?.trim();
-  const entity = execution.entityValue?.trim();
+  const event = eventName
+    ? {
+        name: eventName,
+        label: findEvent(catalog, eventName)?.label ?? eventName,
+      }
+    : null;
+  const schedule =
+    execution.startSource === "schedule" ? execution.scheduleDescription : null;
+  const entity = runEntityName(execution, catalog);
 
-  if (eventName) {
-    const label = findEvent(catalog, eventName)?.label ?? eventName;
-    const named = { title: label, eventName };
-    return entity
-      ? { ...named, context: entity, contextLabel: "Entity" }
-      : { ...named, context: null };
+  if (entity !== null) {
+    return {
+      title: entity,
+      startedBy: event?.label ?? schedule,
+      event,
+      schedule,
+    };
   }
-  return { eventName: null, ...unnamedRunIdentity(execution, entity) };
+  if (event !== null) {
+    return { title: event.label, startedBy: null, event, schedule };
+  }
+  return {
+    title: unnamedRunTitle(execution),
+    startedBy: schedule,
+    event,
+    schedule,
+  };
 }
 
 /**
  * The name a run goes by where it is the one object shown: its title and the
- * minute it started, such as "Appointment created · Nov 25, 7:42 AM". The Runs
+ * minute it started, such as "Patient pat_20418 · Nov 25, 7:42 AM". The Runs
  * header, its path and the phone's Back label use it, so a person can name a
- * run to someone else without quoting an id.
+ * run to someone else without quoting a run id.
  */
 export function runTitle(
   execution: RunIdentitySource & Pick<WorkflowExecution, "startedAt">,
@@ -105,35 +131,49 @@ export function runTitle(
   return `${getRunIdentity(execution, catalog).title} · ${formatExactTime(execution.startedAt)}`;
 }
 
-/** The title of a run no Event started, and the line beneath it. */
-function unnamedRunIdentity(
+/**
+ * The run's Entity in words, or null for a run that names none. A tracked
+ * Entity whose type the catalog no longer declares is named by its type.
+ */
+function runEntityName(
   execution: RunIdentitySource,
-  entity: string | undefined
-):
-  | { title: string; context: null }
-  | { title: string; context: string; contextLabel: "Schedule" } {
-  if (execution.startSource === "schedule") {
-    return execution.scheduleDescription === null
-      ? { title: "Scheduled run", context: null }
-      : {
-          title: "Scheduled run",
-          context: execution.scheduleDescription,
-          contextLabel: "Schedule",
-        };
+  catalog: ExtensionCatalog
+): string | null {
+  if (execution.entity) {
+    const { type, id } = execution.entity;
+    return `${findEntity(catalog, type)?.label ?? type} ${id}`;
   }
-  if (
-    execution.startSource === "manual" &&
-    entity === workflowEntityValue(execution.workflowId)
-  ) {
-    return { title: "Manual run", context: null };
+  const value = execution.entityValue?.trim();
+  return value && value !== workflowEntityValue(execution.workflowId)
+    ? value
+    : null;
+}
+
+/** The title of a run with no Entity that no Event started. */
+function unnamedRunTitle(execution: RunIdentitySource): string {
+  switch (execution.startSource) {
+    case "schedule":
+      return "Scheduled run";
+    case "manual":
+      return "Manual run";
+    default:
+      return "Run";
   }
-  if (entity) {
-    return { title: entity, context: null };
+}
+
+/**
+ * The header's Event row: the Event's label beside its machine name, or the
+ * machine name alone when the run's title already is the label. Null when the
+ * row would only repeat the title.
+ */
+function eventDetail(identity: RunIdentity): string | null {
+  const { event, title } = identity;
+  if (event === null || event.name === title) {
+    return null;
   }
-  if (execution.startSource === "manual") {
-    return { title: "Manual run", context: null };
-  }
-  return { title: "Run", context: null };
+  return event.label === event.name || event.label === title
+    ? event.name
+    : `${event.label} (${event.name})`;
 }
 
 function relevantLog(logs: ExecutionLog[], status: ExecutionLog["status"]) {
@@ -229,18 +269,20 @@ function ListSummary({
         />
       </div>
       <div className="min-w-0">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="truncate font-medium text-sm">{identity.title}</span>
-          {/* The start time in the format the run's header names it by. */}
-          <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+        <p className="truncate font-medium text-sm">{identity.title}</p>
+        {/* What started the run and when, the time in the format the run's
+            header names it by. */}
+        <p className="flex min-w-0 items-baseline gap-x-1.5 text-muted-foreground text-xs">
+          {identity.startedBy === null ? null : (
+            <>
+              <span className="truncate">{identity.startedBy}</span>
+              <span aria-hidden="true">·</span>
+            </>
+          )}
+          <span className="shrink-0 tabular-nums">
             {formatExactTime(execution.startedAt)}
           </span>
-        </div>
-        {identity.context ? (
-          <p className="truncate text-muted-foreground text-xs">
-            {identity.context}
-          </p>
-        ) : null}
+        </p>
         <p className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-muted-foreground text-xs">
           <span
             className={listStatusTextClass(
@@ -309,6 +351,7 @@ function HeaderSummary({
   focusOnMount?: boolean | undefined;
 }) {
   const identity = getRunIdentity(execution, useExtensionCatalog());
+  const eventLine = eventDetail(identity);
   const lateSlot = lateScheduledSlot(execution);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -361,16 +404,15 @@ function HeaderSummary({
       </div>
 
       <dl className="mt-3 space-y-1.5 pl-6">
-        {identity.context === null ? null : (
-          <MetadataRow label={identity.contextLabel} value={identity.context} />
+        {eventLine === null ? null : (
+          <MetadataRow label="Event" value={eventLine} />
+        )}
+        {identity.schedule === null ? null : (
+          <MetadataRow label="Schedule" value={identity.schedule} />
         )}
         {lateSlot ? (
           <MetadataRow label="Scheduled" value={formatExactTime(lateSlot)} />
         ) : null}
-        {identity.eventName === null ||
-        identity.eventName === identity.title ? null : (
-          <MetadataRow label="Event" value={identity.eventName} />
-        )}
         <MetadataRow
           label="Started"
           value={formatExactTime(execution.startedAt)}

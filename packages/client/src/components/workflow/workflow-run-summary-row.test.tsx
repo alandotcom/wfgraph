@@ -12,11 +12,19 @@ import { formatExactTime } from "@wfgraph/shared/utils/time";
 import {
   getRunIdentity,
   getRunOutcome,
+  runTitle,
   WorkflowRunSummaryRow,
 } from "./workflow-run-summary-row";
 
 const catalog: ExtensionCatalog = {
-  entities: [],
+  entities: [
+    {
+      type: "patient",
+      label: "Patient",
+      stateFields: [],
+      stateSchemaDigest: "digest",
+    },
+  ],
   events: [
     {
       name: "appointment.updated",
@@ -43,6 +51,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   cancelledAt: null,
   completedAt: new Date("2026-02-22T10:01:00Z"),
   entityValue: null,
+  entity: null,
   duration: "1200",
   error: null,
   id: "01a212fa-dd29-736c-9eb8-a0d40e3f6303",
@@ -61,21 +70,24 @@ const BASE_EXECUTION: WorkflowExecution = {
 };
 
 describe("WorkflowRunSummaryRow", () => {
-  it("titles a run by its Event's label and its start time, with no id", () => {
+  it("titles a run by its Entity, with its Event's label and start time beneath and no id", () => {
     const onClick = vi.fn(() => undefined);
     const view = render(
       <WorkflowRunSummaryRow
-        execution={{ ...BASE_EXECUTION, entityValue: "appt_42" }}
+        execution={{
+          ...BASE_EXECUTION,
+          entity: { type: "patient", id: "pat_20418" },
+        }}
         onClick={onClick}
       />
     );
 
     const row = view.getByTestId("workflow-run-summary-row");
-    expect(view.getByText("Appointment updated")).toBeTruthy();
-    expect(view.getByText("appt_42")).toBeTruthy();
-    expect(
-      view.getByText(formatExactTime(BASE_EXECUTION.startedAt))
-    ).toBeTruthy();
+    const [title, startedBy] = row.querySelectorAll("p");
+    expect(title?.textContent).toBe("Patient pat_20418");
+    expect(startedBy?.textContent).toBe(
+      `Appointment updated·${formatExactTime(BASE_EXECUTION.startedAt)}`
+    );
     expect(view.queryByText(runShortId(BASE_EXECUTION.id))).toBeNull();
     expect(view.getByText("v7 · Test")).toBeTruthy();
 
@@ -232,14 +244,42 @@ describe("WorkflowRunSummaryRow", () => {
     expect(header.queryByText("Entity")).toBeNull();
   });
 
-  it("labels the line beneath a run's title by what it names", () => {
+  it("names a tracked run by its Entity's label and id, and by its type when the catalog no longer declares it", () => {
+    const tracked = {
+      ...BASE_EXECUTION,
+      entity: { type: "patient", id: "pat_20418" },
+    };
+    expect(getRunIdentity(tracked, catalog)).toEqual({
+      title: "Patient pat_20418",
+      startedBy: "Appointment updated",
+      event: { name: "appointment.updated", label: "Appointment updated" },
+      schedule: null,
+    });
+    expect(runTitle(tracked, catalog)).toBe(
+      `Patient pat_20418 · ${formatExactTime(BASE_EXECUTION.startedAt)}`
+    );
+    expect(
+      getRunIdentity(
+        { ...tracked, entity: { type: "clinic", id: "cl_7" } },
+        catalog
+      ).title
+    ).toBe("clinic cl_7");
+  });
+
+  it("names a run of an untracked workflow by its Entity Value, and a run with neither by its Event", () => {
     expect(
       getRunIdentity({ ...BASE_EXECUTION, entityValue: "appt_42" }, catalog)
     ).toEqual({
+      title: "appt_42",
+      startedBy: "Appointment updated",
+      event: { name: "appointment.updated", label: "Appointment updated" },
+      schedule: null,
+    });
+    expect(getRunIdentity(BASE_EXECUTION, catalog)).toEqual({
       title: "Appointment updated",
-      eventName: "appointment.updated",
-      context: "appt_42",
-      contextLabel: "Entity",
+      startedBy: null,
+      event: { name: "appointment.updated", label: "Appointment updated" },
+      schedule: null,
     });
     expect(
       getRunIdentity(
@@ -254,9 +294,9 @@ describe("WorkflowRunSummaryRow", () => {
       )
     ).toEqual({
       title: "Scheduled run",
-      eventName: null,
-      context: "Every day at 9:00 AM (UTC)",
-      contextLabel: "Schedule",
+      startedBy: "Every day at 9:00 AM (UTC)",
+      event: null,
+      schedule: "Every day at 9:00 AM (UTC)",
     });
   });
 
@@ -272,7 +312,12 @@ describe("WorkflowRunSummaryRow", () => {
         },
         catalog
       )
-    ).toEqual({ title: "Scheduled run", eventName: null, context: null });
+    ).toEqual({
+      title: "Scheduled run",
+      startedBy: null,
+      event: null,
+      schedule: null,
+    });
   });
 
   it("shows a scheduled run's slot beside its start only when the run started more than a minute late", () => {
@@ -323,7 +368,12 @@ describe("WorkflowRunSummaryRow", () => {
         },
         catalog
       )
-    ).toEqual({ title: "Manual run", eventName: null, context: null });
+    ).toEqual({
+      title: "Manual run",
+      startedBy: null,
+      event: null,
+      schedule: null,
+    });
   });
 
   it("keeps a correlated workflow entity as the run title", () => {
@@ -339,8 +389,9 @@ describe("WorkflowRunSummaryRow", () => {
       )
     ).toEqual({
       title: "workflow:customer_7",
-      eventName: null,
-      context: null,
+      startedBy: null,
+      event: null,
+      schedule: null,
     });
   });
 
@@ -440,6 +491,22 @@ describe("WorkflowRunSummaryRow", () => {
 
     expect(header.getByRole("heading").textContent).toBe("Appointment updated");
     expect(header.getByText("appointment.updated")).toBeTruthy();
+    header.unmount();
+
+    // A run named by its Entity names its Event in the Event row.
+    const tracked = render(
+      <WorkflowRunSummaryRow
+        execution={{
+          ...BASE_EXECUTION,
+          entity: { type: "patient", id: "pat_20418" },
+        }}
+        variant="header"
+      />
+    );
+    expect(tracked.getByRole("heading").textContent).toBe("Patient pat_20418");
+    expect(
+      tracked.getByText("Appointment updated (appointment.updated)")
+    ).toBeTruthy();
   });
 
   it("titles a run whose Event the catalog does not declare by its machine name", () => {

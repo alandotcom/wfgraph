@@ -70,6 +70,12 @@ export type WorkflowExecution = {
   versionNumber: number | null;
   startEventName: string | null;
   entityValue: string | null;
+  /**
+   * The tracked Entity the run is about: the Entity's type and the id its
+   * Event binding selected. Null for a run of a workflow that tracks no
+   * Entity, which `entityValue` identifies instead.
+   */
+  entity: { type: string; id: string } | null;
   startedAt: Date;
   /**
    * The slot a scheduled run fired for, which is earlier than `startedAt`
@@ -274,6 +280,7 @@ export function toWorkflowExecutionFromSummary(
     versionNumber: summary.versionNumber,
     startEventName: summary.startEventName,
     entityValue: summary.entityValue,
+    entity: summary.entity,
     startedAt: new Date(summary.startedAt),
     scheduledFor: toScheduledFor(summary.scheduledFor),
     scheduleDescription: summary.scheduleDescription,

@@ -201,7 +201,15 @@ describe("toWorkflowExecutionFromSummary", () => {
     expect(mapped.startSource).toBe("event");
     expect(mapped.startEventName).toBe("app/appointment.created");
     expect(mapped.entityValue).toBe("appt_99");
+    expect(mapped.entity).toBeNull();
     expect(mapped.scheduledFor).toBeNull();
+    expect(
+      toWorkflowExecutionFromSummary({
+        ...summary,
+        entityValue: null,
+        entity: { type: "patient", id: "pat_20418" },
+      }).entity
+    ).toEqual({ type: "patient", id: "pat_20418" });
   });
 
   it("keeps a scheduled run's slot from the summary", () => {
