@@ -524,9 +524,6 @@ importers:
       '@clerk/backend':
         specifier: ^3.27.0
         version: 3.27.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@linear/sdk':
-        specifier: ^101.1.0
-        version: 101.1.0(graphql@17.0.2)
       effect:
         specifier: 'catalog:'
         version: 4.1.4
@@ -1343,11 +1340,6 @@ packages:
   '@fontsource-variable/geist@5.3.0':
     resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
 
-  '@graphql-typed-document-node/core@3.2.0':
-    resolution: {integrity: sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ==}
-    peerDependencies:
-      graphql: ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
-
   '@grpc/grpc-js@1.14.6':
     resolution: {integrity: sha512-SgC/B3/VZ8lTyOZ4Cwk6f1skWhmkNAaVfiX90qd5u1rRXGKk1//8FTUEN9GvOUq7rfWIqAYkA3CoyumYVpOS6g==}
     engines: {node: '>=12.10.0'}
@@ -1418,10 +1410,6 @@ packages:
 
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
-
-  '@linear/sdk@101.1.0':
-    resolution: {integrity: sha512-sDlYKMoTiOQU1C6+B2451qMbrR6zdKbBZfqIGp/dpZdVeOzYQSmp8e4uUHlCdMuFM7sRhQFMIl82AtwoaKYW5g==}
-    engines: {node: ^20.19.0 || >=22.12.0}
 
   '@logtape/logtape@2.4.2':
     resolution: {integrity: sha512-YJyC1gEMgWmTqJTRtKkjgasEbi8/0gP7Dj8n6bL46gQIAhpTY8uXJ+1QYMOgF5asotlGMvy3G7ejXUe45Yd1MQ==}
@@ -2021,7 +2009,6 @@ packages:
   '@opentelemetry/sdk-trace-node@2.11.0':
     resolution: {integrity: sha512-CuvCMJmZxswhNLlM2LfuLOW3h3fZujA4hsG4B+Sz4dX2zvaXO8Ng74cnDHWD64gLszTlhiG3c0iNUjj4g+0/sA==}
     engines: {node: ^18.19.0 || >=20.6.0}
-    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': ~1.9.1
 
@@ -5111,10 +5098,6 @@ packages:
     peerDependencies:
       graphology-types: '>=0.24.0'
 
-  graphql@17.0.2:
-    resolution: {integrity: sha512-FRWbddMxfkjiB7z+aQDWIR+E34xo9I8c9mtK2RPv8PmMzKRvrdsreHL/Ui/TmwHJfhHChEtsFPyMHKI+xuarQQ==}
-    engines: {node: ^22.0.0 || ^24.0.0 || ^25.0.0 || >=26.0.0}
-
   happy-dom@21.0.4:
     resolution: {integrity: sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw==}
     engines: {node: '>=20.0.0'}
@@ -7836,10 +7819,6 @@ snapshots:
 
   '@fontsource-variable/geist@5.3.0': {}
 
-  '@graphql-typed-document-node/core@3.2.0(graphql@17.0.2)':
-    dependencies:
-      graphql: 17.0.2
-
   '@grpc/grpc-js@1.14.6':
     dependencies:
       '@grpc/proto-loader': 0.8.1
@@ -7909,12 +7888,6 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@js-sdsl/ordered-map@4.4.2': {}
-
-  '@linear/sdk@101.1.0(graphql@17.0.2)':
-    dependencies:
-      '@graphql-typed-document-node/core': 3.2.0(graphql@17.0.2)
-    transitivePeerDependencies:
-      - graphql
 
   '@logtape/logtape@2.4.2': {}
 
@@ -11387,8 +11360,6 @@ snapshots:
     dependencies:
       events: 3.3.0
       graphology-types: 0.24.8
-
-  graphql@17.0.2: {}
 
   happy-dom@21.0.4:
     dependencies:

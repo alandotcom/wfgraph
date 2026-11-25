@@ -1,78 +1,153 @@
 import {
-  GraphQLClientError,
-  LinearErrorType,
-  type LinearRawResponse,
-  RatelimitedLinearError,
-} from "@linear/sdk";
+  ExternalRejected,
+  ExternalUnreachable,
+  ExternalUnreadable,
+  type JsonValue,
+} from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
-import { toLinearError } from "#src/linear/errors";
+import {
+  carriesLinearErrors,
+  describeLinearFailure,
+  isLinearAuthenticationFailure,
+  readLinearErrors,
+} from "#src/linear/errors";
 
 /**
- * What `toLinearError` is handed is whatever was thrown, and a throwable keeps
- * some of its members on its prototype: `name` comes from `Error.prototype`
- * unless a class assigns it. Effect Schema reads own keys only, where Zod
- * reached through the prototype chain, so this pins which members of a real
- * thrown error survive the decode.
- *
- * `GraphQLClientError` is Linear's own copy of graphql-request's `ClientError`,
- * thrown by a custom GraphQL client talking to Linear. That is the case this
- * schema exists for: the SDK's own client wraps its failures in a `LinearError`
- * before they get here.
+ * How a failed call to Linear reads: which body counts as Linear refusing the
+ * operation, which sentence a step's failure carries, and which refusal is
+ * Linear rejecting the API key. The bodies follow Linear's error format, an
+ * `errors` array whose entries carry `message` and `extensions`.
  */
-describe("toLinearError", () => {
-  // The response is written as the API sends it: readable text for the error
-  // message and a lowercase phrase for its type, where Linear's own type names
-  // its LinearErrorType enum. `errors.ts` documents the same disagreement, and
-  // Linear maps the text back to the enum itself.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const wireResponse = {
-    status: 429,
-    headers: new Headers({ "retry-after": "30" }),
-    errors: [
-      {
-        message: "Rate limit exceeded",
-        extensions: { type: "ratelimited", userError: true },
+
+function rejected(status: number, payload: JsonValue | undefined) {
+  return new ExternalRejected({
+    status,
+    payload,
+    retryAfterSeconds: undefined,
+  });
+}
+
+const authenticationErrorBody = {
+  errors: [
+    {
+      message: "Authentication required, not authenticated",
+      extensions: {
+        type: "authentication error",
+        code: "AUTHENTICATION_ERROR",
+        statusCode: 401,
+        userError: true,
+        userPresentableMessage:
+          "You need to authenticate to access this operation.",
       },
-    ],
-  } as unknown as LinearRawResponse<unknown>;
+    },
+  ],
+};
 
-  function thrownClientError() {
-    return new GraphQLClientError(wireResponse, {
-      query: "query Me { viewer { id } }",
-      variables: { id: "1" },
-    });
-  }
+const rateLimitedBody = {
+  errors: [
+    { message: "Rate limit exceeded", extensions: { code: "RATELIMITED" } },
+  ],
+};
 
-  it("classifies a thrown GraphQL client error", () => {
-    const linearError = toLinearError(thrownClientError());
-
-    if (!(linearError instanceof RatelimitedLinearError)) {
-      throw new Error(`Expected a rate-limited error, got ${linearError.type}`);
-    }
-
-    expect(linearError.type).toBe(LinearErrorType.Ratelimited);
-    expect(linearError.message).toBe("Rate limit exceeded");
-    expect(linearError.status).toBe(429);
-    expect(linearError.errors?.[0]?.message).toBe("Rate limit exceeded");
-    expect(linearError.query).toBe("query Me { viewer { id } }");
-    expect(linearError.variables).toEqual({ id: "1" });
-    // Read back off `response.headers`, so the `Headers` object crossed the
-    // decode intact rather than being flattened into a plain value.
-    expect(linearError.retryAfter).toBe(30);
+describe("carriesLinearErrors", () => {
+  it("reads a body with GraphQL errors as a refusal", () => {
+    expect(carriesLinearErrors(authenticationErrorBody)).toBe(true);
+    expect(carriesLinearErrors({ data: null, ...rateLimitedBody })).toBe(true);
   });
 
-  it("loses only the members the thrown error keeps on its prototype", () => {
-    const thrown = thrownClientError();
+  it("reads a body with data and no errors as an answer", () => {
+    expect(carriesLinearErrors({ data: { viewer: { id: "user_1" } } })).toBe(
+      false
+    );
+    expect(carriesLinearErrors({ errors: [] })).toBe(false);
+    expect(carriesLinearErrors(undefined)).toBe(false);
+  });
+});
 
-    expect(Object.hasOwn(thrown, "name")).toBe(false);
-    expect(Object.hasOwn(thrown, "message")).toBe(true);
-    expect(Object.hasOwn(thrown, "response")).toBe(true);
-    expect(Object.hasOwn(thrown, "request")).toBe(true);
+describe("readLinearErrors", () => {
+  it("keeps the fields this integration reads", () => {
+    expect(readLinearErrors(authenticationErrorBody)).toEqual([
+      {
+        message: "Authentication required, not authenticated",
+        extensions: {
+          type: "authentication error",
+          code: "AUTHENTICATION_ERROR",
+          userPresentableMessage:
+            "You need to authenticate to access this operation.",
+        },
+      },
+    ]);
+  });
+});
 
-    // `name` is the one member the decode cannot see, and nothing downstream
-    // asks for it: Linear classifies on `response.errors` and `response.status`
-    // and builds its message from `message`, `response.error`, and the first
-    // GraphQL error.
-    expect(toLinearError(thrown).raw?.name).toBeUndefined();
+describe("describeLinearFailure", () => {
+  it("prefers the message Linear writes for a person", () => {
+    expect(describeLinearFailure(rejected(400, authenticationErrorBody))).toBe(
+      "You need to authenticate to access this operation."
+    );
+  });
+
+  it("falls back to the GraphQL error's message", () => {
+    expect(describeLinearFailure(rejected(429, rateLimitedBody))).toBe(
+      "Rate limit exceeded"
+    );
+  });
+
+  it("falls back to the HTTP status when the body is not Linear's", () => {
+    expect(describeLinearFailure(rejected(502, undefined))).toBe("HTTP 502");
+  });
+
+  it("says what the transport said for a request that never arrived", () => {
+    expect(
+      describeLinearFailure(
+        new ExternalUnreachable({ message: "socket hang up" })
+      )
+    ).toBe("socket hang up");
+  });
+
+  it("names a success whose body could not be read", () => {
+    expect(describeLinearFailure(new ExternalUnreadable({ status: 200 }))).toBe(
+      "Linear answered 200 with an unrecognized body"
+    );
+  });
+});
+
+describe("isLinearAuthenticationFailure", () => {
+  it("recognizes Linear's authentication error at either status", () => {
+    expect(
+      isLinearAuthenticationFailure(rejected(400, authenticationErrorBody))
+    ).toBe(true);
+    expect(
+      isLinearAuthenticationFailure(rejected(401, authenticationErrorBody))
+    ).toBe(true);
+  });
+
+  it("recognizes the code alone", () => {
+    expect(
+      isLinearAuthenticationFailure(
+        rejected(200, {
+          errors: [
+            {
+              message: "Authentication required, not authenticated",
+              extensions: { code: "AUTHENTICATION_ERROR" },
+            },
+          ],
+        })
+      )
+    ).toBe(true);
+  });
+
+  it("counts a bare 401", () => {
+    expect(isLinearAuthenticationFailure(rejected(401, undefined))).toBe(true);
+  });
+
+  it("leaves every other refusal alone", () => {
+    expect(isLinearAuthenticationFailure(rejected(429, rateLimitedBody))).toBe(
+      false
+    );
+    expect(isLinearAuthenticationFailure(rejected(400, undefined))).toBe(false);
+    expect(
+      isLinearAuthenticationFailure(new ExternalUnreachable({ message: "x" }))
+    ).toBe(false);
   });
 });

@@ -1,57 +1,54 @@
 /**
  * The Test connection button, for Linear.
  *
- * The seam is `createClient`, passed into `testLinear` so each case says what
- * `viewer` did without spying the production factory. What `toLinearError`
- * makes of a thrown value is `errors.test.ts`'s subject; what is left here is
- * the verdict each of those becomes.
+ * The seam is `fetch`: `callExternalAsync` provides the transport itself, so a
+ * case says what Linear answered to the viewer query and reads the verdict back.
  */
 
-import { GraphQLClientError, type LinearRawResponse } from "@linear/sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { testLinear } from "#src/linear/test";
 
-const mocks = vi.hoisted(() => ({ viewer: vi.fn() }));
+const realFetch = globalThis.fetch;
+let requests: Request[] = [];
 
-function fakeCreateClient(_apiKey: string) {
-  return {
-    get viewer() {
-      return mocks.viewer();
-    },
-  } as never;
+function stubFetch(respond: () => Response): void {
+  requests = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push(new Request(input, init));
+    return Promise.resolve(respond());
+  }) as typeof fetch;
 }
 
-beforeEach(() => {
-  mocks.viewer.mockReset();
+afterEach(() => {
+  globalThis.fetch = realFetch;
 });
 
 describe("testLinear", () => {
   it("names the credential when there is none", async () => {
-    expect(await testLinear({}, fakeCreateClient)).toEqual({
+    stubFetch(() => Response.json({}));
+
+    expect(await testLinear({})).toEqual({
       success: false,
       error: "LINEAR_API_KEY is required",
     });
-    expect(mocks.viewer).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
   });
 
   it("accepts a key whose viewer comes back", async () => {
-    mocks.viewer.mockResolvedValue({ id: "user_1" });
+    stubFetch(() => Response.json({ data: { viewer: { id: "user_1" } } }));
 
-    expect(
-      await testLinear({ LINEAR_API_KEY: "lin_api_good" }, fakeCreateClient)
-    ).toEqual({
+    expect(await testLinear({ LINEAR_API_KEY: "lin_api_good" })).toEqual({
       success: true,
     });
+    expect(requests[0]?.headers.get("authorization")).toBe("lin_api_good");
   });
 
   // A viewer with no id is Linear answering without saying who the key belongs
   // to, which is not a connection worth reporting as working.
   it("refuses a viewer that names nobody", async () => {
-    mocks.viewer.mockResolvedValue({});
+    stubFetch(() => Response.json({ data: { viewer: {} } }));
 
-    expect(
-      await testLinear({ LINEAR_API_KEY: "lin_api_x" }, fakeCreateClient)
-    ).toEqual({
+    expect(await testLinear({ LINEAR_API_KEY: "lin_api_x" })).toMatchObject({
       success: false,
       error: "Failed to verify Linear connection",
     });
@@ -60,40 +57,71 @@ describe("testLinear", () => {
   // The authentication type is the one refusal that names something a person can
   // act on, so it gets the credentials sentence rather than Linear's wording.
   it("names the API key when Linear refuses the authentication", async () => {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const response = {
-      status: 401,
-      headers: new Headers(),
-      errors: [
+    stubFetch(() =>
+      Response.json(
         {
-          message: "Authentication required",
-          extensions: { type: "authentication error" },
+          errors: [
+            {
+              message: "Authentication required, not authenticated",
+              extensions: {
+                type: "authentication error",
+                code: "AUTHENTICATION_ERROR",
+                statusCode: 401,
+                userError: true,
+                userPresentableMessage:
+                  "You need to authenticate to access this operation.",
+              },
+            },
+          ],
         },
-      ],
-    } as unknown as LinearRawResponse<unknown>;
-
-    mocks.viewer.mockRejectedValue(
-      new GraphQLClientError(response, { query: "query Me { viewer { id } }" })
+        { status: 400 }
+      )
     );
 
-    expect(
-      await testLinear({ LINEAR_API_KEY: "lin_api_bad" }, fakeCreateClient)
-    ).toMatchObject({
+    expect(await testLinear({ LINEAR_API_KEY: "lin_api_bad" })).toEqual({
       success: false,
       error: "Invalid API key. Please check your Linear API key.",
+      details: {
+        status: 400,
+        code: "AUTHENTICATION_ERROR",
+        message: "You need to authenticate to access this operation.",
+      },
     });
   });
 
   // Anything else keeps Linear's own sentence, because a generic one would say
   // less than the message the API sent.
-  it("passes any other failure through in Linear's own words", async () => {
-    mocks.viewer.mockRejectedValue(new Error("ECONNREFUSED"));
+  it("passes any other refusal through in Linear's own words", async () => {
+    stubFetch(() =>
+      Response.json({
+        data: null,
+        errors: [
+          {
+            message: "Forbidden",
+            extensions: { type: "forbidden", code: "FORBIDDEN" },
+          },
+        ],
+      })
+    );
 
-    expect(
-      await testLinear({ LINEAR_API_KEY: "lin_api_x" }, fakeCreateClient)
-    ).toMatchObject({
+    expect(await testLinear({ LINEAR_API_KEY: "lin_api_x" })).toMatchObject({
+      success: false,
+      error: "Forbidden",
+    });
+  });
+
+  // A request that never arrived has no HTTP status to report, so the transport
+  // error is the whole story. The viewer query is a read, so it is retried, and
+  // the case waits out that schedule on the real clock.
+  it("reports a request that never arrived", async () => {
+    stubFetch(() => {
+      throw new Error("ECONNREFUSED");
+    });
+
+    expect(await testLinear({ LINEAR_API_KEY: "lin_api_x" })).toEqual({
       success: false,
       error: "ECONNREFUSED",
+      details: { message: "ECONNREFUSED" },
     });
   });
 });
