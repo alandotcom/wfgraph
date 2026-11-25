@@ -15,11 +15,11 @@ export const TEST_RUN_SKIP_LABEL = "Skipped (test run)";
 
 /**
  * The sentence for each `reasonCode` the built-in integrations return, in the
- * words of the Test Mode Behavior setting that chose it.
+ * words of the "In test runs" setting that chose it.
  */
 const REASON_SENTENCES: Readonly<Record<string, string>> = {
   test_mode_log_only:
-    "Test Mode Behavior is Log only, so this test run did nothing at this step.",
+    '"In test runs" is set to Log only, so this test run did nothing at this step.',
   test_mode_log_fallback_missing_test_phone:
     "Test Phone Number is empty, so this test run did nothing at this step.",
   test_mode_log_fallback_invalid_test_phone:

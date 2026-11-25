@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { testRunSkip } from "./test-run-skip";
 
 describe("testRunSkip", () => {
-  it("names the Test Mode Behavior that made an integration step do nothing", () => {
+  it("names the setting that made an integration step do nothing", () => {
     expect(
       testRunSkip({
         runMode: "test",
@@ -10,7 +10,7 @@ describe("testRunSkip", () => {
         output: { ts: "", channel: "#ops", reasonCode: "test_mode_log_only" },
       })
     ).toBe(
-      "Test Mode Behavior is Log only, so this test run did nothing at this step."
+      '"In test runs" is set to Log only, so this test run did nothing at this step.'
     );
     expect(
       testRunSkip({
