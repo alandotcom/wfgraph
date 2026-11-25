@@ -954,3 +954,82 @@ describe("the command palette", () => {
     expect(paletteInput()?.value).toBe("");
   });
 });
+
+describe("the command palette with a step selected", () => {
+  async function paletteForSelected(nodeId: string) {
+    const rendered = renderChrome(ToolbarActions, { graph: SEARCH_GRAPH });
+    act(() => {
+      rendered.store.set(activeSelectionAtom, {
+        nodeIds: [nodeId],
+        edgeIds: [],
+      });
+    });
+    await rendered.findByRole("button", { name: /^Publish( v\d+)?$/ });
+    pressCommandK();
+    const input = paletteInput();
+    if (!input) {
+      throw new Error("the palette did not open");
+    }
+    return { rendered, input };
+  }
+
+  it("lists the step's own commands first, named with the step", async () => {
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+    try {
+      const { rendered } = await paletteForSelected("load_customer");
+
+      const group = rendered.getByRole("group", {
+        name: "Step 2 · Load customer",
+      });
+      const names = [
+        ...group.querySelectorAll<HTMLElement>("[role='option']"),
+      ].map((option) => option.textContent ?? "");
+      for (const command of [
+        "Edit step 2 · Load customer",
+        "Disable step 2 · Load customer",
+        "Add a step after step 2 · Load customer",
+        "Move step 2 · Load customer up",
+        "Move step 2 · Load customer down",
+        "Duplicate step 2 · Load customer",
+        "Delete step 2 · Load customer",
+      ]) {
+        expect(names.some((name) => name.startsWith(command))).toBe(true);
+      }
+    } finally {
+      resetAuthorizationGrantsForTests();
+    }
+  });
+
+  it("finds the step's Delete by typing delete, and deletes the step", async () => {
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+    try {
+      const { rendered, input } = await paletteForSelected("load_customer");
+
+      fireEvent.change(input, { target: { value: "delete" } });
+      expect(
+        document.querySelector("[role='option']")?.textContent ?? ""
+      ).toMatch(/^Delete step 2 · Load customer/);
+      const option = rendered.getByRole("option", {
+        name: /^Delete step 2 · Load customer/,
+      });
+      fireEvent.click(option);
+
+      await waitFor(() =>
+        expect(
+          rendered.store
+            .get(nodesAtom)
+            .some((node) => node.id === "load_customer")
+        ).toBe(false)
+      );
+    } finally {
+      resetAuthorizationGrantsForTests();
+    }
+  });
+
+  it("offers no step commands to a person who may not edit the workflow", async () => {
+    const { rendered } = await paletteForSelected("load_customer");
+    expect(
+      rendered.queryByRole("option", { name: /^Delete step 2 · Load customer/ })
+    ).toBeNull();
+  });
+});

@@ -54,6 +54,7 @@ import { useAddStep } from "#src/components/workflow/use-add-step";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { useColumnControls } from "#src/components/workflow/columns/use-column-controls";
+import { useSelectedStepCommands } from "#src/components/workflow/use-selected-step-commands";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import {
@@ -357,6 +358,7 @@ function CommandPaletteDialog({
 }: CommandPaletteProps & { palette: CommandPaletteState }) {
   const navigate = useNavigate();
   const settingsCommands = useSettingsCommands();
+  const selectedStepCommands = useSelectedStepCommands();
   const setPalette = useSetAtom(commandPaletteAtom);
   const inputRef = useRef<HTMLInputElement>(null);
   const catalog = useExtensionCatalog();
@@ -624,6 +626,22 @@ function CommandPaletteDialog({
     };
   });
 
+  // The selected step's own commands come first, under the step's name, as
+  // its context menu and its details column offer them.
+  const rootGroups: readonly PaletteGroup[] =
+    selectedStepCommands === null
+      ? rootPageGroups
+      : [
+          {
+            id: "selected-step",
+            label: selectedStepCommands.title,
+            items: selectedStepCommands.commands.map((command) =>
+              menuCommandItem(command, close)
+            ),
+          },
+          ...rootPageGroups,
+        ];
+
   let authoredGroups: readonly PaletteGroup[];
   if (onStepPage) {
     authoredGroups = stepPageGroups;
@@ -634,9 +652,9 @@ function CommandPaletteDialog({
   } else {
     authoredGroups =
       palette.query === ""
-        ? rootPageGroups
+        ? rootGroups
         : [
-            ...rootPageGroups,
+            ...rootGroups,
             {
               id: "step-types",
               label: "Add step",

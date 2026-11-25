@@ -40,12 +40,8 @@ import {
 import { cn } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { isBlank } from "@wfgraph/shared/types/string";
-import { findAction } from "@wfgraph/shared/extensions/catalog";
-import {
-  ACTION_TYPE_CONFIG_KEY,
-  readConfigString,
-} from "@wfgraph/shared/graph/node-config";
 import { AgentThread } from "#src/components/agent/agent-thread";
+import { useSelectedStep } from "#src/components/workflow/use-selected-step";
 import {
   ATTACHED_STEPS_KEY,
   type AttachedStep,
@@ -53,15 +49,11 @@ import {
 } from "#src/components/agent/attached-steps";
 import { forgetAgentThread } from "#src/components/agent/thread-storage";
 import { useAgentRuntime } from "#src/components/agent/use-agent-runtime";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { canUseBuildAgent } from "#src/lib/authorization";
 import { isAgentEnabled } from "#src/lib/extensions";
-import { stepNumbersAtom } from "#src/lib/step-numbers";
-import { presentedGraphAtom } from "#src/lib/workflow-graph-presentation-store";
-import { groupLabel } from "#src/lib/workflow-graph-types";
 import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
@@ -69,7 +61,6 @@ import {
   agentConversationOpenAtom,
   isGeneratingAtom,
 } from "#src/lib/workflow-ui-store";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 type AgentRuntime = ReturnType<typeof useAgentRuntime>;
 
@@ -89,35 +80,14 @@ export type WorkflowAgentVariant = "canvas" | "phone";
  * the outline, when it has one, and its label.
  */
 function useOfferedStep(): AttachedStep | null {
-  const selection = useAtomValue(activeSelectionAtom);
-  const nodes = useAtomValue(presentedGraphAtom)?.nodes ?? [];
-  const numbers = useAtomValue(stepNumbersAtom);
-  const catalog = useExtensionCatalog();
-  const [nodeId] = selection.nodeIds;
-  if (
-    selection.nodeIds.length !== 1 ||
-    selection.edgeIds.length > 0 ||
-    nodeId === undefined
-  ) {
-    return null;
-  }
-  const node = nodes.find((item) => item.id === nodeId);
-  if (!node) {
-    return null;
-  }
-  const actionType = readConfigString(node.data.config, ACTION_TYPE_CONFIG_KEY);
-  const fallback =
-    node.data.type === "lifecycle"
-      ? "Lifecycle"
-      : node.data.type === "group"
-        ? groupLabel(node.data.label)
-        : ((actionType && findAction(catalog, actionType)?.label) ??
-          "Untitled step");
-  return omitUndefined({
-    id: node.id,
-    label: isBlank(node.data.label) ? fallback : node.data.label,
-    number: numbers.get(node.id),
-  });
+  const step = useSelectedStep();
+  return step === null
+    ? null
+    : omitUndefined({
+        id: step.node.id,
+        label: step.label,
+        number: step.number,
+      });
 }
 
 /**

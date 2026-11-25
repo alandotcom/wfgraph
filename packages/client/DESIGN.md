@@ -702,8 +702,12 @@ one opened from a menu row or the command palette.
 The command palette reaches every menu command by the words its row uses: the
 workflow menu's **Rename**, **Duplicate workflow**, **Pause workflow** or
 **Resume workflow**, **Copy workflow ID**, and **Go to workflow…**; and the
-Settings menu's **Connections** and **Theme**. Its rows draw shortcuts as `Kbd`
-keycaps. The Actions menu's **Canvas** submenu holds the canvas commands, and its
+Settings menu's **Connections** and **Theme**. With one step selected in an
+editable Draft, the palette opens on a group headed by that step, "Step 4 ·
+Send 24-hour reminder", holding what its context menu and details column offer,
+each named with the step: Edit, Disable or Enable, Add a step after it on each
+outlet, Move up and Move down, Duplicate, and Delete. Its rows draw shortcuts as
+`Kbd` keycaps. The Actions menu's **Canvas** submenu holds the canvas commands, and its
 **Keyboard shortcuts** row, the palette row of that name, and "?" outside a text
 field open one searchable reference of every shortcut. Cmd+Enter submits Run
 draft from any field in it, and publishes from anywhere in the review sheet.
