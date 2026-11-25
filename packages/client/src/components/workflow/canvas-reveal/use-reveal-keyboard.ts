@@ -3,13 +3,16 @@ import { useDomEvent } from "#src/hooks/effects";
 
 /**
  * Whether an Escape belongs to a control inside the details column that closes
- * something of its own first: an open select, combobox, menu, or template
- * autocomplete.
+ * something of its own first: an open select, combobox, menu, template
+ * autocomplete, or an element marked `data-owns-escape`, such as a step's open
+ * list of actions.
  */
 function escapeOwnedByControl(target: Element): boolean {
   return (
     target.matches('[aria-expanded="true"], [data-autocomplete-open="true"]') ||
-    target.closest('[role="listbox"], [role="menu"]') !== null
+    target.closest(
+      '[role="listbox"], [role="menu"], [data-owns-escape="true"]'
+    ) !== null
   );
 }
 

@@ -399,15 +399,21 @@ step that is not selected clears the selection. The header offers **Back** only
 where a jump reached the object, such as the Lifecycle node opened from an
 Event Split. No header control changes a level. A step's editor holds an
 editable label and
-description, the action and its Connection, and every setting as its field.
+description, what it does and its Connection, and every setting as its field.
+What it does is one field, **Does**, that names the action with its category,
+such as "Appointments · Send Patient Message", or the action alone for a
+built-in step such as Wait. Pressing it opens, in place of the form, the same
+searchable list grouped by category that adding a step uses, with focus in its
+search; choosing an action closes it, and Escape closes it with focus back on
+the field.
 Each issue shows beneath the field it names, and the Validation list repeats
 every issue, where choosing one puts focus in its field. A template field's
 help line says that typing @ inserts a value from the Event or an earlier step.
 Edits write to the draft as they are made, and autosave carries on. Typing in
 one field is one undo step until the field loses focus or the typing pauses for
 a second, the way a text editor groups it. A step with no
-action chosen shows the action picker, and choosing an action moves focus to
-the first required field it leaves empty. A Condition's rules are live the
+action chosen shows the **Does** field open with its list, and choosing an
+action moves focus to the first required field it leaves empty. A Condition's rules are live the
 same way: the sentence saying when it takes True sits above them and changes as
 they do, and there is no Edit or Done. Every rule builder, the Wait's match and
 the filters and eligibility rule inside a Lifecycle section included, edits in
@@ -432,12 +438,13 @@ its own.
 Selecting an object with the pointer opens its editor and leaves keyboard focus
 on the canvas object. The context menu's **Edit**, Enter on a focused object,
 and the command palette finding a step open the editor with focus in its label,
-or in the action picker of a step with no action. **Edit** on a row of the
+or in the **Does** list's search of a step with no action. **Edit** on a row of the
 workflow's issue list, in the details column or in the list a blocked Publish
 opens, selects the step, brings the details column back if it was collapsed,
 and puts focus in the field the row names. A
 step added from the palette opens with focus in the first required field it
-leaves empty, and any other new step opens with focus in the action picker.
+leaves empty, and any other new step opens with focus in the **Does** list's
+search.
 However a step is added, by the palette, the outline, a connection dropped on
 empty canvas, a duplicate or a paste, the camera then moves once, the least it
 must, to show the new steps clear of the agent's prompt line and the canvas

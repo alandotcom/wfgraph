@@ -911,6 +911,53 @@ describe("details panel edit focus", () => {
   });
 });
 
+describe("what a step does", () => {
+  it("names the action in one field with its category, and changes it from the list adding a step uses", async () => {
+    const { view, store, select } = await renderReveal();
+    await select("send");
+
+    // The field is named by its label and reads the chosen action.
+    const field = view.getByRole("button", { name: "Does" });
+    expect(field.id).toBe("actionType");
+    expect(field.textContent).toBe("Mailer · Send email");
+    expect(view.queryByRole("combobox", { name: "Service" })).toBeNull();
+    expect(view.queryByRole("combobox", { name: "Action" })).toBeNull();
+    expect(view.queryByTestId("action-grid")).toBeNull();
+
+    fireEvent.click(field);
+    expect(document.activeElement).toBe(
+      view.getByPlaceholderText("Search actions...")
+    );
+    fireEvent.click(view.getByTestId("action-option-notices/send-letter"));
+
+    expect(view.queryByTestId("action-grid")).toBeNull();
+    expect(view.getByRole("button", { name: "Does" }).textContent).toBe(
+      "Notices · Send letter"
+    );
+    expect(
+      store.get(nodesAtom).find((item) => item.id === "send")?.data.config
+        ?.actionType
+    ).toBe("notices/send-letter");
+  });
+
+  it("closes the list on Escape and keeps the action", async () => {
+    const { view, select } = await renderReveal();
+    await select("send");
+    fireEvent.click(view.getByRole("button", { name: "Does" }));
+
+    fireEvent.keyDown(view.getByPlaceholderText("Search actions..."), {
+      key: "Escape",
+    });
+
+    expect(view.queryByTestId("action-grid")).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole("button", { name: "Does" })
+      )
+    );
+  });
+});
+
 describe("details panel subjects and focus return", () => {
   it("hands focus to the selected node on Escape when it has none to step back to", async () => {
     const { view, store, escape } = await renderReveal();

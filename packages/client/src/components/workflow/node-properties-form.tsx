@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { can } from "#src/lib/authorization";
@@ -16,7 +16,10 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { newStepFocusTarget } from "./canvas-reveal/reveal-edit-target";
 import { requestRevealEditFocusAtom } from "./canvas-reveal/reveal-requests";
 import { ActionConfig } from "./config/action-config";
-import { ActionGrid } from "./config/action-grid";
+import {
+  ACTION_CHOICE_ID,
+  ActionChoiceField,
+} from "./config/action-choice-field";
 import { ActionLinks } from "./config/action-links";
 import { FieldIssuesProvider } from "./config/field-issues";
 import { LifecyclePanel } from "./config/lifecycle-panel";
@@ -96,50 +99,72 @@ export function NodePropertiesForm({
   );
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const catalog = useExtensionCatalog();
+  // The step whose action list a person opened to change its action.
+  const [choosingFor, setChoosingFor] = useState<string | null>(null);
 
   const selectedNode = nodes.find((node) => node.id === nodeId);
   if (!selectedNode) {
     return null;
   }
   const selectedActionId = actionTypeOf(selectedNode);
+  const isStep = selectedNode.data.type === "action";
+  const chooseAction = (actionType: string) => {
+    handleUpdateConfig({ actionType });
+    setChoosingFor(null);
+    // The list leaves with the choice, so focus moves to the first field the
+    // chosen action needs, or to the label.
+    requestEditFocus({
+      nodeId: selectedNode.id,
+      targetId: newStepFocusTarget(
+        {
+          ...selectedNode,
+          data: {
+            ...selectedNode.data,
+            config: { ...selectedNode.data.config, actionType },
+          },
+        },
+        catalog
+      ),
+    });
+    if (selectedNode.id === newlyCreatedNodeId) {
+      setNewlyCreatedNodeId(null);
+    }
+  };
 
-  // An action node with no action chosen yet gets the picker instead of a
-  // config form, and the picker is the whole screen while it is up.
+  // While a step's action is being chosen, a step with none yet included,
+  // the field that says what it does is open and is the whole form.
   if (
-    selectedNode.data.type === "action" &&
-    !selectedNode.data.config?.actionType &&
-    canUpdate
+    isStep &&
+    canUpdate &&
+    (selectedActionId === undefined || choosingFor === selectedNode.id)
   ) {
     return (
-      <div className="px-4 pt-4">
-        <ActionGrid
+      <div className="flex min-h-0 flex-1 flex-col px-4 pt-4">
+        <ActionChoiceField
+          actionId={selectedActionId}
           disabled={isGenerating}
-          isNewlyCreated={selectedNode.id === newlyCreatedNodeId}
-          // A grid keyed to the node it configures starts fresh for each
-          // one: the search box empties, and a node dropped moments ago gets
-          // the autofocus that only fires on mount.
+          focusSearch={
+            selectedActionId === undefined
+              ? selectedNode.id === newlyCreatedNodeId
+              : true
+          }
+          // Keyed to the step it configures, so the search box empties for
+          // each one and a step added moments ago gets the focus that only
+          // fires on mount.
           key={selectedNode.id}
-          onSelectAction={(actionType) => {
-            handleUpdateConfig({ actionType });
-            // The picker's buttons leave with it, so focus moves to the first
-            // field the chosen action needs, or to the label.
-            requestEditFocus({
-              nodeId: selectedNode.id,
-              targetId: newStepFocusTarget(
-                {
-                  ...selectedNode,
-                  data: {
-                    ...selectedNode.data,
-                    config: { ...selectedNode.data.config, actionType },
-                  },
-                },
-                catalog
-              ),
-            });
-            if (selectedNode.id === newlyCreatedNodeId) {
-              setNewlyCreatedNodeId(null);
+          onChoose={chooseAction}
+          onOpenChange={(open) => {
+            setChoosingFor(open ? selectedNode.id : null);
+            // Closed, the list hands focus back to the field, which the
+            // form draws again in its place.
+            if (!open) {
+              requestEditFocus({
+                nodeId: selectedNode.id,
+                targetId: ACTION_CHOICE_ID,
+              });
             }
           }}
+          open
         />
       </div>
     );
@@ -148,11 +173,21 @@ export function NodePropertiesForm({
   return (
     <FieldIssuesProvider nodeId={selectedNode.id}>
       <div className="space-y-4 p-4">
-        {selectedNode.data.type !== "action" ||
-        selectedNode.data.config?.actionType ? (
-          <NodeDetailsFields
+        <NodeDetailsFields
+          disabled={isGenerating || !canUpdate}
+          node={selectedNode}
+        />
+
+        {isStep ? (
+          <ActionChoiceField
+            actionId={selectedActionId}
             disabled={isGenerating || !canUpdate}
-            node={selectedNode}
+            focusSearch={false}
+            onChoose={chooseAction}
+            onOpenChange={(open) =>
+              setChoosingFor(open ? selectedNode.id : null)
+            }
+            open={false}
           />
         ) : null}
 
@@ -180,15 +215,6 @@ export function NodePropertiesForm({
             key={selectedNode.id}
             onUpdateConfig={handleUpdateConfig}
           />
-        ) : null}
-
-        {selectedNode.data.type === "action" &&
-        !selectedNode.data.config?.actionType ? (
-          <div className="rounded-lg border border-muted bg-muted/30 p-3">
-            <p className="text-muted-foreground text-sm">
-              No action configured for this step.
-            </p>
-          </div>
         ) : null}
 
         {selectedNode.data.type === "action" &&

@@ -45,7 +45,8 @@ function useAllActions(): readonly ActionMetadata[] {
 type ActionGridProps = {
   onSelectAction: (actionType: string) => void;
   disabled?: boolean;
-  isNewlyCreated?: boolean;
+  /** Whether the search field takes focus when the list mounts. */
+  focusSearch?: boolean;
 };
 
 function GroupIcon({
@@ -124,7 +125,7 @@ export const ACTION_FILTER_ID = "action-filter";
 export function ActionGrid({
   onSelectAction,
   disabled,
-  isNewlyCreated,
+  focusSearch,
 }: ActionGridProps) {
   const [filter, setFilter] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
@@ -138,14 +139,15 @@ export function ActionGrid({
   const actions = useAllActions();
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // A node the user has just dropped on the canvas is waiting for an action to
-  // be chosen, so the search box takes focus when the grid mounts. Not on a
+  // A step just added, or a person who opened the list to change a step's
+  // action, is waiting to choose, so the search box takes focus when the grid
+  // mounts. Not on a
   // touch device, where focus summons a keyboard over the grid the user is
   // trying to read. `preventScroll`, because the grid can mount inside Canvas
   // Reveal while Reveal is still sliding in from past the canvas edge, and a
   // scrolling focus would drag the whole editor sideways to reach it.
   useBeforePaint(null, () => {
-    if (isNewlyCreated === true && !hasTouchSupport()) {
+    if (focusSearch === true && !hasTouchSupport()) {
       searchRef.current?.focus({ preventScroll: true });
     }
   });

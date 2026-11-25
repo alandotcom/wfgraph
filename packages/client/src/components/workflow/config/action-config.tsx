@@ -1,18 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { HelpCircle, Settings, Zap } from "lucide-react";
+import { HelpCircle } from "lucide-react";
 import { type ReactNode, useCallback, useMemo } from "react";
-import { mapValues } from "es-toolkit/object";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { Input } from "#src/components/ui/input";
-import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
 import { Label } from "#src/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "#src/components/ui/select";
@@ -40,11 +37,7 @@ import {
   nodesAtom,
   selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import {
-  actionsForPickerByCategory,
-  findAction,
-  type ExtensionCatalog,
-} from "@wfgraph/shared/extensions/catalog";
+import { findAction } from "@wfgraph/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { waitDurationCannotBeRead } from "@wfgraph/shared/actions/action-config-validation";
 import { parseDurationMs } from "@wfgraph/shared/utils/wait-time";
@@ -92,15 +85,8 @@ type ActionConfigProps = {
   canUpdate?: boolean;
 };
 
-type CategoryActionOption = {
-  id: string;
-  label: string;
-  logoUrl?: string | undefined;
-  integration?: string | undefined;
-};
-
 function configOptionsOwner(
-  action: CategoryActionOption,
+  action: { id: string; integration?: string | undefined },
   config: Record<string, unknown>
 ): ConfigOptionsOwner {
   return action.integration
@@ -109,33 +95,6 @@ function configOptionsOwner(
         integrationId: settledProviderParameter(config.integrationId),
       }
     : { kind: "action", actionId: action.id };
-}
-
-function OptionLogo({
-  logoUrl,
-  label,
-  fallback,
-}: {
-  logoUrl?: string | undefined;
-  label: string;
-  fallback: ReactNode;
-}) {
-  const normalizedLogoUrl = logoUrl?.trim();
-
-  if (!normalizedLogoUrl) {
-    return fallback;
-  }
-
-  return (
-    <img
-      alt={`${label} logo`}
-      className="size-4 rounded-sm object-contain"
-      height={16}
-      loading="lazy"
-      src={normalizedLogoUrl}
-      width={16}
-    />
-  );
 }
 
 /**
@@ -815,38 +774,6 @@ function SystemActionFields({
   }
 }
 
-/**
- * Every category the selector offers, and the actions in each.
- *
- * Condition and Wait are catalog entries in the "System" category like any
- * other action, so this reads one list: an editor served by a different build
- * than its server offers what that server can run.
- */
-function useCategoryData(
-  pinnedActionId?: string
-): Record<string, CategoryActionOption[]> {
-  const catalog = useExtensionCatalog();
-  return useMemo(() => {
-    const grouped = actionsForPickerByCategory(catalog, pinnedActionId);
-
-    return mapValues(grouped, (actions) =>
-      actions.map((action) => ({
-        id: action.id,
-        label: action.label,
-        logoUrl: action.logoUrl,
-        integration: action.integration,
-      }))
-    );
-  }, [catalog, pinnedActionId]);
-}
-
-function getCategoryForAction(
-  catalog: ExtensionCatalog,
-  actionType: string
-): string | null {
-  return findAction(catalog, actionType)?.category ?? null;
-}
-
 export function ActionConfig({
   config,
   onUpdateConfig,
@@ -855,27 +782,6 @@ export function ActionConfig({
 }: ActionConfigProps) {
   const catalog = useExtensionCatalog();
   const actionType = readConfigString(config, ACTION_TYPE_CONFIG_KEY);
-  const categories = useCategoryData(actionType);
-  const categoryOptions = useMemo(
-    () =>
-      Object.keys(categories)
-        .filter((name) => name !== "System")
-        .toSorted(),
-    [categories]
-  );
-
-  const category = actionType
-    ? getCategoryForAction(catalog, actionType) || ""
-    : "";
-  const categoryItems = [
-    { value: "System", label: "System" },
-    ...categoryOptions.map((value) => ({ value, label: value })),
-  ];
-  const actionOptions = category ? (categories[category] ?? []) : [];
-  const actionItems = actionOptions.map((action) => ({
-    value: action.id,
-    label: action.label,
-  }));
   const { data: globalIntegrations = [] } = useQuery({
     ...integrationsQueryOptions(),
     enabled: can(WfGraphOperations.integrationGetAll.id),
@@ -887,17 +793,6 @@ export function ActionConfig({
     (entry) => entry.id === settledProviderParameter(config.integrationId)
   )?.connectionDefaults;
 
-  const handleCategoryChange = (newCategory: string) => {
-    const firstAction = categories[newCategory]?.[0];
-    if (firstAction) {
-      onUpdateConfig({ [ACTION_TYPE_CONFIG_KEY]: firstAction.id });
-    }
-  };
-
-  const handleActionTypeChange = (value: string) => {
-    onUpdateConfig({ [ACTION_TYPE_CONFIG_KEY]: value });
-  };
-
   const catalogAction = actionType
     ? findAction(catalog, actionType)
     : undefined;
@@ -908,114 +803,6 @@ export function ActionConfig({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-2">
-          <Label className="ml-1" htmlFor="actionCategory">
-            Service
-          </Label>
-          <Select
-            disabled={disabled}
-            items={categoryItems}
-            onValueChange={whenChosen(handleCategoryChange)}
-            value={category || undefined}
-          >
-            <SelectTrigger className="w-full" id="actionCategory">
-              <SelectValue placeholder="Select category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="System">
-                <div className="flex items-center gap-2">
-                  <Settings className="size-4" />
-                  <span>System</span>
-                </div>
-              </SelectItem>
-              {categoryOptions.length > 0 && <SelectSeparator />}
-              {categoryOptions.map((categoryName) => {
-                const actionsInCategory = categories[categoryName];
-                // A category groups the actions that declared it, so the icon comes
-                // off one of them. Matching the category name against an
-                // integration's label worked only because the two happen to agree.
-                const categoryIntegration = actionsInCategory?.[0]?.integration;
-                const categoryLogoUrl = actionsInCategory
-                  ?.map((action) => action.logoUrl)
-                  .find(
-                    (value) => typeof value === "string" && !isBlank(value)
-                  );
-
-                const fallbackIcon = categoryIntegration ? (
-                  <IntegrationIcon
-                    className="size-4"
-                    integration={categoryIntegration}
-                  />
-                ) : (
-                  <Zap className="size-4" />
-                );
-
-                return (
-                  <SelectItem key={categoryName} value={categoryName}>
-                    <div className="flex items-center gap-2">
-                      <OptionLogo
-                        fallback={fallbackIcon}
-                        label={categoryName}
-                        logoUrl={categoryLogoUrl}
-                      />
-                      <span>{categoryName}</span>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="ml-1" htmlFor="actionType">
-            Action
-          </Label>
-          <Select
-            disabled={disabled || !category}
-            items={actionItems}
-            onValueChange={whenChosen(handleActionTypeChange)}
-            value={actionType || undefined}
-          >
-            <SelectTrigger className="w-full" id="actionType">
-              <SelectValue placeholder="Select action" />
-            </SelectTrigger>
-            <SelectContent>
-              {category &&
-                actionOptions.map((action) => {
-                  let fallbackIcon: ReactNode;
-                  if (category === "System") {
-                    fallbackIcon = <Settings className="size-4" />;
-                  } else if (action.integration) {
-                    fallbackIcon = (
-                      <IntegrationIcon
-                        className="size-4"
-                        integration={action.integration}
-                      />
-                    );
-                  } else {
-                    fallbackIcon = <Zap className="size-4" />;
-                  }
-
-                  return (
-                    <SelectItem key={action.id} value={action.id}>
-                      <div className="flex items-center gap-2">
-                        <OptionLogo
-                          fallback={fallbackIcon}
-                          label={action.label}
-                          logoUrl={action.logoUrl}
-                        />
-                        <span>{action.label}</span>
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
       {integrationType && canUpdate && (
         <div className="space-y-2">
           <div className="ml-1 flex items-center justify-between">
