@@ -10,14 +10,19 @@ import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
   describeFailure,
   type FailedStepConnection,
+  type RunEntitySource,
 } from "#src/lib/run-failure";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
+  type ExtensionCatalog,
   findAction,
   findEntity,
+  findEvent,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   ACTION_TYPE_CONFIG_KEY,
   readConfigString,
@@ -29,16 +34,19 @@ import { cn } from "@wfgraph/shared/utils";
  * beneath it as secondary text, and **Edit connection** when the failed step's
  * Connection refused or lacked its credentials. `nodeId` is the failed step,
  * read from the graph the run pinned, and null for a run that failed with no
- * step recorded.
+ * step recorded. `startEventName` is the Event that started the run, which a
+ * run's own failure names when the run's Entity was not found.
  */
 export function RunFailureText({
   error,
   nodeId,
+  startEventName = null,
   className,
   detailClassName = "text-muted-foreground",
 }: {
   error: string;
   nodeId: string | null;
+  startEventName?: string | null | undefined;
   /** The sentence's text classes, which differ between the band and Focus. */
   className?: string | undefined;
   /**
@@ -53,9 +61,8 @@ export function RunFailureText({
   const repairAgainstConnectionList = useConnectionRepair();
   const canReadConnections = can(WfGraphOperations.integrationGetAll.id);
   const canEditConnection = can(WfGraphOperations.integrationUpdate.id);
-  const config = useAtomValue(executionOverlayGraphAtom)?.nodes.find(
-    (node) => node.id === nodeId
-  )?.data.config;
+  const pinnedNodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
+  const config = pinnedNodes.find((node) => node.id === nodeId)?.data.config;
   const actionType = readConfigString(config, ACTION_TYPE_CONFIG_KEY);
   const action =
     actionType === undefined ? undefined : findAction(catalog, actionType);
@@ -87,6 +94,10 @@ export function RunFailureText({
     integrationLabel: integration?.label ?? action?.integration ?? null,
     connection,
     entityLabel: (type) => findEntity(catalog, type)?.label ?? type,
+    entitySource:
+      nodeId === null
+        ? runEntitySource({ nodes: pinnedNodes, startEventName, catalog })
+        : null,
   });
 
   return (
@@ -117,4 +128,31 @@ export function RunFailureText({
       ) : null}
     </div>
   );
+}
+
+/**
+ * The Event that started a run and the Entity binding its pinned Lifecycle
+ * Rules chose for that Event, or null when the run started with no Event or
+ * the graph has not loaded.
+ */
+function runEntitySource(input: {
+  nodes: readonly WorkflowNode[];
+  startEventName: string | null;
+  catalog: ExtensionCatalog;
+}): RunEntitySource | null {
+  const { startEventName } = input;
+  if (startEventName === null) {
+    return null;
+  }
+  const binding = input.nodes
+    .filter((node) => node.data.type === "lifecycle")
+    .map((node) => readLifecycleRules(node.data.config)?.trackedEntity)
+    .find((tracked) => tracked !== undefined)?.bindings[startEventName];
+  return binding === undefined
+    ? null
+    : {
+        eventLabel:
+          findEvent(input.catalog, startEventName)?.label ?? startEventName,
+        binding,
+      };
 }

@@ -58,10 +58,31 @@ describe("describeFailure", () => {
         entityLabel,
       })
     ).toEqual({
-      sentence: "The app found no Patient for this run.",
+      sentence:
+        "The app found no Patient for this run. Check that the Patient exists in the app.",
       detail: 'Entity "patient" was not found for node data',
       connectionCause: false,
     });
+  });
+
+  // The engine records the failure against the run and names neither the
+  // Event nor the binding, so the run's start Event and its pinned Lifecycle
+  // Rules supply them.
+  it("names the Event and binding that supplied a missing Entity's ID", () => {
+    expect(
+      describeFailure({
+        error: 'Entity "patient" was not found for node data',
+        integrationLabel: null,
+        connection: { kind: "unknown" },
+        entityLabel,
+        entitySource: {
+          eventLabel: "Appointment created",
+          binding: "patient",
+        },
+      }).sentence
+    ).toBe(
+      "The app found no Patient for this run. Appointment created provides the Patient ID through its patient binding. Check that the Patient exists in the app."
+    );
   });
 
   it("states an error it does not recognize once, as it was stored", () => {

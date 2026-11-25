@@ -6,6 +6,8 @@
  * sentence for a developer. Every function is pure.
  */
 
+import { compact } from "es-toolkit/array";
+
 /** The Connection a failed step used, as the Runs view can name it. */
 export type FailedStepConnection =
   /** The step's Connection exists, under this name. */
@@ -44,6 +46,34 @@ const MISSING_CREDENTIAL =
 /** The engine's error for an Entity the host's resolver did not find. */
 const ENTITY_NOT_FOUND = /^Entity "([^"]+)" was not found for node data$/;
 
+/**
+ * How a run named the Entity it tracks, for a failure the engine recorded
+ * against the run: the label of the Event that started it, and the Event's
+ * Entity binding the Lifecycle Rules chose. The run has no source to name
+ * when it started with no Event, or its pinned graph names no binding.
+ */
+export type RunEntitySource = {
+  eventLabel: string;
+  binding: string;
+};
+
+/**
+ * The sentences for an Entity the host's resolver did not find: which Entity,
+ * which Event binding supplied its ID, and what to check.
+ */
+function missingEntitySentence(
+  label: string,
+  source: RunEntitySource | null
+): string {
+  return compact([
+    `The app found no ${label} for this run.`,
+    source === null
+      ? null
+      : `${source.eventLabel} provides the ${label} ID through its ${source.binding} binding.`,
+    `Check that the ${label} exists in the app.`,
+  ]).join(" ");
+}
+
 /** How a Connection is named in a sentence. */
 function connectionPhrase(connection: FailedStepConnection): string {
   return connection.kind === "named"
@@ -56,12 +86,14 @@ function connectionPhrase(connection: FailedStepConnection): string {
  * are absent. `integrationLabel` names the integration the step's action
  * belongs to, such as "Slack", and is null for an action with none.
  * `entityLabel` turns an Entity type into the label the editor uses.
+ * `entitySource` says how the run named its Entity, for a run's own failure.
  */
 export function describeFailure(input: {
   error: string;
   integrationLabel: string | null;
   connection: FailedStepConnection;
   entityLabel: (entityType: string) => string;
+  entitySource?: RunEntitySource | null | undefined;
 }): FailureDescription {
   const { error, integrationLabel, connection } = input;
   if (integrationLabel !== null) {
@@ -91,7 +123,10 @@ export function describeFailure(input: {
   const entity = ENTITY_NOT_FOUND.exec(error);
   if (entity?.[1] !== undefined) {
     return {
-      sentence: `The app found no ${input.entityLabel(entity[1])} for this run.`,
+      sentence: missingEntitySentence(
+        input.entityLabel(entity[1]),
+        input.entitySource ?? null
+      ),
       detail: error,
       connectionCause: false,
     };

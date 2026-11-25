@@ -675,10 +675,70 @@ describe("WorkflowRunDetail", () => {
       );
 
       expect(
-        view.getByText("The app found no Patient for this run.")
+        view.getByText(
+          "The app found no Patient for this run. Check that the Patient exists in the app."
+        )
       ).toBeTruthy();
       expect(
         view.getByText('Entity "patient" was not found for node data')
+      ).toBeTruthy();
+    });
+
+    it("names the Event and binding that supplied the missing Entity's ID", () => {
+      const view = renderDetail(
+        {
+          ...failed,
+          startEventName: "appointment.created",
+          error: 'Entity "patient" was not found for node data',
+        },
+        {
+          catalog: {
+            ...emptyExtensionCatalog,
+            events: [
+              {
+                name: "appointment.created",
+                label: "Appointment created",
+                payloadFields: [],
+              },
+            ],
+            entities: [
+              {
+                type: "patient",
+                label: "Patient",
+                stateFields: [],
+                stateSchemaDigest: "",
+              },
+            ],
+          },
+          executionNodes: [
+            {
+              id: "lifecycle",
+              type: "lifecycle",
+              position: { x: 0, y: 0 },
+              data: {
+                label: "Lifecycle",
+                type: "lifecycle",
+                config: {
+                  lifecycleRules: {
+                    startEvents: ["appointment.created"],
+                    cancelEvents: [],
+                    concurrency: "unlimited",
+                    trackedEntity: {
+                      type: "patient",
+                      bindings: { "appointment.created": "patient" },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      );
+
+      expect(
+        view.getByText(
+          "The app found no Patient for this run. Appointment created provides the Patient ID through its patient binding. Check that the Patient exists in the app."
+        )
       ).toBeTruthy();
     });
 

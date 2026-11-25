@@ -420,6 +420,7 @@ export function WorkflowRunDetail({
                   detailClassName="text-foreground"
                   error={failedLog?.error ?? execution.error ?? ""}
                   nodeId={failedLog?.nodeId ?? null}
+                  startEventName={execution.startEventName}
                 />
               </div>
             </section>
