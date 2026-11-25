@@ -46,14 +46,6 @@ export function lifecycleAnchorViewport(input: {
   };
 }
 
-/**
- * The lowest zoom a workflow opens at. A step's 12px captions (its
- * description, outlet labels, edge labels and run status chip) render at
- * 12px there, the floor of the type scale, so every line on screen can be
- * read without zooming in.
- */
-export const WORKFLOW_READABLE_ZOOM = 1;
-
 /** Screen pixels between the top of the usable canvas and an anchored Lifecycle card. */
 const LIFECYCLE_TOP_PX = 48;
 
@@ -81,13 +73,15 @@ function viewportShowsGraph(input: {
  * remembered camera, inside `usable`: the canvas pixels Canvas Reveal and the
  * floating controls leave.
  *
- * The zoom fits the whole graph, never above `zoomLimit` and never below
- * `WORKFLOW_READABLE_ZOOM` unless `zoomLimit` is lower. `zoomLimit` is the
- * fit's own maximum when a workflow opens, and the current zoom when a view
- * changes, so a view change never zooms in. The Lifecycle card sits at the top
- * center of `usable` when the graph shows whole there. A graph that fits but
- * would clip at that anchor is centered. A graph too large to fit keeps the
- * anchor and runs off the bottom edge.
+ * The zoom fits the whole graph with the padding and the ceiling of zoom 1
+ * that Fit view uses, and never goes above `zoomLimit`. `zoomLimit` is that
+ * ceiling when a workflow opens, and the current zoom when a view changes, so
+ * a view change never zooms in. The outline beside the canvas carries each
+ * step's text, so the canvas opens on the workflow's shape. The Lifecycle card
+ * sits at the top center of `usable` when the graph shows whole there. A graph
+ * that fits but would clip at that anchor is centered. A graph too large to
+ * fit even at `WORKFLOW_CANVAS_MIN_ZOOM` keeps the anchor and runs off the
+ * bottom edge.
  */
 export function openingViewport(input: {
   usable: Bounds;
@@ -104,10 +98,7 @@ export function openingViewport(input: {
     WORKFLOW_FIT_VIEW_MAX_ZOOM,
     WORKFLOW_FIT_VIEW_PADDING
   );
-  const zoom = Math.min(
-    input.zoomLimit,
-    Math.max(fitted.zoom, WORKFLOW_READABLE_ZOOM)
-  );
+  const zoom = Math.min(input.zoomLimit, fitted.zoom);
   const anchored = lifecycleAnchorViewport({
     canvasWidth: usable.width,
     nodePosition: input.lifecycle.nodePosition,

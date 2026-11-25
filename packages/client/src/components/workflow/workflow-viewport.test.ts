@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   WORKFLOW_CANVAS_MIN_ZOOM,
   WORKFLOW_FIT_VIEW_MAX_ZOOM,
-  WORKFLOW_READABLE_ZOOM,
+  WORKFLOW_FIT_VIEW_PADDING,
   openingViewport,
   revealViewport,
   viewportFromWorldCamera,
@@ -118,23 +118,52 @@ describe("workflow viewport policy", () => {
     ).toEqual({ x: 204, y: -32, zoom: 1 });
   });
 
-  it("opens a graph that fits only below the readable zoom at that zoom, anchored on the Lifecycle", () => {
-    // About the seeded 16-step workflow: the whole graph fits at 0.53.
-    const usable = { x: 0, y: 0, width: 1486, height: 880 };
-    const lifecycle = { nodePosition: { x: 429, y: 0 }, nodeWidth: 192 };
+  it("opens a large graph fitted whole, at the zoom Fit view chooses", () => {
+    // About the seeded 16-step workflow in a three-column editor: the canvas
+    // between the outline and the details column.
+    const usable = { x: 0, y: 0, width: 700, height: 798 };
+    const graphBounds = { x: 0, y: 0, width: 1050, height: 1370 };
     const viewport = openingViewport({
       usable,
-      graphBounds: { x: 0, y: 0, width: 1050, height: 1370 },
-      lifecycle,
+      graphBounds,
+      lifecycle: { nodePosition: { x: 429, y: 0 }, nodeWidth: 192 },
       zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
     });
 
-    expect(viewport.zoom).toBe(WORKFLOW_READABLE_ZOOM);
-    // A 12px caption renders at 12px or more.
-    expect(12 * viewport.zoom).toBeGreaterThanOrEqual(12);
-    const lifecycleCenter = viewport.x + (429 + 192 / 2) * viewport.zoom;
-    expect(lifecycleCenter).toBeCloseTo(usable.width / 2);
-    expect(viewport.y).toBe(48);
+    const fitView = getViewportForBounds(
+      graphBounds,
+      usable.width,
+      usable.height,
+      WORKFLOW_CANVAS_MIN_ZOOM,
+      WORKFLOW_FIT_VIEW_MAX_ZOOM,
+      WORKFLOW_FIT_VIEW_PADDING
+    );
+    expect(viewport.zoom).toBe(fitView.zoom);
+    expect(viewport.zoom).toBeLessThan(1);
+    // Every card is on screen.
+    expect(viewport.x + graphBounds.x * viewport.zoom).toBeGreaterThanOrEqual(
+      0
+    );
+    expect(viewport.y + graphBounds.y * viewport.zoom).toBeGreaterThanOrEqual(
+      0
+    );
+    expect(
+      viewport.x + (graphBounds.x + graphBounds.width) * viewport.zoom
+    ).toBeLessThanOrEqual(usable.width);
+    expect(
+      viewport.y + (graphBounds.y + graphBounds.height) * viewport.zoom
+    ).toBeLessThanOrEqual(usable.height);
+  });
+
+  it("opens a small graph at zoom 1 rather than blowing it up", () => {
+    const viewport = openingViewport({
+      usable: { x: 0, y: 0, width: 1000, height: 800 },
+      graphBounds: { x: 0, y: 0, width: 192, height: 292 },
+      lifecycle: { nodePosition: { x: 0, y: 0 }, nodeWidth: 192 },
+      zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
+    });
+
+    expect(viewport.zoom).toBe(1);
   });
 
   it("anchors inside the usable canvas Canvas Reveal and the controls leave", () => {
@@ -185,18 +214,18 @@ describe("workflow viewport policy", () => {
     ).toEqual({ x: 102, y: 347, zoom: 0.5 });
   });
 
-  it("keeps the Lifecycle anchor for a graph too large to fit, which runs off the bottom edge", () => {
+  it("keeps the Lifecycle anchor for a graph too large to fit at the minimum zoom, which runs off the bottom edge", () => {
     expect(
       openingViewport({
         usable: { x: 0, y: 0, width: 1000, height: 800 },
-        graphBounds: { height: 8_912, width: 192, x: 200, y: 80 },
+        graphBounds: { height: 40_000, width: 192, x: 200, y: 80 },
         lifecycle: { nodePosition: { x: 200, y: 80 }, nodeWidth: 192 },
         zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
       })
     ).toEqual({
-      x: 500 - 296 * WORKFLOW_READABLE_ZOOM,
-      y: 48 - 80 * WORKFLOW_READABLE_ZOOM,
-      zoom: WORKFLOW_READABLE_ZOOM,
+      x: 500 - 296 * WORKFLOW_CANVAS_MIN_ZOOM,
+      y: 48 - 80 * WORKFLOW_CANVAS_MIN_ZOOM,
+      zoom: WORKFLOW_CANVAS_MIN_ZOOM,
     });
   });
 

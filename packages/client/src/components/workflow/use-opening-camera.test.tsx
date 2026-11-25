@@ -1,5 +1,7 @@
 import { act, render } from "@testing-library/react";
 import {
+  getNodesBounds,
+  getViewportForBounds,
   ReactFlowProvider,
   type ReactFlowState,
   useStoreApi,
@@ -25,8 +27,9 @@ import { useRevealOccupiedWidth } from "./canvas-reveal/use-reveal-width";
 import { REVEAL_PADDING_PX } from "./canvas-reveal/reveal-geometry";
 import { useOpeningCamera } from "./use-opening-camera";
 import {
+  WORKFLOW_CANVAS_MIN_ZOOM,
   WORKFLOW_FIT_VIEW_MAX_ZOOM,
-  WORKFLOW_READABLE_ZOOM,
+  WORKFLOW_FIT_VIEW_PADDING,
 } from "./workflow-viewport";
 
 const CANVAS = { width: 1200, height: 800 };
@@ -68,6 +71,20 @@ const LARGE_GRAPH: WorkflowNode[] = [
   card("stop", 1000, 200),
   card("tail", 500, 2000),
 ];
+
+/**
+ * The zoom at which `LARGE_GRAPH` fits the canvas with Fit view's padding,
+ * about 0.32. Its height decides it, so the same zoom fits beside open
+ * Canvas Reveal.
+ */
+const LARGE_GRAPH_FITTED_ZOOM = getViewportForBounds(
+  getNodesBounds(LARGE_GRAPH),
+  CANVAS.width,
+  CANVAS.height,
+  WORKFLOW_CANVAS_MIN_ZOOM,
+  WORKFLOW_FIT_VIEW_MAX_ZOOM,
+  WORKFLOW_FIT_VIEW_PADDING
+).zoom;
 
 function setViewportWidth(width: number): void {
   (
@@ -198,7 +215,7 @@ beforeEach(() => {
 });
 
 describe("useOpeningCamera", () => {
-  it("opens a large Draft at the readable zoom with the Lifecycle card at the top center, in one move", async () => {
+  it("opens a large Draft fitted whole with the Lifecycle card at the top center, in one move", async () => {
     const camera = await renderOpeningCamera({
       nodes: LARGE_GRAPH,
       search: {},
@@ -209,7 +226,7 @@ describe("useOpeningCamera", () => {
     expectSteadyCamera(camera.motion.moves, camera.start);
     expect(camera.motion.moves).toHaveLength(1);
     const viewport = camera.viewport();
-    expect(viewport.zoom).toBe(WORKFLOW_READABLE_ZOOM);
+    expect(viewport.zoom).toBeCloseTo(LARGE_GRAPH_FITTED_ZOOM);
     const lifecycle = screenBox(LARGE_GRAPH[0], viewport);
     expect((lifecycle.left + lifecycle.right) / 2).toBeCloseTo(
       CANVAS.width / 2
@@ -230,7 +247,7 @@ describe("useOpeningCamera", () => {
     expectSteadyCamera(camera.motion.moves, camera.start);
     expect(camera.motion.moves).toHaveLength(1);
     const viewport = camera.viewport();
-    expect(viewport.zoom).toBe(WORKFLOW_READABLE_ZOOM);
+    expect(viewport.zoom).toBeCloseTo(LARGE_GRAPH_FITTED_ZOOM);
     const stopped = screenBox(LARGE_GRAPH[2], viewport);
     expect(stopped.left).toBeGreaterThanOrEqual(REVEAL_PADDING_PX);
     expect(stopped.right).toBeLessThanOrEqual(
@@ -262,9 +279,10 @@ describe("useOpeningCamera", () => {
       run: { stoppedNodeId: null },
     });
 
-    await camera.open(0.4);
+    // Below the zoom that fits the graph, about 0.32.
+    await camera.open(0.25);
 
-    expect(camera.viewport().zoom).toBe(0.4);
+    expect(camera.viewport().zoom).toBe(0.25);
   });
 
   it("places a stopped step inside a collapsed Group by its Group card", async () => {
