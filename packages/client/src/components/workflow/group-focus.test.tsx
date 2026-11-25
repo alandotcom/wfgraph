@@ -164,6 +164,17 @@ function Probe() {
       >
         Probe add step
       </button>
+      <button
+        onClick={() =>
+          addStep({
+            actionType: "mailer/send",
+            after: { nodeId: "route", handle: null },
+          })
+        }
+        type="button"
+      >
+        Probe add step after route
+      </button>
     </>
   );
 }
@@ -401,6 +412,26 @@ describe("canvas selection", () => {
     expect(
       document.activeElement?.closest('.react-flow__node[data-id="route"]')
     ).not.toBeNull();
+  });
+
+  // The outline's "Add a step" rows name the open outlet a step joins, which
+  // holds whatever the canvas has selected.
+  it("adds a step on the outlet it is given, ahead of the selection", async () => {
+    const { store, view } = await renderEditor();
+    await act(async () => {
+      fireEvent.click(view.getByTestId("action-node-qualify"));
+    });
+    fireEvent.click(
+      view.getByRole("button", { name: "Probe add step after route" })
+    );
+    const [addedId] = store.get(activeSelectionAtom).nodeIds;
+    expect(addedId).not.toBe("qualify");
+    expect(
+      store
+        .get(edgesAtom)
+        .filter((edge) => edge.target === addedId)
+        .map((edge) => edge.source)
+    ).toEqual(["route"]);
   });
 
   it("keeps modifier-click additive", async () => {

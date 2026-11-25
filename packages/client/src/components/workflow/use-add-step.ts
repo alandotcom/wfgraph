@@ -17,7 +17,7 @@ import { useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import type { CanvasPosition } from "#src/lib/command-palette";
+import type { CanvasPosition, StepOutlet } from "#src/lib/command-palette";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { isConditionActionNode } from "@wfgraph/shared/conditions/condition-branch";
 import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
@@ -53,6 +53,8 @@ export type AddStepRequest = {
   actionType?: string | undefined;
   /** Where the user pointed. Absent puts the step in the middle of the canvas. */
   at?: CanvasPosition | undefined;
+  /** The open outlet the step joins, which takes the selection's place. */
+  after?: StepOutlet | undefined;
 };
 
 /**
@@ -73,8 +75,9 @@ export function useAddStep(): (request: AddStepRequest) => void {
   const { screenToFlowPosition } = useReactFlow();
 
   return useCallback(
-    ({ actionType, at }: AddStepRequest) => {
-      const source = at === undefined ? outletForNewStep(store, catalog) : null;
+    ({ actionType, at, after }: AddStepRequest) => {
+      const source =
+        after ?? (at === undefined ? outletForNewStep(store, catalog) : null);
       const position =
         at ??
         (source

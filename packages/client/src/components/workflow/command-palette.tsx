@@ -66,6 +66,7 @@ import {
   setPaletteQuery,
   type CanvasPosition,
   type CommandPaletteState,
+  type StepOutlet,
 } from "#src/lib/command-palette";
 import {
   commandPaletteAtom,
@@ -416,6 +417,8 @@ function CommandPaletteDialog({
   // rather than on the state object a keystroke replaces.
   const stepAt: CanvasPosition | undefined =
     page.id === "add-step" ? page.at : undefined;
+  const stepAfter: StepOutlet | undefined =
+    page.id === "add-step" ? page.after : undefined;
   /**
    * The node types, which is the one page worth memoising: it walks the whole
    * catalog, and every value it closes over holds its identity across a
@@ -443,7 +446,7 @@ function CommandPaletteDialog({
         consequential: false,
         icon: <ActionIcon action={action} className="size-3.5" />,
         select: () => {
-          addStep({ actionType: action.id, at: stepAt });
+          addStep({ actionType: action.id, at: stepAt, after: stepAfter });
           // A step that was added is the one selection, and its inspector
           // opens with focus on the first field it needs.
           const [added, ...others] = store.get(activeSelectionAtom).nodeIds;
@@ -461,6 +464,7 @@ function CommandPaletteDialog({
   }, [
     searchesStepTypes,
     stepAt,
+    stepAfter,
     catalog,
     editingLocked,
     topologyAuthoring,

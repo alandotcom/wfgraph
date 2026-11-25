@@ -11,17 +11,29 @@
 /** Where a new step lands, in canvas coordinates. */
 export type CanvasPosition = { readonly x: number; readonly y: number };
 
+/** The outlet a new step joins: a step and its handle, null for its only one. */
+export type StepOutlet = {
+  readonly nodeId: string;
+  readonly handle: string | null;
+};
+
 /**
  * One page of the palette.
  *
  * `add-step` carries the position the step will be created at when the canvas
  * asked for it, and leaves it out when the menu bar did: the canvas knows where
- * the user pointed, and the menu bar has nothing to say about placement.
+ * the user pointed, and the menu bar has nothing to say about placement. It
+ * carries `after` when the outline's "Add a step" row asked, which names the
+ * open outlet the step joins.
  */
 export type CommandPalettePage =
   | { readonly id: "root" }
   | { readonly id: "go-to-workflow" }
-  | { readonly id: "add-step"; readonly at?: CanvasPosition };
+  | {
+      readonly id: "add-step";
+      readonly at?: CanvasPosition;
+      readonly after?: StepOutlet;
+    };
 
 export type CommandPaletteState = {
   /**

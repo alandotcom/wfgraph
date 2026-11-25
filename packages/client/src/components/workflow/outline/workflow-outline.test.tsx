@@ -19,7 +19,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { WorkflowOutline } from "#src/components/workflow/outline/workflow-outline";
+import {
+  outlineRowElementId,
+  WorkflowOutline,
+} from "#src/components/workflow/outline/workflow-outline";
 import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import { commandPaletteAtom } from "#src/lib/command-palette-store";
 import type { ExecutionLog } from "#src/lib/execution-logs";
@@ -317,10 +320,39 @@ describe("WorkflowOutline", () => {
     fireEvent.keyDown(list, { key: "ArrowRight" });
     expect(row("Release the slot")).toBeTruthy();
 
+    // The last row is the open end after the last step, which selects
+    // nothing; the row above it is that step.
     fireEvent.keyDown(list, { key: "End" });
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toBe("Add a step")
+    );
+    fireEvent.keyDown(list, { key: "ArrowUp" });
     expect(store.get(activeSelectionAtom).nodeIds).toEqual([
       "Send cancellation notice",
     ]);
+  });
+
+  it("offers Add a step at every open end, which opens the picker on that outlet", async () => {
+    const { store } = renderOutline();
+    const list = await tree();
+
+    // After step 6 at the end of the Group, after steps 11, 13, 15 and 16,
+    // and under the two Otherwise outlets nothing is connected behind.
+    const adds = within(list).getAllByRole("treeitem", { name: "Add a step" });
+    expect(adds).toHaveLength(7);
+
+    const otherwise = document.getElementById(
+      outlineRowElementId("add:Enough time for reminders?:false")
+    );
+    if (!otherwise) throw new Error("no Add a step under the outer Otherwise");
+    fireEvent.click(otherwise);
+    expect(store.get(commandPaletteAtom)?.pages).toEqual([
+      {
+        id: "add-step",
+        after: { nodeId: "Enough time for reminders?", handle: "false" },
+      },
+    ]);
+    expect(document.activeElement).toBe(otherwise);
   });
 
   it("filters rows by text, and Cmd+F focuses the filter", async () => {

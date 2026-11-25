@@ -6,6 +6,9 @@
  */
 
 import type { OutlineRow } from "@wfgraph/shared/graph/workflow-outline";
+import type { WorkflowEdge } from "@wfgraph/shared/graph/types";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import type { StepOutlet } from "#src/lib/command-palette";
 
 /** A line standing for rows a run's outline folds, such as "3 steps not reached yet". */
 export type OutlineNoteRow = {
@@ -18,8 +21,28 @@ export type OutlineNoteRow = {
   text: string;
 };
 
-/** A row the outline draws: one the model wrote, or a note a run's outline adds. */
-export type OutlineDisplayRow = OutlineRow | OutlineNoteRow;
+/**
+ * "Add a step" at an open end of a path, which the draft's outline adds: under
+ * an outlet nothing is connected behind, after a step that leads nowhere, and
+ * under "Steps" while nothing follows the start. `source` is the outlet the
+ * new step joins.
+ */
+export type OutlineAddRow = {
+  kind: "add";
+  key: string;
+  /** The key of the row it follows, which places it in its section. */
+  standsFor: string;
+  depth: number;
+  parentKey: string | null;
+  source: StepOutlet;
+  text: string;
+};
+
+/**
+ * A row the outline draws: one the model wrote, a note a run's outline adds,
+ * or an "Add a step" row the draft's outline adds.
+ */
+export type OutlineDisplayRow = OutlineRow | OutlineNoteRow | OutlineAddRow;
 
 /** The rows that carry a step or the Lifecycle Node, which select a card. */
 export type OutlineNodeRow = Extract<
@@ -34,12 +57,89 @@ export function isNodeRow(row: OutlineDisplayRow): row is OutlineNodeRow {
 }
 
 /**
- * Whether the keyboard stops on a row: a step, a Group, the Lifecycle Node, or
- * a reference that leads to the step it names. Outlet and arm labels are read
- * as headings and fold with the row they sit under.
+ * Whether the keyboard stops on a row: a step, a Group, the Lifecycle Node, a
+ * reference that leads to the step it names, or "Add a step". Outlet and arm
+ * labels are read as headings and fold with the row they sit under.
  */
 export function isFocusableRow(row: OutlineDisplayRow): boolean {
-  return isNodeRow(row) || row.kind === "continues";
+  return isNodeRow(row) || row.kind === "continues" || row.kind === "add";
+}
+
+const ADD_STEP_TEXT = "Add a step";
+
+/**
+ * `rows` with "Add a step" after every open end of a path in the draft:
+ * beneath an outlet nothing is connected behind, after a step with no
+ * connection out of it, and, while nothing follows the start's Started
+ * outlet, first under "Steps". A Condition and an Event Split end in their
+ * outlets, and a Group in its last member, so neither gets a row of its own.
+ */
+export function withAddStepRows(input: {
+  rows: readonly OutlineRow[];
+  edges: readonly WorkflowEdge[];
+}): OutlineDisplayRow[] {
+  const leaves = new Set(input.edges.map((edge) => edge.source));
+  const lifecycle = input.rows.find((row) => row.kind === "lifecycle");
+  const startOpen =
+    lifecycle !== undefined &&
+    !input.edges.some(
+      (edge) =>
+        edge.source === lifecycle.nodeId &&
+        edge.sourceHandle === LIFECYCLE_STARTED_HANDLE
+    );
+  return input.rows.flatMap((row): OutlineDisplayRow[] => {
+    if (row.kind === "lifecycle") {
+      return startOpen
+        ? [
+            row,
+            {
+              kind: "add",
+              key: `add:${row.nodeId}:${LIFECYCLE_STARTED_HANDLE}`,
+              // Under no row of "Starts when", so it opens "Steps".
+              standsFor: "",
+              depth: 0,
+              parentKey: null,
+              source: { nodeId: row.nodeId, handle: LIFECYCLE_STARTED_HANDLE },
+              text: ADD_STEP_TEXT,
+            },
+          ]
+        : [row];
+    }
+    if (row.kind === "outlet" && row.ends) {
+      return [
+        row,
+        {
+          kind: "add",
+          key: `add:${row.sourceNodeId}:${row.handle}`,
+          standsFor: row.key,
+          depth: row.depth + 1,
+          parentKey: row.parentKey,
+          source: { nodeId: row.sourceNodeId, handle: row.handle },
+          text: ADD_STEP_TEXT,
+        },
+      ];
+    }
+    if (
+      row.kind === "step" &&
+      row.stepKind !== "condition" &&
+      row.stepKind !== "event-split" &&
+      !leaves.has(row.nodeId)
+    ) {
+      return [
+        row,
+        {
+          kind: "add",
+          key: `add:${row.nodeId}`,
+          standsFor: row.key,
+          depth: row.depth,
+          parentKey: row.parentKey,
+          source: { nodeId: row.nodeId, handle: null },
+          text: ADD_STEP_TEXT,
+        },
+      ];
+    }
+    return [row];
+  });
 }
 
 /** The words a filter is matched against. */

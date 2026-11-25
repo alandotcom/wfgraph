@@ -8,6 +8,7 @@ import {
   EyeOff,
   Group,
   Play,
+  Plus,
   Zap,
 } from "lucide-react";
 import {
@@ -76,9 +77,11 @@ import {
   isFocusableRow,
   isNodeRow,
   moveFocus,
+  type OutlineAddRow,
   type OutlineDisplayRow,
   type OutlineNodeRow,
   visibleRows,
+  withAddStepRows,
 } from "./outline-view";
 
 /** The open run's facts a row's outcome reads beyond its path and logs. */
@@ -132,7 +135,9 @@ function outlineSections(input: {
   const sections: Section[] = [];
   for (const row of input.shown) {
     const title =
-      titleOf.get(row.kind === "note" ? row.standsFor : row.key) ?? "Steps";
+      titleOf.get(
+        row.kind === "note" || row.kind === "add" ? row.standsFor : row.key
+      ) ?? "Steps";
     const last = sections.at(-1);
     if (last?.title === title) {
       sections[sections.length - 1] = { title, rows: [...last.rows, row] };
@@ -246,7 +251,15 @@ export function WorkflowOutline({
       outlineRowList,
     ]
   );
-  const rows: readonly OutlineDisplayRow[] = run?.rows ?? outlineRowList;
+  // The draft's outline offers a step at every open end of a path.
+  const draftRows = useMemo(
+    () =>
+      editing && graph
+        ? withAddStepRows({ rows: outlineRowList, edges: graph.edges })
+        : outlineRowList,
+    [editing, graph, outlineRowList]
+  );
+  const rows: readonly OutlineDisplayRow[] = run?.rows ?? draftRows;
   const unreachable = useMemo(
     () => (editing && graph ? inactiveBranch(graph).nodeIds : new Set()),
     [editing, graph]
@@ -407,6 +420,13 @@ export function WorkflowOutline({
     if (!row) return;
     const isOpen = canFold.has(row.key) && !folded.has(row.key);
     const handled = (() => {
+      if (
+        row.kind === "add" &&
+        (event.key === "Enter" || event.key === " " || event.key === "/")
+      ) {
+        addStepAt(row);
+        return true;
+      }
       switch (event.key) {
         case "ArrowDown":
         case "ArrowUp":
@@ -459,6 +479,12 @@ export function WorkflowOutline({
       }
     })();
     if (handled) event.preventDefault();
+  };
+
+  /** Open the step picker `/` opens, to add a step on the row's open outlet. */
+  const addStepAt = (row: OutlineAddRow) => {
+    if (!editing) return;
+    openPalette({ id: "add-step", after: row.source });
   };
 
   /**
@@ -602,7 +628,11 @@ export function WorkflowOutline({
                     showsTime={timedRowKeys.has(row.key)}
                     onChoose={() => {
                       focusRow(row.key);
-                      choose(row);
+                      if (row.kind === "add") {
+                        addStepAt(row);
+                      } else {
+                        choose(row);
+                      }
                     }}
                     onFocus={() => {
                       setFocusedKey(row.key);
@@ -749,6 +779,25 @@ function OutlineRowView({
       ? "bg-selection/10 shadow-[inset_2px_0_0_var(--selection)]"
       : "hover:bg-muted"
   );
+
+  if (row.kind === "add") {
+    return (
+      <div
+        aria-level={row.depth + 1}
+        className={cn(rowClass, "text-muted-foreground hover:text-foreground")}
+        id={outlineRowElementId(row.key)}
+        onClick={onChoose}
+        role="treeitem"
+        style={{ paddingLeft: indentPx(row.depth) }}
+        tabIndex={active ? 0 : -1}
+        {...focusHandlers}
+      >
+        <span className="w-5 shrink-0" />
+        <Plus aria-hidden className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{row.text}</span>
+      </div>
+    );
+  }
 
   if (row.kind === "continues") {
     return (
