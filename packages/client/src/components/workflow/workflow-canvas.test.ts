@@ -6,7 +6,6 @@ import {
   canvasFitViewKey,
   canvasSynchronizationKey,
   canvasViewportCorrectionKey,
-  fitInitialWorkflowViewport,
   keyboardFitViewOptions,
   lifecycleAnchorViewport,
   synchronizeCanvasGraph,
@@ -15,7 +14,7 @@ import {
   useSynchronizedCanvas,
 } from "#src/components/workflow/workflow-canvas-synchronization";
 import {
-  presentationViewport,
+  openingViewport,
   workflowFitViewOptions,
 } from "#src/components/workflow/workflow-viewport";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -135,7 +134,6 @@ describe("useSynchronizedCanvas", () => {
           currentWorkflowId: "workflow_1",
           lifecycleNode: lifecycle,
           internalNode: internalNode(lifecycle),
-          fitGenerationRef: { current: 0 },
         }),
       {
         initialProps: { lifecycle: initial, presentation: draftPresentation },
@@ -184,7 +182,6 @@ describe("useSynchronizedCanvas", () => {
               position: lifecycle.position,
               width: 192,
             },
-            fitGenerationRef: { current: 0 },
           }),
         { initialProps: { presentation: runPresentation } as Props }
       );
@@ -246,9 +243,8 @@ describe("useSynchronizedCanvas", () => {
           viewportCorrection,
           correctViewport: () =>
             setViewport(
-              presentationViewport({
-                canvas: { width: 1_000, height: 800 },
-                currentViewport: { x: 100, y: 50, zoom: 0.5 },
+              openingViewport({
+                usable: { x: 0, y: 0, width: 1_000, height: 800 },
                 graphBounds: {
                   x: lifecycle.position.x,
                   y: lifecycle.position.y,
@@ -258,8 +254,8 @@ describe("useSynchronizedCanvas", () => {
                 lifecycle: {
                   nodePosition: lifecycle.position,
                   nodeWidth: 192,
-                  top: 48,
                 },
+                zoomLimit: 0.5,
               })
             ),
           remeasureNodes: () => {},
@@ -271,7 +267,6 @@ describe("useSynchronizedCanvas", () => {
             position: lifecycle.position,
             width: 192,
           },
-          fitGenerationRef: { current: 0 },
         });
       },
       {
@@ -349,7 +344,6 @@ describe("canvasSynchronizationKey", () => {
             position: lifecycle.position,
             width: 192,
           },
-          fitGenerationRef: { current: 0 },
         }),
       {
         initialProps: {
@@ -464,7 +458,6 @@ describe("useSynchronizedCanvas lifecycle anchor", () => {
   it("waits to expose the incoming anchor until React Flow installs the replacement", () => {
     const outgoing = lifecycleNode(100);
     const incoming = lifecycleNode(500);
-    const fitGenerationRef = { current: 0 };
     const internalNode = (userNode: WorkflowNode) => ({
       userNode,
       position: userNode.position,
@@ -482,7 +475,6 @@ describe("useSynchronizedCanvas lifecycle anchor", () => {
           currentWorkflowId: "workflow_1",
           lifecycleNode: displayedNode,
           internalNode: installedNode,
-          fitGenerationRef,
         }),
       {
         initialProps: {
@@ -515,15 +507,11 @@ describe("useFitAgentGraph", () => {
     vi.useFakeTimers();
     try {
       const fitView = vi.fn(async () => true);
-      const fitGenerationRef = { current: 0 };
       const { rerender } = renderHook(
         ({ update, workflowId }) =>
           useFitWorkflowGraph({
             update,
             workflowId,
-            beforeFit: () => {
-              fitGenerationRef.current += 1;
-            },
             fitView,
           }),
         {
@@ -544,7 +532,6 @@ describe("useFitAgentGraph", () => {
       await act(() => vi.runAllTimersAsync());
 
       expect(fitView).toHaveBeenCalledOnce();
-      expect(fitGenerationRef.current).toBe(1);
 
       rerender({
         update: { workflowId: "workflow-a", revision: 3 },
@@ -561,50 +548,9 @@ describe("useFitAgentGraph", () => {
       await act(() => vi.runAllTimersAsync());
 
       expect(fitView).toHaveBeenCalledTimes(2);
-      expect(fitGenerationRef.current).toBe(2);
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-describe("fitInitialWorkflowViewport", () => {
-  it("abandons viewport anchoring and readiness when the fit becomes stale", async () => {
-    let resolveFit = () => {};
-    let current = true;
-    const fitView = () =>
-      new Promise<boolean>((resolve) => {
-        resolveFit = () => resolve(true);
-      });
-    let viewportWasSet = false;
-    let canvasWasRevealed = false;
-
-    const fitting = fitInitialWorkflowViewport({
-      fitView,
-      isCurrent: () => current,
-      readAnchor: () => ({
-        canvasWidth: 1000,
-        canvasHeight: 800,
-        graphBounds: { x: 200, y: 80, width: 192, height: 112 },
-        nodePosition: { x: 200, y: 80 },
-        nodeWidth: 192,
-        fittedViewport: { x: 100, y: 80, zoom: 0.75 },
-      }),
-      setViewport: async () => {
-        viewportWasSet = true;
-        return true;
-      },
-      reveal: () => {
-        canvasWasRevealed = true;
-      },
-    });
-
-    current = false;
-    resolveFit();
-    await fitting;
-
-    expect(viewportWasSet).toBe(false);
-    expect(canvasWasRevealed).toBe(false);
   });
 });
 

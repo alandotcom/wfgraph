@@ -290,9 +290,15 @@ widths. Below `md` the three views sit at the top of the toolbar's overflow
 menu, the active one checked, above the run commands and **Publish**. The control
 remains available when the inspector is closed. The canvas,
 inspector, editing lock, and status strip always follow the same active view.
-When a resolved view changes, the canvas keeps its zoom and anchors the Lifecycle
-card at the top center when the full graph fits. A graph that would clip is
-centered at the preserved zoom. Loading changes inspector status without fading,
+A workflow opens at the zoom that fits its whole graph in the usable canvas, held
+between 90% and 100%. At 90% a step's 14px title still renders above 12px. The
+Lifecycle card sits at the top center of the usable canvas, so a graph too
+large for 90% runs off the bottom edge. A graph that fits but would clip at
+that anchor is centered. A camera remembered for the view wins. When a resolved
+view changes to a view with no remembered camera, the canvas places the graph
+the same way, never zooming in past the zoom it had. A run that failed, is
+waiting, or was canceled then moves the least distance that puts the step where
+it stopped in the usable canvas. Loading changes inspector status without fading,
 re-fitting, or replacing the last valid canvas; resolved content replaces it
 only when the next presentation is ready.
 

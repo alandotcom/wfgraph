@@ -2,10 +2,7 @@ import { useRef } from "react";
 import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowGraphUpdate } from "#src/lib/workflow-ui-store";
-import {
-  initialWorkflowViewport,
-  workflowFitViewOptions,
-} from "./workflow-viewport";
+import { workflowFitViewOptions } from "./workflow-viewport";
 export { lifecycleAnchorViewport } from "./workflow-viewport";
 
 type InternalLifecycleAnchor = {
@@ -60,7 +57,6 @@ export function useSynchronizedCanvas({
   currentWorkflowId,
   lifecycleNode,
   internalNode,
-  fitGenerationRef,
 }: {
   presentation: unknown;
   synchronizePresentation: () => boolean;
@@ -71,7 +67,6 @@ export function useSynchronizedCanvas({
   currentWorkflowId: string | null;
   lifecycleNode: WorkflowNode | null;
   internalNode: InternalLifecycleAnchor | null;
-  fitGenerationRef: { current: number };
 }): {
   lifecycleAnchor: ReturnType<typeof synchronizedLifecycleAnchor>;
   fitViewKey: string | null;
@@ -103,13 +98,6 @@ export function useSynchronizedCanvas({
   const fitViewKey = canvasFitViewKey({
     workflowId: currentWorkflowId,
     lifecycleNode: lifecycleAnchor,
-  });
-
-  // Controlled props reach React Flow's internal store after this component
-  // renders. Wait for its node identity so initial fitting never reads the
-  // outgoing graph. The canvas corrects a resolved replacement before paint.
-  useBeforePaint(fitViewKey, () => {
-    fitGenerationRef.current += 1;
   });
 
   return { lifecycleAnchor, fitViewKey };
@@ -150,7 +138,6 @@ export function canvasViewportCorrectionKey({
 export function useFitWorkflowGraph(input: {
   update: WorkflowGraphUpdate | null;
   workflowId: string | null;
-  beforeFit: () => void;
   fitView: () => Promise<boolean>;
 }): void {
   const handledRevisionRef = useRef(input.update?.revision ?? 0);
@@ -164,66 +151,8 @@ export function useFitWorkflowGraph(input: {
     if (update.workflowId !== input.workflowId) {
       return;
     }
-    input.beforeFit();
     void input.fitView();
   });
-}
-
-export async function fitInitialWorkflowViewport({
-  fitView,
-  isCurrent,
-  readAnchor,
-  setViewport,
-  reveal,
-}: {
-  fitView: () => Promise<boolean>;
-  isCurrent: () => boolean;
-  readAnchor: () => {
-    canvasWidth: number;
-    canvasHeight: number;
-    graphBounds: { x: number; y: number; width: number; height: number };
-    nodePosition: { x: number; y: number };
-    nodeWidth: number;
-    fittedViewport: { x: number; y: number; zoom: number };
-  } | null;
-  setViewport: (viewport: {
-    x: number;
-    y: number;
-    zoom: number;
-  }) => Promise<boolean>;
-  reveal: () => void;
-}): Promise<void> {
-  try {
-    if (!isCurrent()) {
-      return;
-    }
-    await fitView();
-    if (!isCurrent()) {
-      return;
-    }
-
-    const anchor = readAnchor();
-    if (!anchor) {
-      return;
-    }
-    const viewport = initialWorkflowViewport({
-      canvas: { width: anchor.canvasWidth, height: anchor.canvasHeight },
-      graphBounds: anchor.graphBounds,
-      lifecycle: {
-        nodePosition: anchor.nodePosition,
-        nodeWidth: anchor.nodeWidth,
-        top: 48,
-      },
-      fittedViewport: anchor.fittedViewport,
-    });
-    if (viewport !== anchor.fittedViewport) {
-      await setViewport(viewport);
-    }
-  } finally {
-    if (isCurrent()) {
-      reveal();
-    }
-  }
 }
 
 const scopedPresentations = new WeakMap<object, Map<string, object>>();

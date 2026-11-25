@@ -2,8 +2,9 @@ import { getNodesBounds, getViewportForBounds } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 import {
   WORKFLOW_CANVAS_MIN_ZOOM,
-  initialWorkflowViewport,
-  presentationViewport,
+  WORKFLOW_FIT_VIEW_MAX_ZOOM,
+  WORKFLOW_READABLE_ZOOM,
+  openingViewport,
   revealViewport,
   viewportFromWorldCamera,
   workflowFitViewOptions,
@@ -106,102 +107,93 @@ describe("workflow viewport policy", () => {
     });
   });
 
-  it("keeps the lifecycle at top center when the whole graph remains visible", () => {
+  it("anchors the Lifecycle at the top center when the fitted graph shows whole", () => {
     expect(
-      initialWorkflowViewport({
-        canvas: { height: 800, width: 1000 },
+      openingViewport({
+        usable: { x: 0, y: 0, width: 1000, height: 800 },
         graphBounds: { height: 300, width: 400, x: 200, y: 80 },
-        lifecycle: {
-          nodePosition: { x: 200, y: 80 },
-          nodeWidth: 192,
-          top: 48,
-        },
-        fittedViewport: { x: 100, y: 80, zoom: 1 },
+        lifecycle: { nodePosition: { x: 200, y: 80 }, nodeWidth: 192 },
+        zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
       })
     ).toEqual({ x: 204, y: -32, zoom: 1 });
   });
 
-  it("keeps the centered fit for a graph that would overflow after anchoring", () => {
-    const fittedViewport = { x: 20, y: 10, zoom: 0.1 };
+  it("opens a graph that fits only below the readable zoom at that zoom, anchored on the Lifecycle", () => {
+    // About the seeded 16-step workflow: the whole graph fits at 0.53.
+    const usable = { x: 0, y: 0, width: 1486, height: 880 };
+    const lifecycle = { nodePosition: { x: 429, y: 0 }, nodeWidth: 192 };
+    const viewport = openingViewport({
+      usable,
+      graphBounds: { x: 0, y: 0, width: 1050, height: 1370 },
+      lifecycle,
+      zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
+    });
 
+    expect(viewport.zoom).toBe(WORKFLOW_READABLE_ZOOM);
+    // A 14px title renders at 12px or more.
+    expect(14 * viewport.zoom).toBeGreaterThanOrEqual(12);
+    const lifecycleCenter = viewport.x + (429 + 192 / 2) * viewport.zoom;
+    expect(lifecycleCenter).toBeCloseTo(usable.width / 2);
+    expect(viewport.y).toBe(48);
+  });
+
+  it("anchors inside the usable canvas Canvas Reveal and the controls leave", () => {
     expect(
-      initialWorkflowViewport({
-        canvas: { height: 800, width: 1000 },
-        graphBounds: { height: 8_912, width: 192, x: 200, y: 80 },
-        lifecycle: {
-          nodePosition: { x: 200, y: 80 },
-          nodeWidth: 192,
-          top: 48,
-        },
-        fittedViewport,
+      openingViewport({
+        usable: { x: 40, y: 10, width: 600, height: 700 },
+        graphBounds: { height: 112, width: 192, x: 200, y: 80 },
+        lifecycle: { nodePosition: { x: 200, y: 80 }, nodeWidth: 192 },
+        zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
       })
-    ).toBe(fittedViewport);
+    ).toEqual({ x: 44, y: -22, zoom: 1 });
   });
 
-  it("repositions resolved graphs at their incoming Lifecycle coordinates", () => {
-    const firstLifecycle = { x: 800, y: 120 };
-    const secondLifecycle = { x: 1_600, y: 120 };
-    const first = presentationViewport({
-      canvas: { height: 800, width: 1000 },
-      currentViewport: { x: 100, y: 50, zoom: 0.5 },
-      graphBounds: getNodesBounds([
-        {
-          id: "lifecycle",
-          data: {},
-          initialHeight: 112,
-          initialWidth: 192,
-          position: firstLifecycle,
-        },
-      ]),
-      lifecycle: { nodePosition: firstLifecycle, nodeWidth: 192, top: 48 },
-    });
-    const second = presentationViewport({
-      canvas: { height: 800, width: 1000 },
-      currentViewport: { x: 100, y: 50, zoom: 0.5 },
-      graphBounds: getNodesBounds([
-        {
-          id: "lifecycle",
-          data: {},
-          initialHeight: 112,
-          initialWidth: 192,
-          position: secondLifecycle,
-        },
-      ]),
-      lifecycle: { nodePosition: secondLifecycle, nodeWidth: 192, top: 48 },
-    });
-
-    expect(first).toEqual({ x: 52, y: -12, zoom: 0.5 });
-    expect(second).toEqual({ x: -348, y: -12, zoom: 0.5 });
-  });
-
-  it("centers an incoming presentation that would clip at the lifecycle anchor", () => {
-    expect(
-      presentationViewport({
-        canvas: { height: 800, width: 1000 },
-        currentViewport: { x: 100, y: 50, zoom: 0.5 },
+  it("keeps a lower zoom limit and repositions graphs at their incoming Lifecycle coordinates", () => {
+    const usable = { x: 0, y: 0, width: 1000, height: 800 };
+    const placedAt = (position: { x: number; y: number }) =>
+      openingViewport({
+        usable,
         graphBounds: getNodesBounds([
           {
             id: "lifecycle",
             data: {},
             initialHeight: 112,
             initialWidth: 192,
-            position: { x: 800, y: 120 },
-          },
-          {
-            id: "terminal",
-            data: {},
-            initialHeight: 112,
-            initialWidth: 192,
-            position: { x: 1_608, y: 2_008 },
+            position,
           },
         ]),
-        lifecycle: {
-          nodePosition: { x: 800, y: 120 },
-          nodeWidth: 192,
-          top: 48,
-        },
+        lifecycle: { nodePosition: position, nodeWidth: 192 },
+        zoomLimit: 0.5,
+      });
+
+    expect(placedAt({ x: 800, y: 120 })).toEqual({ x: 52, y: -12, zoom: 0.5 });
+    expect(placedAt({ x: 1_600, y: 120 })).toEqual({
+      x: -348,
+      y: -12,
+      zoom: 0.5,
+    });
+  });
+
+  it("centers a graph that fits but would clip at the Lifecycle anchor", () => {
+    expect(
+      openingViewport({
+        usable: { x: 0, y: 0, width: 1000, height: 800 },
+        graphBounds: { x: 0, y: 0, width: 1_592, height: 212 },
+        lifecycle: { nodePosition: { x: 0, y: 0 }, nodeWidth: 192 },
+        zoomLimit: 0.5,
       })
-    ).toEqual({ x: -150, y: -160, zoom: 0.5 });
+    ).toEqual({ x: 102, y: 347, zoom: 0.5 });
+  });
+
+  it("keeps the Lifecycle anchor for a graph too large to fit, which runs off the bottom edge", () => {
+    expect(
+      openingViewport({
+        usable: { x: 0, y: 0, width: 1000, height: 800 },
+        graphBounds: { height: 8_912, width: 192, x: 200, y: 80 },
+        lifecycle: { nodePosition: { x: 200, y: 80 }, nodeWidth: 192 },
+        zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
+      })
+    ).toEqual({ x: 500 - 296 * WORKFLOW_READABLE_ZOOM, y: -24, zoom: 0.9 });
   });
 
   it("uses one discrete overview presentation for zoomed-out graphs", () => {

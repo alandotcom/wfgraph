@@ -4,6 +4,7 @@ import {
   isRunInProgress,
   shouldPollExecutionDetail,
   toExecutionDetail,
+  toExecutionOverlaySource,
   toPinnedRunSummary,
   toWorkflowExecutionFromSummary,
   toWorkflowExecutions,
@@ -431,6 +432,112 @@ describe("toExecutionDetail logs of an ended run", () => {
         ["send", "success"],
         ["wait_1", "cancelled"],
       ]);
+    }
+  );
+});
+
+describe("toExecutionOverlaySource", () => {
+  const payload = (
+    status: ExecutionLogsResult["execution"]["status"],
+    options: {
+      logs?: Array<{ nodeId: string; status: "success" | "error" | "running" }>;
+      waits?: string[];
+    } = {}
+  ): ExecutionLogsResult => ({
+    execution: {
+      id: "exec_1",
+      workflowId: "wf_1",
+      workflowVersionId: "ver_1",
+      versionKind: "published",
+      versionNumber: 7,
+      status,
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T10:00:00.000Z",
+      scheduledFor: null,
+      scheduleDescription: null,
+      completedAt: null,
+      duration: null,
+      runMode: "live",
+      startSource: "event",
+      startEventName: "appointment.updated",
+      entityValue: null,
+    },
+    logs: (options.logs ?? []).map((log, index) => ({
+      id: `log_${index}`,
+      executionId: "exec_1",
+      nodeId: log.nodeId,
+      nodeName: log.nodeId,
+      nodeType: "action",
+      status: log.status,
+      input: {},
+      output: null,
+      startedAt: `2026-03-01T10:00:0${index + 1}.000Z`,
+      completedAt: null,
+      duration: null,
+      error: null,
+      retries: 0,
+    })),
+    retryLimit: 4,
+    waits: (options.waits ?? []).map((nodeId) => ({
+      id: `wait_${nodeId}`,
+      nodeId,
+      nodeName: nodeId,
+      resumeToken: null,
+      subscribedEvents: [],
+      waitUntil: null,
+    })),
+    exit: null,
+    schedule: null,
+  });
+
+  it("names the last step that failed in a failed run", () => {
+    expect(
+      toExecutionOverlaySource(
+        payload("failed", {
+          logs: [
+            { nodeId: "first_failure", status: "error" },
+            { nodeId: "send", status: "success" },
+            { nodeId: "alert", status: "error" },
+          ],
+        })
+      ).stoppedNodeId
+    ).toBe("alert");
+  });
+
+  it("names the Wait a waiting run is parked on", () => {
+    expect(
+      toExecutionOverlaySource(
+        payload("waiting", {
+          logs: [{ nodeId: "hold", status: "running" }],
+          waits: ["hold"],
+        })
+      ).stoppedNodeId
+    ).toBe("hold");
+  });
+
+  it("names the step a canceled run ended", () => {
+    expect(
+      toExecutionOverlaySource(
+        payload("canceled", {
+          logs: [
+            { nodeId: "send", status: "success" },
+            { nodeId: "hold", status: "running" },
+          ],
+        })
+      ).stoppedNodeId
+    ).toBe("hold");
+  });
+
+  it.each(["running", "completed"] as const)(
+    "names no step for a %s run",
+    (status) => {
+      expect(
+        toExecutionOverlaySource(
+          payload(status, { logs: [{ nodeId: "send", status: "success" }] })
+        ).stoppedNodeId
+      ).toBeNull();
     }
   );
 });

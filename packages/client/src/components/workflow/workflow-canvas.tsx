@@ -99,15 +99,15 @@ import { accessibleGraphElements } from "./workflow-canvas-accessibility";
 import {
   canvasSynchronizationKey,
   canvasViewportCorrectionKey,
-  fitInitialWorkflowViewport,
   keyboardFitViewOptions,
   synchronizeCanvasGraph,
   useFitWorkflowGraph,
   useSynchronizedCanvas,
 } from "./workflow-canvas-synchronization";
+import { useOpeningCamera } from "./use-opening-camera";
 import {
   WORKFLOW_CANVAS_MIN_ZOOM,
-  presentationViewport,
+  WORKFLOW_FIT_VIEW_MAX_ZOOM,
   workflowFitViewOptions,
 } from "./workflow-viewport";
 
@@ -175,15 +175,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const inspectNode = useWorkflowNodeInspection();
-  const {
-    screenToFlowPosition,
-    fitView,
-    getNodesBounds,
-    getViewport,
-    setViewport,
-  } = useReactFlow();
+  const { screenToFlowPosition, fitView, getViewport, setViewport } =
+    useReactFlow();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fittedWorkflowIdRef = useRef<string | null>(null);
+  // The workflow the canvas has placed only on the Draft that Runs or Changes
+  // paints while its own graph loads. That placement is no camera anyone
+  // chose, so the resolved graph still gets the workflow's first placement.
+  const provisionalWorkflowIdRef = useRef<string | null>(null);
   /** Whether the canvas has made its first placement for a workflow. */
   const isCanvasPlaced = (workflowId: string) =>
     fittedWorkflowIdRef.current === workflowId;
@@ -204,7 +203,12 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     paintedNodes: accessibleGraph.nodes,
     revealOccupiedWidth,
   });
-  const fitGenerationRef = useRef(0);
+  const placeOpeningCamera = useOpeningCamera({
+    canvas: canvasContainerRef,
+    paintedNodes: accessibleGraph.nodes,
+    graphNodes,
+    revealOccupiedWidth,
+  });
   const canvasPresentation = canvasSynchronizationKey({
     workspaceView,
     executionOverlay,
@@ -240,37 +244,41 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       setEdges: state.setEdges,
     });
   };
+  /**
+   * The first placement of a workflow's resolved graph: the camera its
+   * workspace was left with in this session, or where the workflow opens.
+   */
+  const placeWorkflow = (
+    workflowId: string,
+    lifecycle: Parameters<typeof placeOpeningCamera>[0]["lifecycle"]
+  ) => {
+    fittedWorkflowIdRef.current = workflowId;
+    if (!workspaceCamera.placeReplacedGraph()) {
+      placeOpeningCamera({ lifecycle, zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM });
+    }
+  };
   const correctViewport = () => {
-    const canvasWidth = canvasContainerRef.current?.clientWidth;
-    const canvasHeight = canvasContainerRef.current?.clientHeight;
-    if (
-      currentWorkflowId &&
-      fittedWorkflowIdRef.current === currentWorkflowId &&
-      pinnedAnchor &&
-      canvasWidth &&
-      canvasHeight
-    ) {
-      fitGenerationRef.current += 1;
-      if (workspaceCamera.placeReplacedGraph()) {
-        return;
+    if (!currentWorkflowId || !pinnedAnchor) {
+      return;
+    }
+    const lifecycle = {
+      nodePosition: pinnedAnchor.position,
+      nodeWidth:
+        pinnedAnchor.measured?.width ??
+        pinnedAnchor.width ??
+        pinnedAnchor.initialWidth ??
+        WORKFLOW_NODE_WIDTH,
+    };
+    if (fittedWorkflowIdRef.current !== currentWorkflowId) {
+      if (provisionalWorkflowIdRef.current === currentWorkflowId) {
+        placeWorkflow(currentWorkflowId, lifecycle);
       }
-      void setViewport(
-        presentationViewport({
-          canvas: { width: canvasWidth, height: canvasHeight },
-          currentViewport: getViewport(),
-          graphBounds: getNodesBounds(accessibleGraph.nodes),
-          lifecycle: {
-            nodePosition: pinnedAnchor.position,
-            nodeWidth:
-              pinnedAnchor.measured?.width ??
-              pinnedAnchor.width ??
-              pinnedAnchor.initialWidth ??
-              WORKFLOW_NODE_WIDTH,
-            top: 48,
-          },
-        }),
-        { duration: 0 }
-      );
+      return;
+    }
+    // A view with no remembered camera keeps the zoom it was entered at when
+    // the graph fits, and zooms out no further than fitting it needs.
+    if (!workspaceCamera.placeReplacedGraph()) {
+      placeOpeningCamera({ lifecycle, zoomLimit: getViewport().zoom });
     }
   };
   const graphEditingLocked = editingLocked || !canEdit;
@@ -325,14 +333,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           width: internalAnchorNode.measured.width,
         }
       : null,
-    fitGenerationRef,
   });
   useFitWorkflowGraph({
     update: workflowGraphUpdate,
     workflowId: currentWorkflowId,
-    beforeFit: () => {
-      fitGenerationRef.current += 1;
-    },
     fitView: () =>
       fitView({
         ...workflowFitViewOptions(viewportAnimationDuration()),
@@ -375,9 +379,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     }
   });
 
-  // Choose a useful zoom once when the workflow loads. This initial pass waits
-  // for React Flow's measurements; resolved workspace swaps preserve zoom and
-  // locate their incoming graph before paint.
+  // Place the camera once when the workflow loads, after React Flow has
+  // measured the anchor node. Resolved workspace swaps keep or remember their
+  // camera and place their incoming graph before paint, in `correctViewport`.
   useAfterPaint(fitViewKey, () => {
     if (fitViewKey === null || !currentWorkflowId || !lifecycleAnchor) {
       return;
@@ -385,43 +389,37 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     if (fittedWorkflowIdRef.current === currentWorkflowId) {
       return;
     }
-    const fitGeneration = fitGenerationRef.current;
-    fittedWorkflowIdRef.current = currentWorkflowId;
-    // A workflow reopened in the same session returns to the camera its
-    // workspace was left with.
-    const savedViewport = workspaceCamera.savedViewport();
-    if (savedViewport) {
-      void setViewport(savedViewport, { duration: 0 });
-      setReadyWorkflowId(currentWorkflowId);
-      return;
+    const lifecycle = {
+      nodePosition: lifecycleAnchor.position,
+      nodeWidth: lifecycleAnchor.width,
+    };
+    if (!canvasGraph.anchor?.pinToTop) {
+      // A focused Group has no Lifecycle card to open at.
+      fittedWorkflowIdRef.current = currentWorkflowId;
+      const savedViewport = workspaceCamera.savedViewport();
+      if (savedViewport) {
+        void setViewport(savedViewport, { duration: 0 });
+      } else {
+        void fitView(workflowFitViewOptions(0));
+      }
+    } else if (
+      resolvedWorkspacePresentation !== null ||
+      workspaceView === "draft"
+    ) {
+      placeWorkflow(currentWorkflowId, lifecycle);
+    } else {
+      provisionalWorkflowIdRef.current = currentWorkflowId;
+      const savedViewport = workspaceCamera.savedViewport();
+      if (savedViewport) {
+        void setViewport(savedViewport, { duration: 0 });
+      } else {
+        placeOpeningCamera({
+          lifecycle,
+          zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
+        });
+      }
     }
-    void fitInitialWorkflowViewport({
-      fitView: () =>
-        fitView({
-          ...workflowFitViewOptions(0),
-        }),
-      isCurrent: () => fitGenerationRef.current === fitGeneration,
-      readAnchor: () => {
-        const canvasWidth = canvasContainerRef.current?.clientWidth;
-        const canvasHeight = canvasContainerRef.current?.clientHeight;
-        if (!canvasWidth || !canvasHeight || !canvasGraph.anchor?.pinToTop) {
-          return null;
-        }
-
-        return {
-          canvasWidth,
-          canvasHeight,
-          graphBounds: getNodesBounds(accessibleGraph.nodes),
-          nodePosition: lifecycleAnchor.position,
-          nodeWidth: lifecycleAnchor.width,
-          fittedViewport: getViewport(),
-        };
-      },
-      setViewport: (viewport) => setViewport(viewport, { duration: 0 }),
-      // Reveal immediately after the viewport work. The delayed guard above
-      // is the only other path to readiness.
-      reveal: () => setReadyWorkflowId(currentWorkflowId),
-    });
+    setReadyWorkflowId(currentWorkflowId);
   });
 
   // Undo/redo (Cmd+Z, Cmd+Shift+Z). Lives beside the graph it acts on rather

@@ -1,5 +1,6 @@
 /** Shared viewport limits and fitting rules for the workflow canvas. */
 
+import { getViewportForBounds } from "@xyflow/react";
 import {
   REVEAL_CONTEXT_PX,
   REVEAL_PADDING_PX,
@@ -45,111 +46,101 @@ export function lifecycleAnchorViewport(input: {
   };
 }
 
-/** Whether a viewport leaves every edge of the workflow graph on the canvas. */
-export function viewportContainsGraph(input: {
-  canvas: CanvasSize;
+/**
+ * The lowest zoom a workflow opens at. A step's 14px title renders at 12.6px
+ * there, above the 12px floor of the type scale, so every title on screen can
+ * be read without zooming in.
+ */
+export const WORKFLOW_READABLE_ZOOM = 0.9;
+
+/** Screen pixels between the top of the usable canvas and an anchored Lifecycle card. */
+const LIFECYCLE_TOP_PX = 48;
+
+/** Whether `viewport` shows all of `graphBounds` inside `area`, in canvas pixels. */
+function viewportShowsGraph(input: {
+  area: Bounds;
   graphBounds: Bounds;
   viewport: Viewport;
 }): boolean {
-  const left = input.viewport.x + input.graphBounds.x * input.viewport.zoom;
-  const top = input.viewport.y + input.graphBounds.y * input.viewport.zoom;
-  const right =
-    input.viewport.x +
-    (input.graphBounds.x + input.graphBounds.width) * input.viewport.zoom;
-  const bottom =
-    input.viewport.y +
-    (input.graphBounds.y + input.graphBounds.height) * input.viewport.zoom;
-
+  const { area, graphBounds, viewport } = input;
+  const left = viewport.x + graphBounds.x * viewport.zoom;
+  const top = viewport.y + graphBounds.y * viewport.zoom;
+  const right = left + graphBounds.width * viewport.zoom;
+  const bottom = top + graphBounds.height * viewport.zoom;
   return (
-    left >= 0 &&
-    top >= 0 &&
-    right <= input.canvas.width &&
-    bottom <= input.canvas.height
+    left >= area.x &&
+    top >= area.y &&
+    right <= area.x + area.width &&
+    bottom <= area.y + area.height
   );
 }
 
 /**
- * Keep the Lifecycle card at the initial reading position when that preserves
- * the whole graph. A larger graph keeps React Flow's centered fitted viewport.
+ * Where the camera opens a workflow, or a workspace view that has no
+ * remembered camera, inside `usable`: the canvas pixels Canvas Reveal and the
+ * floating controls leave.
+ *
+ * The zoom fits the whole graph, never above `zoomLimit` and never below
+ * `WORKFLOW_READABLE_ZOOM` unless `zoomLimit` is lower. `zoomLimit` is the
+ * fit's own maximum when a workflow opens, and the current zoom when a view
+ * changes, so a view change never zooms in. The Lifecycle card sits at the top
+ * center of `usable` when the graph shows whole there. A graph that fits but
+ * would clip at that anchor is centered. A graph too large to fit keeps the
+ * anchor and runs off the bottom edge.
  */
-export function initialWorkflowViewport(input: {
-  canvas: CanvasSize;
+export function openingViewport(input: {
+  usable: Bounds;
   graphBounds: Bounds;
-  lifecycle: {
-    nodePosition: { x: number; y: number };
-    nodeWidth: number;
-    top: number;
-  };
-  fittedViewport: Viewport;
+  lifecycle: { nodePosition: { x: number; y: number }; nodeWidth: number };
+  zoomLimit: number;
 }): Viewport {
+  const { usable, graphBounds } = input;
+  const fitted = getViewportForBounds(
+    graphBounds,
+    usable.width,
+    usable.height,
+    WORKFLOW_CANVAS_MIN_ZOOM,
+    WORKFLOW_FIT_VIEW_MAX_ZOOM,
+    WORKFLOW_FIT_VIEW_PADDING
+  );
+  const zoom = Math.min(
+    input.zoomLimit,
+    Math.max(fitted.zoom, WORKFLOW_READABLE_ZOOM)
+  );
   const anchored = lifecycleAnchorViewport({
-    canvasWidth: input.canvas.width,
+    canvasWidth: usable.width,
     nodePosition: input.lifecycle.nodePosition,
     nodeWidth: input.lifecycle.nodeWidth,
-    top: input.lifecycle.top,
-    zoom: input.fittedViewport.zoom,
+    top: usable.y + LIFECYCLE_TOP_PX,
+    zoom,
   });
-
-  return viewportContainsGraph({
-    canvas: input.canvas,
-    graphBounds: input.graphBounds,
-    viewport: anchored,
-  })
-    ? anchored
-    : input.fittedViewport;
-}
-
-/** Center graph bounds while retaining the user's current zoom level. */
-export function centeredViewport(input: {
-  canvas: CanvasSize;
-  graphBounds: Bounds;
-  zoom: number;
-}): Viewport {
+  const anchoredInUsable = { ...anchored, x: anchored.x + usable.x };
+  if (
+    viewportShowsGraph({
+      area: usable,
+      graphBounds,
+      viewport: anchoredInUsable,
+    })
+  ) {
+    return anchoredInUsable;
+  }
+  const fits =
+    graphBounds.width * zoom <= usable.width &&
+    graphBounds.height * zoom <= usable.height;
+  if (!fits) {
+    return anchoredInUsable;
+  }
   return {
     x:
-      input.canvas.width / 2 -
-      (input.graphBounds.x + input.graphBounds.width / 2) * input.zoom,
+      usable.x +
+      usable.width / 2 -
+      (graphBounds.x + graphBounds.width / 2) * zoom,
     y:
-      input.canvas.height / 2 -
-      (input.graphBounds.y + input.graphBounds.height / 2) * input.zoom,
-    zoom: input.zoom,
+      usable.y +
+      usable.height / 2 -
+      (graphBounds.y + graphBounds.height / 2) * zoom,
+    zoom,
   };
-}
-
-/**
- * Locate an incoming presentation without changing the existing zoom.
- * The Lifecycle anchor wins when it contains the graph; otherwise graph bounds
- * are centered so a view switch cannot leave the incoming graph off canvas.
- */
-export function presentationViewport(input: {
-  canvas: CanvasSize;
-  currentViewport: Viewport;
-  graphBounds: Bounds;
-  lifecycle: {
-    nodePosition: { x: number; y: number };
-    nodeWidth: number;
-    top: number;
-  };
-}): Viewport {
-  const anchored = lifecycleAnchorViewport({
-    canvasWidth: input.canvas.width,
-    nodePosition: input.lifecycle.nodePosition,
-    nodeWidth: input.lifecycle.nodeWidth,
-    top: input.lifecycle.top,
-    zoom: input.currentViewport.zoom,
-  });
-
-  return viewportContainsGraph({
-    canvas: input.canvas,
-    graphBounds: input.graphBounds,
-    viewport: anchored,
-  })
-    ? anchored
-    : centeredViewport({
-        canvas: input.canvas,
-        graphBounds: input.graphBounds,
-        zoom: input.currentViewport.zoom,
-      });
 }
 
 /**

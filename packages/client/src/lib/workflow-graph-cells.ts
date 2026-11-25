@@ -23,10 +23,18 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 export const nodesStateAtom = atom<WorkflowNode[]>([]);
 export const edgesStateAtom = atom<WorkflowEdge[]>([]);
 
-const pinnedRunGraphAtom = atom<{
+/**
+ * A run's pinned graph, and the node the run stopped at: where it failed, the
+ * Wait it is parked on, or where it was canceled. Null for a run that is still
+ * moving or that completed.
+ */
+type PinnedRunGraph = {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
-} | null>(null);
+  stoppedNodeId: string | null;
+};
+
+const pinnedRunGraphAtom = atom<PinnedRunGraph | null>(null);
 
 /**
  * The published graph a selected run pinned, shown on the canvas instead of the
@@ -45,7 +53,11 @@ export const executionOverlayGraphAtom = atom(
   (
     _get,
     set,
-    graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } | null
+    graph: {
+      nodes: WorkflowNode[];
+      edges: WorkflowEdge[];
+      stoppedNodeId?: string | null | undefined;
+    } | null
   ) => {
     set(
       pinnedRunGraphAtom,
@@ -54,6 +66,7 @@ export const executionOverlayGraphAtom = atom(
         : {
             nodes: orderGroupParentsFirst(graph.nodes),
             edges: graph.edges,
+            stoppedNodeId: graph.stoppedNodeId ?? null,
           }
     );
   }

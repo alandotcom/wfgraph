@@ -93,6 +93,7 @@ function useExecutionOverlaySync(): void {
       setExecutionOverlay({
         nodes: graphData.nodes.map(toEditorNode),
         edges: graphData.edges.map(toEditorEdge),
+        stoppedNodeId: detail.stoppedNodeId,
       });
     }
   );

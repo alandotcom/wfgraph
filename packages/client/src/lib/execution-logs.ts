@@ -8,6 +8,7 @@ import {
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
 import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
+import { sortBy } from "es-toolkit/array";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import type {
   ExecutionLogsResult,
@@ -293,17 +294,42 @@ export function toExecutionLogsByNodeId(
 
 /**
  * The fields the overlay sync needs from the logs payload: which workflow the
- * run belongs to, and which published version pins its graph. Logs and waits
- * stay on the Runs view's own observer of the same query key.
+ * run belongs to, which published version pins its graph, and the node the
+ * run stopped at, which the canvas places in view when the run opens. Logs and
+ * waits stay on the Runs view's own observer of the same query key.
  */
 export function toExecutionOverlaySource(payload: ExecutionLogsResult): {
   workflowId: string;
   workflowVersionId: string;
+  stoppedNodeId: string | null;
 } {
   return {
     workflowId: payload.execution.workflowId,
     workflowVersionId: payload.execution.workflowVersionId,
+    stoppedNodeId: runStoppedNodeId(payload),
   };
+}
+
+/**
+ * The node a run stopped at: the first Wait a waiting run is parked on, the
+ * last node that failed in a failed run, or the last node a canceled run
+ * ended. Null for any other run.
+ */
+function runStoppedNodeId(payload: ExecutionLogsResult): string | null {
+  const { status } = payload.execution;
+  if (status === "waiting") {
+    return payload.waits[0]?.nodeId ?? null;
+  }
+  const stoppedLogStatus =
+    status === "failed" ? "error" : status === "canceled" ? "cancelled" : null;
+  if (stoppedLogStatus === null) {
+    return null;
+  }
+  return (
+    sortBy(toExecutionLogs(payload), [
+      (log) => log.startedAt.getTime(),
+    ]).findLast((log) => log.status === stoppedLogStatus)?.nodeId ?? null
+  );
 }
 
 /**
