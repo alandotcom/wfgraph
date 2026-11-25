@@ -648,6 +648,32 @@ describe("workflow migration RPC contracts", () => {
   });
 });
 
+describe("workflow list RPC output contract", () => {
+  const listed = {
+    id: "wf_1",
+    name: "Reminders",
+    isPaused: false,
+    mode: "live",
+    visibility: "private",
+    createdAt: "2026-03-01T09:00:00.000Z",
+    updatedAt: "2026-03-01T09:00:00.000Z",
+    runCounts: { failedRecently: 2, waiting: 1 },
+  };
+
+  it("carries each workflow's run counts, and refuses a row without them or with a negative count", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getAll);
+    const { runCounts: _omitted, ...withoutCounts } = listed;
+
+    expect(await decode([listed])).toHaveProperty("value");
+    expect(await decode([withoutCounts])).toHaveProperty("issues");
+    expect(
+      await decode([
+        { ...listed, runCounts: { failedRecently: -1, waiting: 0 } },
+      ])
+    ).toHaveProperty("issues");
+  });
+});
+
 describe("workflow draft subscription RPC input contract", () => {
   it("accepts the last locally loaded revision, including the initial zero", async () => {
     const result = await validateInput(rpcContract.workflow.subscribeDraft, {

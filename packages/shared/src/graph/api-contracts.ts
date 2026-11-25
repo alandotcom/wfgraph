@@ -22,6 +22,16 @@ export type WorkflowSummaryPayload = {
   publishedVersionId?: string;
 };
 
+/**
+ * One workflow as the list procedures answer it: the summary, and the run
+ * counts the Workflows table marks a row with. `failedRecently` counts the
+ * failed runs among the ones the workflow's Runs view lists, and `waiting`
+ * counts its runs waiting now.
+ */
+export type WorkflowListItemPayload = WorkflowSummaryPayload & {
+  runCounts: { failedRecently: number; waiting: number };
+};
+
 export type WorkflowApiPayload = WorkflowSummaryPayload & {
   graph: SerializedWorkflowGraph;
   /** Monotonic revision used to protect editable draft writes. */

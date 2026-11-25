@@ -347,6 +347,7 @@ export function stubWorkflowRepo(
 const executionRepoStubs: ExecutionRepo["Service"] = {
   listByWorkflow: refuse("listByWorkflow"),
   countSuperseded: refuse("countSuperseded"),
+  countRunStatesByWorkflow: refuse("countRunStatesByWorkflow")(),
   listPage: refuse("listPage"),
   listInFlightByWorkflow: refuse("listInFlightByWorkflow"),
   findSummaryById: refuse("findSummaryById"),
@@ -540,6 +541,7 @@ export function stubWfGraphRuntime(
 ): ManagedRuntime.ManagedRuntime<WfGraphServices, never> {
   const logger = overrides.logger ?? SilentAppLoggerLayer;
   const workflowRepo = stubWorkflowRepo(overrides.workflowRepo);
+  const executionRepo = stubExecutionRepo(overrides.executionRepo);
   return ManagedRuntime.make(
     Layer.mergeAll(
       logger,
@@ -550,13 +552,13 @@ export function stubWfGraphRuntime(
       ),
       stubExtensions(overrides.extensions),
       workflowRepo,
-      stubExecutionRepo(overrides.executionRepo),
+      executionRepo,
       stubIntegrationRepo(overrides.integrationRepo),
       makeAgentConfigLayer(overrides.agent ?? { enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
       stubExecutionDriver(overrides.executionDriver),
       makeWorkflowStreamsLayer().pipe(
-        Layer.provide(Layer.merge(logger, workflowRepo))
+        Layer.provide(Layer.mergeAll(logger, workflowRepo, executionRepo))
       )
     )
   );

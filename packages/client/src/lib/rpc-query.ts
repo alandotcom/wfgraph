@@ -4,7 +4,7 @@ import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { rpc } from "#src/lib/rpc-client";
 import type {
   WorkflowApiPayload,
-  WorkflowSummaryPayload,
+  WorkflowListItemPayload,
 } from "@wfgraph/shared/graph/api-contracts";
 
 /**
@@ -68,7 +68,7 @@ export const workflowListQueryOptions = () =>
 /** Replaces the workflow summary cache with one authoritative stream snapshot. */
 export function cacheWorkflowList(
   queryClient: QueryClient,
-  workflows: WorkflowSummaryPayload[]
+  workflows: WorkflowListItemPayload[]
 ): void {
   const queryKey = orpcQuery.workflow.getAll.queryKey({ input: {} });
   void queryClient.cancelQueries({ queryKey, exact: true });

@@ -2,8 +2,10 @@ import { assert, describe, it as effectIt } from "@effect/vitest";
 import { Duration, Effect, Layer, Option, Stream } from "effect";
 import {
   SilentAppLoggerLayer,
+  stubExecutionRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
+import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
   makeWorkflowStreamsLayer,
   streamWorkflowDraftRevisions,
@@ -13,7 +15,7 @@ import type {
   WorkflowRepo,
   WorkflowSummaryRow,
 } from "#src/backend/services/workflows/repo";
-import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
+import type { WorkflowListItemPayload } from "@wfgraph/shared/graph/api-contracts";
 
 const alpha: WorkflowSummaryRow = {
   id: "wf_alpha",
@@ -34,12 +36,28 @@ const beta: WorkflowSummaryRow = {
   updatedAt: new Date("2026-09-04T10:00:00.000Z"),
 };
 
-/** The shared pollers over a stubbed repository, reading every millisecond. */
-function streamsOver(repo: Partial<WorkflowRepo["Service"]>) {
+/**
+ * The shared pollers over stubbed repositories, reading every millisecond.
+ * Every workflow has no runs unless `executions` counts some.
+ */
+function streamsOver(
+  repo: Partial<WorkflowRepo["Service"]>,
+  executions: Partial<ExecutionRepo["Service"]> = {
+    countRunStatesByWorkflow: Effect.succeed([]),
+  }
+) {
   return makeWorkflowStreamsLayer({ pollIntervalMs: 1 }).pipe(
-    Layer.provide(Layer.mergeAll(SilentAppLoggerLayer, stubWorkflowRepo(repo)))
+    Layer.provide(
+      Layer.mergeAll(
+        SilentAppLoggerLayer,
+        stubWorkflowRepo(repo),
+        stubExecutionRepo(executions)
+      )
+    )
   );
 }
+
+const NO_RUNS = { failedRecently: 0, waiting: 0 };
 
 describe("streamWorkflowSummaries", () => {
   effectIt.live(
@@ -76,6 +94,7 @@ describe("streamWorkflowSummaries", () => {
               visibility: "private",
               createdAt: "2026-09-04T09:00:00.000Z",
               updatedAt: "2026-09-04T09:00:00.000Z",
+              runCounts: NO_RUNS,
             },
           ],
           [
@@ -87,6 +106,7 @@ describe("streamWorkflowSummaries", () => {
               visibility: "private",
               createdAt: "2026-09-04T09:00:00.000Z",
               updatedAt: "2026-09-04T10:00:00.000Z",
+              runCounts: NO_RUNS,
             },
             {
               id: "wf_alpha",
@@ -96,6 +116,7 @@ describe("streamWorkflowSummaries", () => {
               visibility: "private",
               createdAt: "2026-09-04T09:00:00.000Z",
               updatedAt: "2026-09-04T09:00:00.000Z",
+              runCounts: NO_RUNS,
             },
           ],
           [
@@ -107,6 +128,7 @@ describe("streamWorkflowSummaries", () => {
               visibility: "private",
               createdAt: "2026-09-04T09:00:00.000Z",
               updatedAt: "2026-09-04T10:00:00.000Z",
+              runCounts: NO_RUNS,
             },
           ],
         ]);
@@ -137,7 +159,7 @@ describe("streamWorkflowSummaries", () => {
 
       assert.deepStrictEqual(
         Array.from(events).map((workflows) =>
-          workflows.map((workflow: WorkflowSummaryPayload) => ({
+          workflows.map((workflow: WorkflowListItemPayload) => ({
             id: workflow.id,
             name: workflow.name,
           }))
@@ -154,6 +176,44 @@ describe("streamWorkflowSummaries", () => {
         ]
       );
     })
+  );
+});
+
+describe("streamWorkflowSummaries run counts", () => {
+  // A run failing or parking changes no workflow column, so the list stream
+  // has to read the counts to tell a subscriber the row's mark changed.
+  effectIt.live(
+    "emits a new list when only a workflow's run counts change",
+    () =>
+      Effect.gen(function* () {
+        const counts = [
+          [],
+          [],
+          [{ workflowId: "wf_alpha", failedRecently: 1, waiting: 2 }],
+        ];
+        let read = 0;
+
+        const events = yield* streamWorkflowSummaries().pipe(
+          Effect.flatMap((stream) => Stream.runCollect(Stream.take(stream, 2))),
+          Effect.provide(
+            streamsOver(
+              { listSummariesNewestFirst: Effect.succeed([alpha]) },
+              {
+                countRunStatesByWorkflow: Effect.sync(
+                  () => counts[read++] ?? counts[2] ?? []
+                ),
+              }
+            )
+          )
+        );
+
+        assert.deepStrictEqual(
+          Array.from(events).map((workflows) =>
+            workflows.map((workflow) => workflow.runCounts)
+          ),
+          [[NO_RUNS], [{ failedRecently: 1, waiting: 2 }]]
+        );
+      })
   );
 });
 

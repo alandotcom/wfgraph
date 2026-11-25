@@ -337,7 +337,7 @@ describe("wfWorker", () => {
     let reads = 0;
     let closed = 0;
     const repositories = Layer.mergeAll(
-      stubExecutionRepo(),
+      stubExecutionRepo({ countRunStatesByWorkflow: Effect.succeed([]) }),
       stubIntegrationRepo(),
       stubWorkflowRepo({
         listSummariesNewestFirst: Effect.sync(() => {

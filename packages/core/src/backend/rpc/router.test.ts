@@ -63,6 +63,7 @@ function createStubRuntime({
   executionRepo?: Parameters<typeof stubExecutionRepo>[0] | undefined;
 } = {}): WfGraphRuntime {
   const workflows = stubWorkflowRepo(workflowRepo);
+  const executions = stubExecutionRepo(executionRepo);
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,
@@ -72,12 +73,14 @@ function createStubRuntime({
       stubExtensions(),
       stubIntegrationRepo(integrationRepo),
       workflows,
-      stubExecutionRepo(executionRepo),
+      executions,
       makeAgentConfigLayer({ enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
       stubExecutionDriver(),
       makeWorkflowStreamsLayer().pipe(
-        Layer.provide(Layer.merge(SilentAppLoggerLayer, workflows))
+        Layer.provide(
+          Layer.mergeAll(SilentAppLoggerLayer, workflows, executions)
+        )
       )
     )
   );

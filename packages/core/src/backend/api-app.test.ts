@@ -134,6 +134,7 @@ describe("the MCP route", () => {
         findById: () => Effect.succeed(workflow),
         listSummariesNewestFirst: Effect.succeed([workflowSummary]),
       },
+      executionRepo: { countRunStatesByWorkflow: Effect.succeed([]) },
     });
     const app = createApiApp({
       basePath,

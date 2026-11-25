@@ -21,6 +21,8 @@ The build agent uses the step numbers the editor prints and reads what a test ru
 
 Each run that `getExecutions`, `getExecutionsGlobal` and `getExecutionLogs` return carries `entity`: the tracked Entity's `type` and `id`, or null when the workflow tracks no Entity.
 
+Each workflow that `getAll` and `subscribeList` return carries `runCounts`: `failedRecently`, the failed runs among the newest 50 its run list shows, and `waiting`, its runs waiting now. A run that fails or parks emits a new `subscribeList` snapshot.
+
 A run that fails because the host found no Entity, or because its resolver failed, records that failure on the node whose data needed the Entity, so `getExecutionLogs` answers an error log for that node.
 
 The built-in integrations' setting "Test Mode Behavior" is labeled "In test runs". Its key and values are unchanged. Their field placeholders no longer show a `{{NodeName.field}}` syntax the editor does not read.

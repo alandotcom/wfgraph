@@ -25,7 +25,8 @@ import type {
 import { getWorkflows } from "#src/backend/services/workflows/list";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { getWorkflowDraftRevision } from "#src/backend/services/workflows/workflow";
-import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
+import type { WorkflowListItemPayload } from "@wfgraph/shared/graph/api-contracts";
+import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 const DEFAULT_POLL_INTERVAL_MS = 500;
 
@@ -37,9 +38,12 @@ type DraftRevision = {
 export class WorkflowStreams extends Context.Service<
   WorkflowStreams,
   {
-    /** Each distinct complete workflow list, newest first. */
+    /**
+     * Each distinct complete workflow list, newest first, with each
+     * workflow's run counts, so a run that fails or parks emits a new list.
+     */
     readonly summaries: Stream.Stream<
-      WorkflowSummaryPayload[],
+      WorkflowListItemPayload[],
       InternalFailure
     >;
     /** Each distinct persisted draft revision of one workflow. */
@@ -65,7 +69,11 @@ const shareLatest = <A, E, R>(
  */
 export const makeWorkflowStreamsLayer = (
   options: { readonly pollIntervalMs?: number } = {}
-): Layer.Layer<WorkflowStreams, never, WorkflowRepo | AppLogger> =>
+): Layer.Layer<
+  WorkflowStreams,
+  never,
+  WorkflowRepo | ExecutionRepo | AppLogger
+> =>
   Layer.effect(
     WorkflowStreams,
     Effect.gen(function* () {

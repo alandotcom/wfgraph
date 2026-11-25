@@ -80,6 +80,21 @@ export const workflowSummarySchema = Schema.Struct({
 });
 
 /**
+ * One workflow as the two list procedures answer it: the summary, and its run
+ * counts for the Workflows table. `failedRecently` counts the failed runs
+ * among the ones the workflow's Runs view lists, its newest
+ * `WORKFLOW_RUN_LIST_LIMIT` runs that no newer start superseded. `waiting`
+ * counts its runs waiting now, however old.
+ */
+const workflowListItemSchema = Schema.Struct({
+  ...workflowSummarySchema.fields,
+  runCounts: Schema.Struct({
+    failedRecently: nonNegativeInteger,
+    waiting: nonNegativeInteger,
+  }),
+});
+
+/**
  * One workflow in full. The graph is the whole difference from the summary
  * above, and it is why the list procedure answers with the summary: a stored
  * graph runs to megabytes, and the two screens that read the list show names.
@@ -547,14 +562,16 @@ const workflowDraftRevisionSchema = Schema.Struct({
 export const workflowContract = {
   getAll: route("GET", "/workflows", WfGraphOperations.workflowGetAll)
     .input(noInput)
-    .output(contractSchema(listOf(workflowSummarySchema))),
+    .output(contractSchema(listOf(workflowListItemSchema))),
   subscribeList: route(
     "GET",
     "/workflows/list-subscription",
     WfGraphOperations.workflowSubscribeList
   )
     .input(noInput)
-    .output(asyncIteratorObject(contractSchema(listOf(workflowSummarySchema)))),
+    .output(
+      asyncIteratorObject(contractSchema(listOf(workflowListItemSchema)))
+    ),
   getById: route(
     "GET",
     "/workflows/{workflowId}",

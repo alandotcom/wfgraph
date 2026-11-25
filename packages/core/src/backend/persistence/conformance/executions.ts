@@ -118,6 +118,25 @@ const bulkRuns = (workflowId: string, versionId: string) => ({
   sqlite: `with recursive n(i) as (select 1 union all select i + 1 from n where i < 1200) insert into workflow_executions (id, workflow_id, workflow_version_id, status, start_source, started_at, completed_at, duration) select '${workflowId}_run_' || i, '${workflowId}', '${versionId}', 'completed', 'manual', 0, 0, '0' from n`,
 });
 
+/**
+ * 55 runs of one workflow, one a minute, oldest first. Run 30 is superseded,
+ * so the newest 50 runs the Runs view lists are runs 5 to 55 without it.
+ * Runs 1, 10 and 20 failed, so two failed runs are among those listed; runs
+ * 2 and 40 are waiting, one of them older than the listed runs.
+ */
+const runStateHistory = (workflowId: string, versionId: string) => {
+  const status = `case when i in (1, 10, 20) then 'failed' when i in (2, 40) then 'waiting' when i = 30 then 'superseded' else 'completed' end`;
+  // An ended run carries `completed_at` and a waiting run `waiting_at`, which
+  // the table's checks hold to the status.
+  const columns =
+    "id, workflow_id, workflow_version_id, status, start_source, started_at, completed_at, waiting_at";
+  const waiting = "i in (2, 40)";
+  return {
+    postgresql: `insert into workflow_executions (${columns}) select '${workflowId}_state_' || i, '${workflowId}', '${versionId}', ${status}, 'manual', at, case when ${waiting} then null else at end, case when ${waiting} then at end from (select i, timestamp '2026-01-01 00:00:00' + i * interval '1 minute' as at from generate_series(1, 55) i) runs`,
+    sqlite: `with recursive n(i) as (select 1 union all select i + 1 from n where i < 55) insert into workflow_executions (${columns}) select '${workflowId}_state_' || i, '${workflowId}', '${versionId}', ${status}, 'manual', 1767225600000 + i * 60000, case when ${waiting} then null else 1767225600000 + i * 60000 end, case when ${waiting} then 1767225600000 + i * 60000 end from n`,
+  };
+};
+
 /** 700 audit rows naming no run, as Refused Starts write them. */
 const bulkAudit = (workflowId: string) => ({
   postgresql: `insert into workflow_execution_events (id, workflow_id, event_type, message) select '${workflowId}_refused_' || i, '${workflowId}', 'run_refused', 'Refused' from generate_series(1, 700) i`,
@@ -1985,6 +2004,32 @@ export function describeExecutionConformance({
       expect(counts.bounded).toBe(2);
       expect(counts.unbounded).toBe(3);
       expect(counts.listed.map((row) => row.status)).toEqual(["running"]);
+    });
+
+    // The Workflows table marks a row with the failed runs its Runs view
+    // lists and the runs waiting now, for every workflow in one read.
+    it("counts each workflow's failed runs among those its Runs view lists, and its waiting runs", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+      await seedPublishedWorkflow(connection, {
+        workflowId: "wf_2",
+        name: "Reminders",
+        versionId: "ver_2",
+      });
+      await database.execute(runStateHistory("wf_1", "ver_1"));
+
+      const counts = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.countRunStatesByWorkflow;
+        })
+      );
+
+      expect(sortBy(counts, ["workflowId"])).toEqual([
+        { workflowId: "wf_1", failedRecently: 2, waiting: 2 },
+        { workflowId: "wf_2", failedRecently: 0, waiting: 0 },
+      ]);
     });
 
     // A workflow's history is cleared in bounded batches, each a transaction

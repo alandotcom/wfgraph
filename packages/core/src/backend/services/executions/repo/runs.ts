@@ -75,6 +75,7 @@ import type {
   PendingCancel,
   WorkflowExecution,
   WorkflowExecutionListRow,
+  WorkflowRunStateCounts,
 } from "#src/backend/services/executions/repo/contracts";
 
 /**
@@ -313,6 +314,19 @@ export type RunsRepoMethods = {
     atMost: number;
   }) => Effect.Effect<number, DatabaseError>;
   /**
+   * For every workflow, how many of the runs its Runs view lists failed, and
+   * how many of its runs are waiting now. The Runs view lists a workflow's
+   * newest `WORKFLOW_RUN_LIST_LIMIT` runs that no newer start superseded, so
+   * `failedRecently` counts the failed runs among those and reads at most that
+   * many index entries per workflow. `waiting` counts every run of the
+   * workflow whose status is `waiting`, however old. One statement answers
+   * for every workflow, in no order.
+   */
+  readonly countRunStatesByWorkflow: Effect.Effect<
+    WorkflowRunStateCounts[],
+    DatabaseError
+  >;
+  /**
    * One page of runs across every workflow, newest first, each row carrying
    * the name and paused flag of the workflow it belongs to.
    */
@@ -504,6 +518,30 @@ export function makeRunsMethods(
 
         return row?.total ?? 0;
       }),
+
+    countRunStatesByWorkflow: database.query((db) =>
+      db
+        .select({
+          workflowId: workflows.id,
+          failedRecently: sql<number>`(
+            select count(*)::int from (
+              select ${workflowExecutions.status} as status
+              from ${workflowExecutions}
+              where ${workflowExecutions.workflowId} = ${workflows.id}
+                and ${workflowExecutions.status} <> 'superseded'
+              order by ${workflowExecutions.startedAt} desc, ${workflowExecutions.id} desc
+              limit ${WORKFLOW_RUN_LIST_LIMIT}
+            ) as listed
+            where listed.status = 'failed'
+          )`,
+          waiting: sql<number>`(
+            select count(*)::int from ${workflowExecutions}
+            where ${workflowExecutions.workflowId} = ${workflows.id}
+              and ${workflowExecutions.status} = 'waiting'
+          )`,
+        })
+        .from(workflows)
+    ),
 
     listPage: (query) =>
       database.query((db) => {

@@ -282,6 +282,29 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             })
           )
       ),
+    countRunStatesByWorkflow: store.read((database) =>
+      database
+        .select({
+          workflowId: workflows.id,
+          failedRecently: sql<number>`(
+            select count(*) from (
+              select ${workflowExecutions.status} as status
+              from ${workflowExecutions}
+              where ${workflowExecutions.workflowId} = ${workflows.id}
+                and ${workflowExecutions.status} <> 'superseded'
+              order by ${workflowExecutions.startedAt} desc, ${workflowExecutions.id} desc
+              limit ${WORKFLOW_RUN_LIST_LIMIT}
+            ) as listed
+            where listed.status = 'failed'
+          )`.mapWith(Number),
+          waiting: sql<number>`(
+            select count(*) from ${workflowExecutions}
+            where ${workflowExecutions.workflowId} = ${workflows.id}
+              and ${workflowExecutions.status} = 'waiting'
+          )`.mapWith(Number),
+        })
+        .from(workflows)
+    ),
     listPage: (query) =>
       store.read((database) => {
         const filters: SQL[] = [];

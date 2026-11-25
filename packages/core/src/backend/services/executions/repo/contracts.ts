@@ -749,6 +749,16 @@ export type WorkflowExecutionListRow = Pick<
 };
 
 /**
+ * One workflow's run counts for the Workflows table, which
+ * `ExecutionRepo.countRunStatesByWorkflow` defines.
+ */
+export type WorkflowRunStateCounts = {
+  workflowId: string;
+  failedRecently: number;
+  waiting: number;
+};
+
+/**
  * An execution carrying the two columns of its workflow the cross-workflow runs
  * list shows beside it, which is what the join in `listPage` is for.
  *
