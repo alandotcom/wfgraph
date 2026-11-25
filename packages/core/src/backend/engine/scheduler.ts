@@ -61,6 +61,7 @@ import {
   failureFromCause,
 } from "#src/backend/engine/engine-failure";
 import { runDurable } from "#src/backend/engine/durable";
+import { recordNodeFailure } from "#src/backend/engine/step-log";
 
 /** What the run log and the trace call a node. */
 function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
@@ -324,6 +325,29 @@ export class NodeScheduler {
               paths,
             })
           )
+        ).pipe(
+          // The read fails the node before its own work opens a row, so the
+          // failure is written on the node's row here. Without it the run
+          // fails with no failed step for the Runs view to name.
+          Effect.tapCause((cause) => {
+            const failure = failureFromCause(cause);
+            return endsPass(failure)
+              ? Effect.void
+              : recordNodeFailure(
+                  {
+                    store,
+                    runtime,
+                    context: {
+                      executionId,
+                      nodeId: node.id,
+                      nodeName,
+                      nodeType: actionTypeOf(node) ?? node.data.type,
+                      runMode: this.input.runMode,
+                    },
+                  },
+                  failure.message
+                );
+          })
         );
 
         if (resolution.decision.outcome === "exit") {

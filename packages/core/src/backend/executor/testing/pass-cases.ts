@@ -25,6 +25,8 @@ import { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { leasedPass, type PassResult } from "#src/backend/executor/pass";
 import { runBody } from "#src/backend/executor/run-body";
+import type { WorkflowEntities } from "#src/backend/engine/entities";
+import { engineFailure } from "#src/backend/engine/engine-failure";
 import { deliveryBody } from "#src/backend/executor/delivery-body";
 import { cronBody } from "#src/backend/executor/cron-body";
 import {
@@ -39,6 +41,7 @@ import {
   noDeliveryServices,
   onEvent,
   publishWorkflow,
+  START_EVENT,
   startScheduledRun,
   waitNode,
 } from "#src/backend/executor/testing/run-fixtures";
@@ -375,12 +378,17 @@ function describeCases(
       wrap?: RepoWrap | undefined;
       heartbeatMs?: number | undefined;
       maxStepValueBytes?: number | undefined;
+      /** The Entity port the run body resolves node data through. */
+      entities?: WorkflowEntities | undefined;
     }) => Promise<PassResult | null>;
     /** Publishes `graph` as the workflow's second version. */
     publishSecondVersion: (graph: SerializedWorkflowGraph) => Promise<void>;
   };
 
-  async function startRun(graph: SerializedWorkflowGraph): Promise<Harness> {
+  async function startRun(
+    graph: SerializedWorkflowGraph,
+    start: { entity?: { type: string; id: string } | undefined } = {}
+  ): Promise<Harness> {
     offsetMs = 0;
     heldStep = createGate();
     flakyCalls = 0;
@@ -404,6 +412,7 @@ function describeCases(
           workflowId: "wf_1",
           versionId: "ver_1",
           entityValue: ENTITY,
+          entity: start.entity,
           wakeAt: now(),
         });
       })
@@ -427,7 +436,10 @@ function describeCases(
             return yield* leasedPass(
               claimed,
               {
-                run: runBody({ actions: () => actions }),
+                run: runBody({
+                  actions: () => actions,
+                  entities: options.entities,
+                }),
                 delivery: deliveryBody(),
                 cron: cronBody(),
               },
@@ -1311,6 +1323,60 @@ function describeCases(
       kind: "ended",
     });
     expect((await readRun(harness)).status).toBe("failed");
+  });
+
+  // An Entity read admits a node before the node's own work opens its row.
+  // Once the read spends its retries, the pass that fails the node writes the
+  // failure on the node's row, which is where the Runs view finds the step a
+  // run failed at.
+  it("records an Entity read that failed a node on the node's own log row once its retries are spent", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode({
+            lifecycleRules: {
+              concurrency: "unlimited",
+              startEvents: [START_EVENT],
+              cancelEvents: [],
+              trackedEntity: {
+                type: "patient",
+                bindings: { [START_EVENT]: "patient" },
+              },
+            },
+          }),
+          actionNode("remind", "test/send", {
+            message: "{{@$entity:patient|Patient.name}}",
+          }),
+        ],
+        edges: [edge("entry", "remind", "started")],
+      }),
+      { entity: { type: "patient", id: "pat_1009" } }
+    );
+    const missing = 'Entity "patient" was not found for node data';
+    const entities: WorkflowEntities = {
+      resolveNode: () => Effect.fail(engineFailure("failure", missing)),
+    };
+
+    const results: Array<PassResult | null> = [];
+    for (let pass = 0; pass <= STEP_RETRY_LIMIT; pass += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      results.push(await harness.pass({ entities }));
+    }
+    expect(results.map((result) => result?.kind)).toEqual([
+      ...Array.from({ length: STEP_RETRY_LIMIT }, () => "retry"),
+      "retries_spent",
+    ]);
+    // A pass the read's failure stopped writes no row.
+    expect(
+      (await readRun(harness)).logs.filter((log) => log.nodeId === "remind")
+    ).toEqual([]);
+
+    expect(await harness.pass({ entities })).toEqual({ kind: "ended" });
+    const ended = await readRun(harness);
+    expect(ended.status).toBe("failed");
+    expect(ended.logs.filter((log) => log.nodeId === "remind")).toEqual([
+      expect.objectContaining({ status: "error", error: missing }),
+    ]);
   });
 
   // A log open that failed once and then succeeded marks its memo row

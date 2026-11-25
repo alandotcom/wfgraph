@@ -188,9 +188,17 @@ export function startScheduledRun(input: {
   versionId: string;
   entityValue: string;
   wakeAt: Date;
+  /** The tracked Entity the run is about, for a workflow that tracks one. */
+  entity?: { type: string; id: string } | undefined;
 }): Effect.Effect<string, DatabaseError, ExecutionRepo> {
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
+    // A run stores its Entity in one identity form: typed when the workflow
+    // tracks an Entity, otherwise the legacy Entity Value.
+    const identity =
+      input.entity === undefined
+        ? { entityValue: input.entityValue }
+        : { entityType: input.entity.type, entityId: input.entity.id };
     const started = yield* executions.startForEntity({
       execution: {
         workflowId: input.workflowId,
@@ -198,8 +206,8 @@ export function startScheduledRun(input: {
         startSource: "event",
         startEventName: START_EVENT,
         runMode: "live",
-        entityValue: input.entityValue,
         input: {},
+        ...identity,
       },
       concurrency: "unlimited",
       startedEntry: { message: "Event-triggered run started", metadata: {} },

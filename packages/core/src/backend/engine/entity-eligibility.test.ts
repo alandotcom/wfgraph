@@ -908,16 +908,23 @@ describe("per-node Entity Eligibility", () => {
     expect(runAction).toHaveBeenCalledTimes(2);
   });
 
-  it("turns an operational resolver failure into a failed node and run", async () => {
+  // The read fails the node before the node's own work opens its row, so the
+  // failure is written on that row: the Runs view names the failed step from
+  // the node's log, and a run with no failed log names none.
+  it("turns a resolver failure into a failed node, recorded on the node's own row", async () => {
     const entities: WorkflowEntities = {
       resolveNode: () =>
-        Effect.fail({ kind: "failure", message: "Entity host unavailable" }),
+        Effect.fail({
+          kind: "failure",
+          message: 'Entity "appointment" was not found for node data',
+        }),
     };
+    const store = createRecordingWorkflowStore();
 
     const result = await executeTestWorkflow(
       executionInput,
       createInMemoryWorkflowRuntime(),
-      createRecordingWorkflowStore(),
+      store,
       actions,
       entities
     );
@@ -926,6 +933,30 @@ describe("per-node Entity Eligibility", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toBeUndefined();
     expect(runAction).not.toHaveBeenCalled();
+    const firstLogId = store.logIdOf("first");
+    expect(
+      store.callsOf("startStepLog").filter((call) => call.nodeId === "first")
+    ).toEqual([
+      {
+        nodeId: "first",
+        nodeName: "first",
+        nodeType: "test/action",
+        input: null,
+      },
+    ]);
+    expect(
+      store
+        .callsOf("completeStepLog")
+        .filter((call) => call.logId === firstLogId)
+    ).toEqual([
+      {
+        logId: firstLogId,
+        durationMs: 0,
+        status: "error",
+        output: undefined,
+        error: 'Entity "appointment" was not found for node data',
+      },
+    ]);
   });
 
   describe("under the replay driver", () => {

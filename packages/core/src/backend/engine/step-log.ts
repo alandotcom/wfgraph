@@ -134,6 +134,59 @@ function closeStepLogQuietly(
 }
 
 /**
+ * Records a node as failed with `error` when the work that failed it ran before
+ * the node's own work opened its row, such as the Entity read that admits the
+ * node. The row is the one the node's work would have opened, under the same
+ * step id `node:<id>:log-open`, so the Runs view finds the failed step where it
+ * finds every other.
+ *
+ * The open and the close follow `runWithStepLog`'s rules. Neither failure
+ * reaches the caller, which goes on to fail the node with its own cause: a pass
+ * that a step's failure stopped refuses the open, and the pass that finally
+ * fails the node writes the row.
+ */
+export function recordNodeFailure(
+  target: {
+    store: WorkflowStore;
+    context: NodeContext;
+    runtime: WorkflowExecutionRuntime;
+  },
+  error: string
+): Effect.Effect<void> {
+  const { store, context, runtime } = target;
+  return Effect.gen(function* () {
+    const handle = yield* runIdempotentDurable(
+      runtime,
+      {
+        id: `node:${context.nodeId}:log-open`,
+        nodeId: context.nodeId,
+        name: `${context.nodeName} (open)`,
+      },
+      openStepLog({ ...target, input: null })
+    );
+    yield* closeStepLogQuietly(
+      store,
+      context,
+      handle,
+      { status: "error", error },
+      0
+    );
+  }).pipe(
+    Effect.catchCause((cause) =>
+      failureFromCause(cause).kind === "lease_lost"
+        ? Effect.void
+        : Effect.logWarning("Could not record a node's failure").pipe(
+            Effect.annotateLogs({
+              executionId: context.executionId,
+              nodeId: context.nodeId,
+              error: Cause.squash(cause),
+            })
+          )
+    )
+  );
+}
+
+/**
  * Opens a run-log row, runs the work, and closes the row with what it answered.
  *
  * The open runs on every pass through `runtime.runIdempotent`, which stores
