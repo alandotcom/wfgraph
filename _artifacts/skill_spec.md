@@ -612,6 +612,11 @@ sources, apart from the source checks each later batch records.
   the vendor call behind a dynamic import. Each `configOptions` entry's `load`
   takes the function itself too. The skill's `configOptions` line names no
   form for `load`, so that line did not change.
+- integrations: the SDK rule no longer names Clerk and Linear, whose SDKs this
+  branch removed. It now says an SDK earns its place only for protocol logic
+  such as Svix webhook signature verification, and that a vendor's HTTP or
+  GraphQL API is called through `callExternal`, which matches
+  `packages/plugins/src/AGENTS.md`.
 - `library_version` stays at 4.1.1, as in batch 6.
 - Checks: `intent validate` passed. The behavior is covered by
   `packages/plugins/src/integrations.test.ts`, which checks all six

@@ -94,9 +94,10 @@ each completed `step.run` from the step memo. Work with a side effect goes in
   Promise at the edge (`callExternalAsync`).
 - `callExternal` answers an Effect (timeout, retry, JSON decode, three
   failures: `ExternalUnreachable`, `ExternalRejected`, `ExternalUnreadable`).
-- An SDK earns its place only when it owns protocol (Clerk JWT, Linear
-  GraphQL, Svix webhook signatures). Do not wrap Twilio/Slack/Resend-style HTTP
-  SDKs.
+- An SDK earns its place only when it owns protocol logic the integration
+  would otherwise write itself, such as Svix webhook signature verification.
+  Call a vendor's HTTP or GraphQL API through `callExternal`; do not wrap an
+  HTTP SDK.
 - What `step.run` answers must be JSON. Carry timestamps as ISO strings. One
   answer may hold at most `runner.maxStepValueBytes` of JSON (1 MiB by
   default); a larger one fails the node at once with no retry.

@@ -3,26 +3,25 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "5b06fb0d34d9ef30762a634df05933a72ed05cdba02fb078aa64cbf12c479be5",
+      "fingerprint": "2665af1ce9692ebed6867307250304639448ab7f7721a3b19fbb6f01e65df4f7",
       "snapshot": {
-        "README.md": "fbf73ed7f222ce2e2b542ccd9aedbda685e03219be780d6f5d8a28656b4b99c4",
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
+        "README.md": "4ade259bff890b42bce6053ab61af3d63e78f7614ed2055e32611ce9ddf4b9db",
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547",
-        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "e8059e1107d04a42083879a85c280edcd9d655d4be76ec2a755b4bd976082b82",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. wfgraph-core/SKILL.md says only that workflows.readDraftNode applies no auth and routes to host-actions, which still holds; host-actions/SKILL.md changed as recorded on its own item.",
+      "reason": "The only change in this item's snapshot is its integrations sub-skill's SDK rule. wfgraph-core routes 'Write a vendor integration' to wfgraph-core/integrations and states no SDK rule of its own, so its routing table and its claims about @wfgraph/plugins still hold.",
       "evidence": [
-        "git diff main...f8a23675 -- docs/embedding.md",
-        "grep finds fields of readDraftNode named only in host-actions/SKILL.md"
+        "git diff origin/main -- packages/core/skills/wfgraph-core/integrations/SKILL.md"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -41,66 +40,73 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "04fd09dfd170f676f895ed56e58ec91848025b8c753384e78407d921ee978b2c",
+      "fingerprint": "aeb74108e568dca76f7d68f8f71595cbe31894cd5aae9a36f57b1e36b8f5762a",
       "snapshot": {
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
-        "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
+        "docs/integrations.md": "88363346b5a2b2b88703ea69a9ef96dcdc117797ca651f276fda9abb823d9d83",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
-      "outcome": "updated",
-      "reason": "The readDraftNode paragraph now says fields holds, for a host action node, each declared input the node stores, read as a template of text and reference segments, rows for a key-value field, or a stored value, that an input named actionType or integrationId has no entry, and that every other node answers no fields. Each matches draftFields in draft-node.ts and readConfigValue in template-config.ts at this revision. The Action links paragraph still matches checkActionLinks in action-links.ts, whose messages defineAction throws unchanged.",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "docs/integrations.md now passes the connection test function itself as test and a function as each configOptions provider's load. host-actions covers defineAction, whose option pickers are the action's own options callbacks ('Dynamic host action fields' in docs/embedding.md, unchanged by this branch); the skill names neither an integration's test nor configOptions load.",
       "evidence": [
-        "pnpm run skills:validate: 10 skill files passed",
-        "draft-node.test.ts passed, including 'answers the declared fields in the declared order, leaving out a stored key the action does not declare', 'answers no field for an input named actionType or integrationId', 'reads a key-value field as rows, each value split and each name as written' and 'answers a literal field and a condition input as stored values'",
-        "pnpm exec vitest run --project node over draft-node, app.workflows, action-links, define-action, template-config, node-display, workflow-issues, workflow-template-validation and host-actions/refund-action.test.ts: 9 files, 259 tests passed",
-        "Discovery and a fresh consumer session are unverified; no isolated agent session was available"
+        "git diff origin/main...718ca8a4 -- docs/integrations.md",
+        "git diff origin/main...718ca8a4 -- docs/embedding.md"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
-      "fingerprint": "1d4cf512c2c5c3c9a40558e38fa1d495cc32aef6ecf53db699dc329789e6c071",
+      "fingerprint": "e157755c9507e76fa12e552e3eb076bc57cfb265f6bef70bc3712758b1cf0b84",
       "snapshot": {
-        "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53"
+        "docs/integrations.md": "88363346b5a2b2b88703ea69a9ef96dcdc117797ca651f276fda9abb823d9d83",
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "e8059e1107d04a42083879a85c280edcd9d655d4be76ec2a755b4bd976082b82"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
+      "reason": "This branch changed three lines of the integrations skill. The test bullet now says test takes the connection test function itself, imported statically, which matches IntegrationTestFunction on defineIntegration in define-integration.ts and the test: testMyService example in docs/integrations.md. The runAction mistake now calls twilio(), which matches twilio/index.ts. The SDK rule no longer names Clerk JWT and Linear GraphQL: it says an SDK earns its place only for protocol logic such as Svix webhook signature verification and that a vendor's HTTP or GraphQL API is called through callExternal. That matches packages/plugins/src/AGENTS.md and packages/plugins/package.json, whose only vendor dependency is svix, used in resend/webhook.ts.",
       "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
+        "git diff origin/main -- packages/core/skills/wfgraph-core/integrations/SKILL.md (branch commits plus the uncommitted SDK bullet)",
+        "git diff origin/main...718ca8a4 -- docs/integrations.md packages/core/src/backend/extensions/define-integration.ts packages/plugins/src/AGENTS.md",
+        "pnpm run skills:validate: 10 skill files passed",
+        "At 718ca8a4: packages/core/src/backend/extensions and packages/core/src/backend/services/integrations tests passed within 44 files, 581 tests",
+        "Discovery and a fresh consumer session unverified; no isolated agent session was available"
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "2e3bdda765c2306eb10a1e8ae721604ed394881f5f29d1e12168d0dfa2f85e59",
+      "fingerprint": "6a6d80744c48bba5da1c9e5ef5d62f83ee9b2b77d6f05a47b27aeb44ae9f1a35",
       "snapshot": {
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
-        "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
-        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf"
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
+        "packages/plugins/README.md": "30c8b45b5bd662156cf0875cbe5ddcadae94871f2993388da154383bbd2ad2de",
+        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "9cc82d60f1ca456c79698af53304ef1735505d07942ec1910e2e708f2bc8dc0b"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. An integration action node answers no fields, and the wfgraph-plugins skill states nothing about the section.",
-      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "updated",
+      "reason": "Commit 4cc5a088 rewrote the description, metadata.purpose, the overview and the 'One entry per integration' section for one entry per integration and the call form, changed the CRITICAL import mistake to import an entry and the Slack publicUrl mistake to slack({ oauthClient }), and added the HIGH mistake 'Import from the package root or pass an uncalled function'. Checked against the code: the exports map lists ./clerk, ./linear, ./posthog, ./resend, ./slack, ./twilio and ./ui with no root entry; clerk, linear, posthog, resend and twilio each return one module-level definition; slack builds a definition per call; no integration index.ts imports React; the Clerk and Linear handlers read no runMode, so a test run calls them for real.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/skills/wfgraph-plugins/SKILL.md",
+        "git diff origin/main...718ca8a4 -- packages/plugins/README.md",
+        "git diff origin/main...718ca8a4 -- docs/embedding.md",
+        "pnpm run skills:validate: 10 skill files passed",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)",
+        "Discovery and a fresh consumer session unverified; no isolated agent session was available"
+      ]
     },
     "planning:_artifacts": {
-      "fingerprint": "e6a3ac14be47334e63fba9542ff1a38dbe4e466eea8d8206216239ca977e89ef",
+      "fingerprint": "0ccaf3acdff08c610b58f9a9edd6121970a67fe24e4dc8a396f193971a5ff645",
       "snapshot": {
-        "README.md": "fbf73ed7f222ce2e2b542ccd9aedbda685e03219be780d6f5d8a28656b4b99c4",
-        "_artifacts/domain_map.yaml": "37ef738271d10b949f08193d0d01be93b44e9936e557412d90c3c24845b22306",
-        "_artifacts/skill_spec.md": "749229a41b29f8a4677d011105089cbf4e2475fe2d1e94c29c076cd0b4fb4e44",
-        "_artifacts/skill_tree.yaml": "cdd9970c82abb906e5fbf7e3374e0edf936f9270af64f8735edec9d9339e4d8e",
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
+        "README.md": "4ade259bff890b42bce6053ab61af3d63e78f7614ed2055e32611ce9ddf4b9db",
+        "_artifacts/domain_map.yaml": "088a5857ec55d69da43fe033f2ca4cedd5a9a7c5e6cb83e365ea084f5318f5f7",
+        "_artifacts/skill_spec.md": "f18084d50222af437bcfb9a0b8bf0a3be7dbb593e3a3a65b24cb4eb89f611b96",
+        "_artifacts/skill_tree.yaml": "27311243cf93a8ee46b65bff403769c5482d8e64b536e68aaf0323e0b52efc9e",
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
-        "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
+        "docs/integrations.md": "88363346b5a2b2b88703ea69a9ef96dcdc117797ca651f276fda9abb823d9d83",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547",
-        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "e8059e1107d04a42083879a85c280edcd9d655d4be76ec2a755b4bd976082b82",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
@@ -112,16 +118,18 @@
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06",
-        "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
-        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf",
+        "packages/plugins/README.md": "30c8b45b5bd662156cf0875cbe5ddcadae94871f2993388da154383bbd2ad2de",
+        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "9cc82d60f1ca456c79698af53304ef1735505d07942ec1910e2e708f2bc8dc0b",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "updated",
-      "reason": "skill_spec.md gained a history entry after batch 6 recording that readDraftNode answers a host action's declared inputs as template, rows or value, that defineAction checks links through checkActionLinks with unchanged messages, and the checks that ran. domain_map.yaml and skill_tree.yaml say only that the page reads the node with readDraftNode and that defineAction refuses a relative url, which still holds, so neither changed.",
+      "reason": "skill_spec.md Batch 7 gained one bullet recording that the integrations skill's SDK rule no longer names Clerk and Linear and now matches packages/plugins/src/AGENTS.md. domain_map.yaml and skill_tree.yaml need no change: the integrations entry in domain_map.yaml lists no SDK claim or failure mode about SDKs, and the tree entry's description and purpose are unchanged (intent maintainer sync: Nothing to synchronize).",
       "evidence": [
+        "git diff -- _artifacts/skill_spec.md",
+        "grep for SDK in _artifacts/domain_map.yaml finds no integrations entry",
         "intent maintainer sync: Nothing to synchronize",
-        "grep of _artifacts for readDraftNode, fields, key-value, literal and links found no sentence the branch made false"
+        "pnpm exec oxfmt --check _artifacts/skill_spec.md: correct format"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -138,17 +146,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "d33ebbf451366794cbe27701e76aef40917a1540fd7295e35317157c098ca12f",
+      "fingerprint": "be9dc43eed89ae3a8ebc98b601301ca0a4242e7501cce0b1962549ece85236f9",
       "snapshot": {
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The auth skill covers the access policy and states nothing about Action Links or readDraftNode.",
-      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed the embed, runner and Worker samples, the Built-in integrations section (entries, the call form, the dependency bullets) and the Package exports table. The auth skill's claim from Built-in integrations is the OAuth callback rule (publicUrl, the callback behind auth, a SameSite=Lax cookie), and that paragraph is unchanged; the Authentication and authorization section is unchanged.",
+      "evidence": ["git diff origin/main...718ca8a4 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
       "fingerprint": "3ee0533adfeac10df9fefff86d8615bebf429b7b1a61076fcf0440caab43de0d",
@@ -176,18 +184,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "aec657a6c4f52091992481f8fb4ab9a9748163d283806a9dc78291fc8d0c9e30",
+      "fingerprint": "7c53705ca62fd4380c975ddd292dc296c414ef0d8f62362fb2103c6877ca36eb",
       "snapshot": {
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The observability skill states nothing about Action Links or readDraftNode.",
-      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only the integration imports in its samples, the Built-in integrations section and the plugins rows of Package exports. 'Logging', 'Tracing', 'Sentry' and 'Any other backend' are unchanged, and the observability skill states nothing about integrations.",
+      "evidence": ["git diff origin/main...718ca8a4 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
       "fingerprint": "f7b9e4046cfb3c14d3e427344152b7e5c4b475bd530b856e7e1e993bf6476543",
@@ -229,17 +237,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "76d976fde23707e619bc5c3921574ed7dc37c7a219ef0bf929e2d9e49009dc7d",
+      "fingerprint": "4016902db6c23fefdf013ea5a1970b640b2b7db0f346146d4c5e3bd3e4f98484",
       "snapshot": {
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The manual's sentence that a Worker deployment has no readDraftNode is unchanged, and the cloudflare-worker skill states nothing else about the section.",
-      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
+      "reason": "The Worker sample in docs/embedding.md now imports resend and slack from their own entries and lists [resend(), slack({ oauthClient })]. The skill tells the reader to copy the entry from that section and says extensions may be a function of the environment, which the sample still shows. 'Worker options', 'Wake runs through a Queue', 'Ticks and the platform limits' and 'Hyperdrive' are unchanged, and the skill names no builtInIntegrations.",
+      "evidence": ["git diff origin/main...718ca8a4 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
       "fingerprint": "cc7599f1637d2993b948d3e4600eaf434e6b2298e4821136ed54c0d1b63ea320",
@@ -1218,31 +1226,29 @@
       ]
     },
     "source:packages/core/src/backend/services/integrations/integrations.test.ts": {
-      "fingerprint": "4fb29bf9d26d5397845e8a5ab67f05c60cecfbf2f45be8fd86f7dcdf8c1c20fd",
+      "fingerprint": "6d533434e4bebe1a91d20102fc367eecb45d15b8c52a866f5073c23373a63471",
       "snapshot": {
-        "packages/core/src/backend/services/integrations/integrations.test.ts": "bc557098d9eac688896d2e7a037e71aae66041f2f9b2c2b522273d64e1e22728"
+        "packages/core/src/backend/services/integrations/integrations.test.ts": "f15faf2d190b83c83f375357fcdc6fc702539710932e8d4d01ddc5eb77f7ff4e"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "A core service test; connection tests are passed as functions, and a case asserts the unavailable-integration message names \"@wfgraph/plugins/<type>\". Tests are no source of skill guidance.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/services/integrations/integrations.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/core/src/backend/services/integrations/integrations.ts": {
-      "fingerprint": "a0f7128dd913a2c2f5a805273df703773ac653f89eb3290a51d3499956e28935",
+      "fingerprint": "39a7e430b7b30b907d72c8d4124e64248cb1660eac593a882b6fc5726b120352",
       "snapshot": {
-        "packages/core/src/backend/services/integrations/integrations.ts": "b7fb50aae3fd34baac8b9ed1a7031ee39f9960d408e038b21afb68265d6c20ed"
+        "packages/core/src/backend/services/integrations/integrations.ts": "15f6d84279aa259c88dd5d50b682635e9edf73898a53973894975972cb862972"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "Connections: a delete that always removes an OAuth connection and answers oauthRevocation, url credential fields that cannot be retargeted without the secrets, integration.configOptions under workflow.write, optional encryption, and secret-free read failures. integrations, wfgraph-plugins, auth and wfgraph-core now state the adopter-visible parts.",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "runConnectionTest calls the registered test function directly where it first awaited a loader. Internal service code; what an operator sees from Test connection is unchanged, and no skill describes this module.",
       "evidence": [
-        "de816c1d fix(skills): add step keys, test runs and revoke on delete to integrations",
-        "55e6fcd6 docs(skills): cover test settings and OAuth delete in wfgraph-plugins",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/services/integrations/integrations.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/core/src/backend/services/integrations/oauth.ts": {
@@ -3093,29 +3099,32 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "10de0a4dede7bfcc37a3b2882b370b22a70bafcce7af3eb740c85a9565f9766d",
+      "fingerprint": "cf65af41fc538d7213e79d0c7911219ae85d0bd98c48bb3380f6beec81a31fd6",
       "snapshot": {
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The build-agent skill states nothing about Action Links or readDraftNode.",
-      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only the integration imports in its samples, the Built-in integrations section and the plugins rows of Package exports. 'The build agent' section and the agent rows of 'createWfGraphApp options' are unchanged, and the build-agent skill states nothing about integrations.",
+      "evidence": ["git diff origin/main...718ca8a4 -- docs/embedding.md"]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "34d1063cd9f26e65c9ee0c0ed586e9e0e1ba4e74054f54d0d446b671765692cb",
+      "fingerprint": "4f04a0867d46dd421194ac2fd886d96fbb18c60fc42ba2ce9677d7afb49201ce",
       "snapshot": {
-        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
+        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The mcp skill states nothing about Action Links or readDraftNode.",
-      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
+      "reason": "The mcp skill maps list_field_options to integration.configOptions for an integration. postIntegrationConfigOptions now calls entry.load(credentials, request) directly in place of loading the function first; the procedure, its input and its answer are unchanged. docs/embedding.md's 'MCP authoring' section is unchanged by this branch.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/services/integrations/config-options.ts",
+        "git diff origin/main...718ca8a4 -- docs/embedding.md"
+      ]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
       "fingerprint": "a9593fc154a998f98c5a0ae696eeee810b317bcbe9119d69bf1532fdd447285a",
@@ -3226,14 +3235,14 @@
       ]
     },
     "source:examples/app.ts": {
-      "fingerprint": "a61ae71dd95a62ae9d388fcff90794ae76819dd644bab2faa6f7c8eec365382b",
+      "fingerprint": "7a906bc33515ec5c5c16b5c843b1ae8d8179a66f6416f19296581fd4218763af",
       "snapshot": {
-        "examples/app.ts": "4f831e998cda4d2b8af7999df9121a4089e60cfcfae842eae349dd45e4d69fda"
+        "examples/app.ts": "cfa68a7eca4aded4cda2be38f9bcc21d9c60701d83e48ff2d773734055916907"
       },
-      "head": "e9e92a14a6ae744f42ab929a31c1ec266c41802e",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "out-of-scope",
-      "reason": "A comment rewording or a test for the Action Link behavior host-actions already teaches; it changes no adopter contract.",
-      "evidence": ["git diff f4fb4d54 -- examples/app.ts"]
+      "reason": "The repository's demo host now imports the six integrations from their own entries and lists clerk(), linear(), posthog(), resend(), slack({ oauthClient }) and twilio(). No skill lists it as a source; the adopter pattern it shows is the one wfgraph-plugins teaches from docs/embedding.md.",
+      "evidence": ["git diff origin/main...718ca8a4 -- examples/app.ts"]
     },
     "source:examples/demo-auth.ts": {
       "fingerprint": "746d9495f81ff2d0b6749ad826ae0882469b17055ba3a02f28c01de36adffd01",
@@ -4722,16 +4731,16 @@
       ]
     },
     "source:packages/core/src/backend/extensions/extension-set.test.ts": {
-      "fingerprint": "62b148bb95c0278de26be8eb51afbe39be7dbc9a76ea248e2511390d1971f48f",
+      "fingerprint": "aedc5c0fad50a81cc219d7789e3ad337472c07c0406d159c5a6c9e4d42117d75",
       "snapshot": {
-        "packages/core/src/backend/extensions/extension-set.test.ts": "97feed24aef8296fca5117e9fbc738e1628354bd5375ec239e0dcb2f70ef4b2e"
+        "packages/core/src/backend/extensions/extension-set.test.ts": "13c154b781189d5495931e8f8c22696d8fc2dbaa2c40d116afc7ac258a3a0a04"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "out-of-scope",
-      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
+      "reason": "A core unit test of assembly; it now passes test functions and expects connectionTestFor to answer the function itself. Tests are no source of skill guidance.",
       "evidence": [
-        "git diff c0f1fe00 -- packages/core/src/backend/extensions/extension-set.test.ts",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/extensions/extension-set.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/core/src/backend/extensions/steps/define-step.handler.test.ts": {
@@ -6047,16 +6056,16 @@
       ]
     },
     "source:packages/plugins/src/posthog/capture-event.test.ts": {
-      "fingerprint": "f81dc459d0c4c1e0c93f4bc4b1a456d07c46ad10433dbc8b6912cf52927cf70c",
+      "fingerprint": "28b9a98731dc47974d64013dafeee9699529388725c84e05ac882559e74c7be6",
       "snapshot": {
-        "packages/plugins/src/posthog/capture-event.test.ts": "3122cd243dd468a61650ca8402b346ee17bf54461e1ab7d40546045e32e7f7f4"
+        "packages/plugins/src/posthog/capture-event.test.ts": "8fb2a85589dba133eadadff476a47a106e600ef2119778ed45844f20a816bb36"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The built-in integrations: Slack treating already-uninstalled answers as revoked, PostHog's https host rule, Resend's per-node idempotency key, Twilio and Resend test settings, and the Slack channel placeholder. wfgraph-plugins now states the first four; the placeholder text is editor copy.",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "PostHog action tests; runAction now takes posthog(). Tests are no source of skill guidance.",
       "evidence": [
-        "55e6fcd6 docs(skills): cover test settings and OAuth delete in wfgraph-plugins",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/posthog/capture-event.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/plugins/src/posthog/capture.ts": {
@@ -6125,42 +6134,42 @@
       ]
     },
     "source:packages/plugins/src/resend/index.ts": {
-      "fingerprint": "321fdb7358d87c045110c261dea644b1d7ded821a9c2b8775b32a8b6c9b779a0",
+      "fingerprint": "2977ec8651cd4f6011b9e856e7942f803fe199fe26d8822bbcd2ad66482541ac",
       "snapshot": {
-        "packages/plugins/src/resend/index.ts": "985123a4ce0ee6e3d24dccef9c6acb2121ccadd9d983f249c85ce74964e9667a"
+        "packages/plugins/src/resend/index.ts": "ef184d8ace7d133caaeb7ebb150abcb42673f1013922b7e0c5e109382fbd1cba"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The built-in integrations: Slack treating already-uninstalled answers as revoked, PostHog's https host rule, Resend's per-node idempotency key, Twilio and Resend test settings, and the Slack channel placeholder. wfgraph-plugins now states the first four; the placeholder text is editor copy.",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "Resend is now resend(), returning one module-level definition, and passes testResend and the two config-options functions statically as test and load. wfgraph-plugins covers this export and says resend() returns the same definition every call; its webhook Events and idempotency-key claims are untouched by this diff.",
       "evidence": [
-        "55e6fcd6 docs(skills): cover test settings and OAuth delete in wfgraph-plugins",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/resend/index.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/plugins/src/resend/send-email.test.ts": {
-      "fingerprint": "7e7950aecc852176b33c5599de8ac42ed788cd22e689759e805542073e79febc",
+      "fingerprint": "3ccb73ad285b42db46763ccea088229ddff846c50b3bb859dda8e1ca922a6e96",
       "snapshot": {
-        "packages/plugins/src/resend/send-email.test.ts": "52bfb0a932adab31df6fe8366eabffa2c5c84cf3809808fe0a277390d14fde40"
+        "packages/plugins/src/resend/send-email.test.ts": "6f50974aed79cd39c0e9fd238bd45c82b52e1556cb5a7e82a57a5472134080fb"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The built-in integrations: Slack treating already-uninstalled answers as revoked, PostHog's https host rule, Resend's per-node idempotency key, Twilio and Resend test settings, and the Slack channel placeholder. wfgraph-plugins now states the first four; the placeholder text is editor copy.",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Resend Send Email tests; the action under test is now resend(). Tests are no source of skill guidance.",
       "evidence": [
-        "55e6fcd6 docs(skills): cover test settings and OAuth delete in wfgraph-plugins",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/resend/send-email.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/plugins/src/slack/index.ts": {
-      "fingerprint": "e59d5df4d12c22f1979c187e7d7c7e3fb582484e76ee022f0b3d733408209855",
+      "fingerprint": "050a2c37fe6d5eeb8d154c1ce99c12b5f017e4135da7167233be954b8b66d92e",
       "snapshot": {
-        "packages/plugins/src/slack/index.ts": "466b1a1822165160d214cae963ae3fd27203325685c5bc237f7491a61e2e693e"
+        "packages/plugins/src/slack/index.ts": "d1f010e9f68d5cce16715cba62c81d4b3df8f2af90bcd59c40c4f090e247ff3f"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The built-in integrations: Slack treating already-uninstalled answers as revoked, PostHog's https host rule, Resend's per-node idempotency key, Twilio and Resend test settings, and the Slack channel placeholder. wfgraph-plugins now states the first four; the placeholder text is editor copy.",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "slack(options?) gained a doc comment and passes testSlack statically as test; it still builds a definition per call from options.oauthClient. wfgraph-plugins says exactly that and that slack() with no oauthClient keeps Slack manual-only, which holds.",
       "evidence": [
-        "55e6fcd6 docs(skills): cover test settings and OAuth delete in wfgraph-plugins",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/slack/index.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/plugins/src/slack/oauth.test.ts": {
@@ -6190,29 +6199,29 @@
       ]
     },
     "source:packages/plugins/src/twilio/index.ts": {
-      "fingerprint": "7846d4b28134b2d9d46491b332de267942b6d618b26f35aaa9f2a551abff90d3",
+      "fingerprint": "75b7763c17ab6737289ab1c5e2cbe5d432bd265e063cfef236bb7596ad702a0e",
       "snapshot": {
-        "packages/plugins/src/twilio/index.ts": "bbee6b78bfc26a3a3bb9809801bb10ff20144bc887a9c0c9e4e66530cd5b9b57"
+        "packages/plugins/src/twilio/index.ts": "6547dede82f4888733d6b6c252d3ae04f96603deb36b9103f17a31ca8c0ec3d9"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The built-in integrations: Slack treating already-uninstalled answers as revoked, PostHog's https host rule, Resend's per-node idempotency key, Twilio and Resend test settings, and the Slack channel placeholder. wfgraph-plugins now states the first four; the placeholder text is editor copy.",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "Twilio is now twilio(), returning one module-level definition, and passes testTwilio statically as test. wfgraph-plugins says twilio() returns the same definition every call, and the integrations skill's runAction example already calls twilio().",
       "evidence": [
-        "55e6fcd6 docs(skills): cover test settings and OAuth delete in wfgraph-plugins",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/twilio/index.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/plugins/src/twilio/send-sms.test.ts": {
-      "fingerprint": "10eea27504421fec987e1e4f8a72ae333d337b54b33e29b21c6a8a450bd12532",
+      "fingerprint": "e1ff855b74ac4f10b23a8e51ced045a44ee6e3c55b2e0dbfd5586858808464ef",
       "snapshot": {
-        "packages/plugins/src/twilio/send-sms.test.ts": "2f3d178a7d66581c65e407c182e5bdc6c67f81c8d1734ddd772290584ac1e05d"
+        "packages/plugins/src/twilio/send-sms.test.ts": "fdd3398cafdcb1f17fe8355830c73b7083136b5e40a4f8bf296dcf25eb3922f1"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The built-in integrations: Slack treating already-uninstalled answers as revoked, PostHog's https host rule, Resend's per-node idempotency key, Twilio and Resend test settings, and the Slack channel placeholder. wfgraph-plugins now states the first four; the placeholder text is editor copy.",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Twilio Send SMS tests; the action under test is now twilio(). Tests are no source of skill guidance.",
       "evidence": [
-        "55e6fcd6 docs(skills): cover test settings and OAuth delete in wfgraph-plugins",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/twilio/send-sms.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/shared/src/actions/step-result.ts": {
@@ -6321,16 +6330,14 @@
       ]
     },
     "source:tsconfig.json": {
-      "fingerprint": "4c414c0b280af3ba0a8cbc4998d3a5579518e9f1e7c944cd0fb28a9ca8c73689",
+      "fingerprint": "2838b09400207c9409be73e90e4e8eaa23326aee0625767cfb4eff9cdb63c3c8",
       "snapshot": {
-        "tsconfig.json": "5007bb1161dc457b05bb66071b63aca4214cdb22733da66e6a257d4bd5c8a5ef"
+        "tsconfig.json": "3c304738c6a377ea85d5c46902e4648e672cba57e2b5d4e5fac61681f2dc970a"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "out-of-scope",
-      "reason": "Workspace build configuration: the Effect 4.1.3 catalog, the provider packages for the agent, tsrs and @effect/tsgo pins, and allowed Effect AI annotation keys. The effect version a host installs is a changeset note, and no skill names a dependency version.",
-      "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
-      ]
+      "reason": "Repository type-check paths, changed the same way as tsconfig.build.json for the per-integration entries. Repository configuration an adopter never sees.",
+      "evidence": ["git diff origin/main...718ca8a4 -- tsconfig.json"]
     },
     "source:.claude/skills/verify-durable-executor/model/Delivery.cfg": {
       "fingerprint": "fa68b28723ca89c15efbf9e413c22e1eae66188570829de4bc358a68563446c7",
@@ -7848,16 +7855,16 @@
       ]
     },
     "source:packages/core/src/backend/extensions/extension-set.ts": {
-      "fingerprint": "b7e97ea64aff1a797d778bfc9fc31510f88a0fe5c3e44adfaf0da19f26fdbd95",
+      "fingerprint": "c49cff9897a16fa8f2b9517485147322b44d72e3c873d9eeead7808084cb83c4",
       "snapshot": {
-        "packages/core/src/backend/extensions/extension-set.ts": "56bd9cb80eb02cd1bb2bf32002468ab649ab7738f146e1a5cdce752c259eb29d"
+        "packages/core/src/backend/extensions/extension-set.ts": "5659de11efab86aa3a0dbc80139be818a7a1faac8bcf91dec39cce2c29bf09d2"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
       "outcome": "out-of-scope",
-      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "reason": "Internal assembly: connectionTestFor and the tests map now hold IntegrationTestFunction. ExtensionSet is not exported to adopters, and the adopter-facing form of test is taught from define-integration.ts and docs/integrations.md.",
       "evidence": [
-        "git diff c0f1fe00 -- packages/core/src/backend/extensions/extension-set.ts",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/extensions/extension-set.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
       ]
     },
     "source:packages/core/src/backend/host-workflows.ts": {
@@ -8353,6 +8360,636 @@
       "outcome": "no-change",
       "reason": "readConfigValue and templateConfigRules in template-config.ts name the engine's existing reading of a config value, and STEP_INTERNAL_INPUT_KEYS in step-handler.ts names the keys stripInternalFields already removed. The engine reads and strips the same values as before; readDraftNode now uses both, which host-actions describes on the draft-node.ts item.",
       "evidence": ["template-config.test.ts and draft-node.test.ts passed"]
+    },
+    "source:docs/adr/0002-effect-v4-beta-with-a-promise-seam-at-the-embedder-surfaces.md": {
+      "fingerprint": "dc877e0a46a659713ab640cd81f662af33abdc51e6868a989d0b8898a08e0c3c",
+      "snapshot": {
+        "docs/adr/0002-effect-v4-beta-with-a-promise-seam-at-the-embedder-surfaces.md": "f69f38f811389bb84e8896d34f5a7f1c78179ae7e0d31fe4710e45e176ede0be"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "An ADR amendment dated 2026-11-25 recording why Linear and Clerk moved onto callExternal and why each integration got its own entry. ADRs hold decision history for maintainers; the skills teach the resulting contract from docs/embedding.md and packages/plugins/README.md, which wfgraph-plugins already reflects.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- docs/adr/0002-effect-v4-beta-with-a-promise-seam-at-the-embedder-surfaces.md"
+      ]
+    },
+    "source:knip.ts": {
+      "fingerprint": "d4d377d575d4474fb7b22af7681189725fbe0b2f8032d41506e91e78a66fd929",
+      "snapshot": {
+        "knip.ts": "a97d9ecaa59aa3a126adf1e611f53e4c2fcb83415064b3e3e202819a79dc62a9"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Repository lint configuration: only the comment on the packages/plugins workspace changed, to say each src/<name>/index.ts is an entry of the exports map. An adopter never runs this file.",
+      "evidence": ["git diff origin/main...718ca8a4 -- knip.ts"]
+    },
+    "source:packages/core/src/backend/extensions/config-options-wiring.test.ts": {
+      "fingerprint": "bb9a3485b478fc2eb8e2e1c7146aeed4ade2b481fd486ffa11ebf6d5ce5d62a8",
+      "snapshot": {
+        "packages/core/src/backend/extensions/config-options-wiring.test.ts": "a0e52677f97d7130557bb2ca8963074ce39b5309fa8e30b5e45b69c2ee7e1ff6"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "A core unit test; its fixture providers now give load as the function itself in place of a loader returning it. Tests grade behavior and are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/extensions/config-options-wiring.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/extensions/config-options.ts": {
+      "fingerprint": "a13eeb494002614c69b31c84a937bc00bd8693b7043ac443481e52a86eada936",
+      "snapshot": {
+        "packages/core/src/backend/extensions/config-options.ts": "a8f63634deecb1bf25b93954271a1938f81ff1ba5479fffeef8f4e5e9089000e"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "ConfigOptionsLoader is removed and ConfigOptionsProvider.load is now a ConfigOptionsFunction. The integrations skill says configOptions load choices from the connection and names no loader form, and docs/integrations.md now shows load: templateOptions, so the skill's line still holds.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/extensions/config-options.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/extensions/define-integration.test.ts": {
+      "fingerprint": "c32dd8105f27585b4fa6c46ab4dff5d4e3ef770d96855b9d1d5d72801d724d61",
+      "snapshot": {
+        "packages/core/src/backend/extensions/define-integration.test.ts": "55d91f398d77be20284e2c2b36483e65ceac97f9ef2dd3af4fb4bee31e5daad0"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "A core unit test; one fixture's configOptions load changed from a loader to the function itself. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/extensions/define-integration.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/extensions/define-integration.ts": {
+      "fingerprint": "bcb8b7184d5a909d8bec312af3691354f5fea99658f6807f57aa98c328bb2ad8",
+      "snapshot": {
+        "packages/core/src/backend/extensions/define-integration.ts": "448b3ea02aea5b21996b483dab5dc62efc58b2d866259525722db377b3e69913"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "updated",
+      "reason": "defineIntegration's test now takes an IntegrationTestFunction, and the doc comments on test and configOptions say the functions run when an operator presses Test connection or opens the field. The integrations skill's test bullet was updated by this branch to 'test takes the connection test function itself, imported statically', and docs/integrations.md's example passes test: testMyService.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/extensions/define-integration.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/extensions/integration-test.ts": {
+      "fingerprint": "69a0d876132aa954baa7c12b7a483a34186031822c15976d0c11c88d37fb1f7d",
+      "snapshot": {
+        "packages/core/src/backend/extensions/integration-test.ts": "23cc610e56261379d71afdbe63f15016d757201fd19c0b7fedd3235d18181460"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "updated",
+      "reason": "IntegrationTestLoader is removed, leaving IntegrationTestFunction as the one shape of a connection test. The integrations skill's test bullet was updated by this branch to the function form.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/extensions/integration-test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/config-options.test.ts": {
+      "fingerprint": "6f19a135e017d5bbc5e0f48b28f61d3aca105e7a57ce1888a7eb839b1d3fa599",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/config-options.test.ts": "882c0e8b2f5371917aab39c6f21a7e37988f7257b81b3e90dd376cd208c153ce"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "A core service test; providers give load as a function, and the case for a loader that throws became a provider whose promise rejects. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/services/integrations/config-options.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/config-options.ts": {
+      "fingerprint": "ea13cde7bd6d593c085f6c71c10bb023200e98a1fe7ebd180d7c92c7cecfd806",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/config-options.ts": "9c475c5aa8eba2ff1bbd633688edcb1e0c24ed5fe64d0a1fcad6dc838cf461aa"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "postIntegrationConfigOptions calls entry.load(credentials, { parameters }) directly inside the same attempt; the answer-kind check and the failures it reports are unchanged. The integrations skill's configOptions line and the mcp skill's list_field_options mapping still hold.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/services/integrations/config-options.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/vendor-call.ts": {
+      "fingerprint": "6709c4cca87cd87895aba9452374c7a47fc587b1da920cb5bd7783123e0e1e8b",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/vendor-call.ts": "abe06c9c7b4fd6d6d1db92c1d840ef90fad022269529286db9cb1e634e2e4a75"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The header comment drops the dynamic import step, and describeUnavailableIntegration's message now tells the operator a built-in integration is a function imported from \"@wfgraph/plugins/<type>\". An internal error message; wfgraph-plugins already teaches that form.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/backend/services/integrations/vendor-call.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/core/src/plugin.ts": {
+      "fingerprint": "f07286b4666169103952b617cb7b2c96b27c1c6b0e9001083275a3eab66c99ff",
+      "snapshot": {
+        "packages/core/src/plugin.ts": "98a53fb4b626221738f4afe1b8afd1502c1097aae418e89455ca7933179bbb90"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "updated",
+      "reason": "@wfgraph/core/plugin no longer exports the type ConfigOptionsLoader. The integrations skill, which builds against this entry, was updated by this branch to describe test as a function; its configOptions line names no loader type, so no line refers to the removed export.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/core/src/plugin.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/AGENTS.md": {
+      "fingerprint": "bda9e550e75277d47f6be19d390ea1f3b8f32c9738bc42fa3863a128788827fd",
+      "snapshot": {
+        "packages/plugins/src/AGENTS.md": "cd277894b3e9da8a8f0f9c89c0f28b150a6ae1245b32ca3f5a6f2ca5a9433b3e"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Maintainer instructions for writing the six built-ins inside this repository (one entry per integration, the SDK rule, the steps for adding one). It is not shipped guidance, and no published skill lists it.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/AGENTS.md",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/clerk-users.test.ts": {
+      "fingerprint": "93e2247ddbdf3a06b5127a8ae2dceca08f59938eb74493f659c26e201faf8232",
+      "snapshot": {
+        "packages/plugins/src/clerk/clerk-users.test.ts": "b99a1c4831749510a114ab058e96d69dd972c95944474554e7795288965e605d"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Clerk action tests, now driven through recordFetch with Clerk response fixtures in place of a stubbed SDK client. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/clerk-users.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/client.test.ts": {
+      "fingerprint": "ca3ff8a1a22e2ca4eedf32698e3e360f9f5eeb0f58deb13ae5750643aa01a764",
+      "snapshot": {
+        "packages/plugins/src/clerk/client.test.ts": "da2e10fae3898d0180b7145e2b7f224e5e7e709ef96c5a309ebdfcbe07e67a36"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "New wire tests for the Clerk client: request method, URL, headers and bodies, and the decode of recorded responses. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/client.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/client.ts": {
+      "fingerprint": "b297ebbe15cdc9f0bd224cd9aa1abbcc431f09512e6d689b01635cb42031088a",
+      "snapshot": {
+        "packages/plugins/src/clerk/client.ts": "5e23f756f5895ee902b3eedc9df0c6d032b6c85686086303010cdca1c3d0bbc9"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The internal Backend API client of the built-in Clerk integration, now over callExternal at Clerk API version 2026-08-20 with @clerk/backend removed. No skill teaches the built-ins' internals; the adopter-visible change is in the .changeset files (.changeset/clerk-without-sdk.md: shared retry rules, create and delete sent once).",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/client.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/index.test.ts": {
+      "fingerprint": "670f7d55b202795aa3b7b14a31a32d44aebc42a3f55da460f1bffaa65530f3c8",
+      "snapshot": {
+        "packages/plugins/src/clerk/index.test.ts": "89cc1558266f5e524e17c300741e8a0c7e9c380f3be474d2e0167fd55a0642ef"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Clerk definition test; it now calls clerk() to get the definition. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/index.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/index.ts": {
+      "fingerprint": "06b8114913e9f3db3f3e875aee4cfd81d5e0ac25b9c69b9b1eb86ebf40a70833",
+      "snapshot": {
+        "packages/plugins/src/clerk/index.ts": "ebb9dcb95b2323ba3d61f01b9800f84c184b57bf8d8d5434244a8ac5734c1521"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "The Clerk integration is now clerk(), returning one module-level definition, passes testClerk as test, and calls the new client in place of the SDK; action ids, inputs, outputs and step names are unchanged. wfgraph-plugins covers this export and says clerk() returns the same definition on every call and that Clerk actions carry no test setting; both hold.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/index.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/metadata.ts": {
+      "fingerprint": "d75739dd5f622ed182b23f14875bee5932e8268e8f22ed1bb9dac856a2f40225",
+      "snapshot": {
+        "packages/plugins/src/clerk/metadata.ts": "2060c9c8ef17f1e13a5b585dce1e8aaae0bc7ee9e411b0ee4f6f137b23b9d7f7"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "An internal helper of the Clerk integration: the metadata box is now read with readJsonObject and typed JsonObject. Behavior for a workflow author is unchanged, and no skill describes it.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/metadata.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/responses.fixtures.ts": {
+      "fingerprint": "efcad982289c267aa61320bcff9ff07dd1403775f98be45c6b9176a90b039a25",
+      "snapshot": {
+        "packages/plugins/src/clerk/responses.fixtures.ts": "0ea8f11762f494dfd5c37551ae114b5cb3459f3581c43a0a31fdea41ee6c38a8"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "A test-only module of Clerk response bodies as version 2026-08-20 documents them, used by the Clerk tests. No package entry reaches it.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/responses.fixtures.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/test.test.ts": {
+      "fingerprint": "b73eca7f6e9e1959ee6c690ca6c4786b938c79e173239890506af48fa70d96a2",
+      "snapshot": {
+        "packages/plugins/src/clerk/test.test.ts": "b164cabf1003fee570585537fc697bf480c14f8c6079b1084aac92353501a8b1"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The test of Clerk's connection test, now over recordFetch. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/test.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/test.ts": {
+      "fingerprint": "604179cb8155bf70e50b8e9fbfad062e17c84835d931b548d47b510bbe0a7f72",
+      "snapshot": {
+        "packages/plugins/src/clerk/test.ts": "999b628d3ada12fa81eb077bc2845a98936cad752eb97e363997899b2cb10bcd"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Clerk's internal connection test, now verifying the secret key through the new client and callExternalAsync. What the credentials dialog shows is the built-in's internals, which no skill teaches.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/clerk/types.ts": {
+      "fingerprint": "2535d627464cf2ee9ddf8cd0d92d141dd8e3a9b35064f7c4128e0faeb36b278d",
+      "snapshot": {
+        "packages/plugins/src/clerk/types.ts": "31e512be227700b475e0d49f3c8844765283135eecd4ac13071a6ce43cbea479"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Clerk's user resource is now an Effect Schema (clerkApiUserSchema) the client decodes with, beside the flat user the steps answer. Internal to the Clerk integration; the step output shape is unchanged and no skill describes it.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/clerk/types.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/fetch-test-support.ts": {
+      "fingerprint": "d61d4ab04801cc30e8c660574665140f56c937073f106103f42a55a75d4f3433",
+      "snapshot": {
+        "packages/plugins/src/fetch-test-support.ts": "b319800ce7bb45ad2f6fe0bc11e2f613d14b90891f5b05b19eeaadbb1cba24e9"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "A test-only module: recordFetch stubs globalThis.fetch for the tests of an integration that calls through callExternal. No package entry reaches it.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/fetch-test-support.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/index.test.ts": {
+      "fingerprint": "c375e31f126f900123ebcb897b17e94d1d67f012cd0d7b47ed28476c7d17b8ac",
+      "snapshot": {
+        "packages/plugins/src/index.test.ts": null
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The root entry's test is deleted, with the root entry; its checks moved to packages/plugins/src/integrations.test.ts. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/index.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/index.ts": {
+      "fingerprint": "2c2b77a8377d79163ac9ec2ba4e952ba24e578774ed89994b328284990b2721e",
+      "snapshot": {
+        "packages/plugins/src/index.ts": null
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "updated",
+      "reason": "The root entry with builtInIntegrations and the five value exports is deleted. wfgraph-plugins was updated by this branch: it says the package has no root entry, and its HIGH mistake covers importing from @wfgraph/plugins or passing an uncalled function.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/index.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/integrations.test.ts": {
+      "fingerprint": "201b5700c8bd47a23fea1a01c75eb09ccfd883dcd9d61c8607aa4d66f2786582",
+      "snapshot": {
+        "packages/plugins/src/integrations.test.ts": "64e2d48c77b34f74d7be7136d6f101838652454ca6d70582c7762576ecb83370"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The test that runs checkIntegration over all six built-ins and checks the five functions without options return one value; it replaces src/index.test.ts. Tests are no source of skill guidance (the spec's Batch 7 entry cites it as evidence).",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/integrations.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/client.test.ts": {
+      "fingerprint": "0bfae52dc26f02857cd68f94d0b5ec1174e771c22836f5d2ae62f99ef479caf7",
+      "snapshot": {
+        "packages/plugins/src/linear/client.test.ts": "423c9069f4948f0446570ba0afc63ea70a2eb3d0de00b7fa26365884965eaebb"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "New wire tests for the Linear GraphQL client: the POSTed documents and variables, and the decode of recorded responses. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/client.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/client.ts": {
+      "fingerprint": "1c204546a25321a2da354ddd99e9b68a3620653043ba7242a4cce5674f189af1",
+      "snapshot": {
+        "packages/plugins/src/linear/client.ts": "163acb5711550126576bc9000606c6f60ae5f3cc51f29e0c17e32e129b031afc"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The internal GraphQL client of the built-in Linear integration, now over callExternal with @linear/sdk removed. No skill teaches the built-ins' internals; the adopter-visible change is in the .changeset files (.changeset/linear-without-sdk.md: calls share callExternal's retry rules, creating an issue is sent once).",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/client.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/create-ticket.test.ts": {
+      "fingerprint": "db3f766c635d532e7fd650f37d34b577affc7c2858b57ad82db3800c87fb6693",
+      "snapshot": {
+        "packages/plugins/src/linear/create-ticket.test.ts": "86192276ded1211c48d5ff4f7d51a6a43a8b6cf7f32e12e3b12fdd6c6bb9cf72"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Create Ticket action tests, now over recordFetch answering per GraphQL operation. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/create-ticket.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/errors.test.ts": {
+      "fingerprint": "cfdf3db26031104be631c014e34620e67a9cb438866b0b530f5a93ffcc425c53",
+      "snapshot": {
+        "packages/plugins/src/linear/errors.test.ts": "419992a3298c8561f0ff0dbcfab00f7c8ffdae98104678e52dc9b6a9c62ca54e"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Tests of how a Linear GraphQL error envelope is read and worded. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/errors.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/errors.ts": {
+      "fingerprint": "02b708a60e2629dca2a049dd50b17b1996764147dca664bd3338c7abd5459798",
+      "snapshot": {
+        "packages/plugins/src/linear/errors.ts": "ea7108be23f6349698dc808774b541e82a46598ecdf34d57fbe5c72a7f5f4798"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Linear's GraphQL error envelope as an Effect Schema and the wording of a failed call, now over ExternalError in place of SDK errors. Internal to the Linear integration; no skill describes it.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/errors.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/find-issues.test.ts": {
+      "fingerprint": "c68a36e8a2c049e403799017a42415878b60455c04a76e4668e8bb21affd3189",
+      "snapshot": {
+        "packages/plugins/src/linear/find-issues.test.ts": "e471856936413b8fbc11f0c934e89e1ddb6180365e31a57559e2194c81d91300"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Find Issues action tests, now over recordFetch. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/find-issues.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/index.test.ts": {
+      "fingerprint": "1394df13d38dd6fb322b522f2403ec524a9f5fd2b353398329271836ee1c4f81",
+      "snapshot": {
+        "packages/plugins/src/linear/index.test.ts": "e0592ba7ecdd1812d8160ef865b55b05496e27b3a39f93bad9df64d148f75eeb"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Linear definition test; it now calls linear(). Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/index.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/index.ts": {
+      "fingerprint": "c4b6f21283142f5abe22ab4c900a101f1aa4db70bcf0672b23ec0fd8fd02cc2d",
+      "snapshot": {
+        "packages/plugins/src/linear/index.ts": "a8038bdac59891f6d6db081d60df7dc17d67db774c925b376eb5ec70652a9f28"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "The Linear integration is now linear(), returning one module-level definition, passes testLinear as test, and calls the GraphQL client in place of the SDK; action ids and output shapes are unchanged. wfgraph-plugins covers this export and says linear() returns the same definition every call and that Linear actions carry no test setting; both hold.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/index.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/responses.fixtures.ts": {
+      "fingerprint": "8af7c32fd1750a097b182cf67731e2a8aeed386fc9271400e08411bb1aff0c68",
+      "snapshot": {
+        "packages/plugins/src/linear/responses.fixtures.ts": "7b9b0e7e4e3012cadfc650d04b36eb0c837af4c1b04c5df48c41703f01e015db"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "A test-only module of Linear GraphQL response bodies used by the Linear tests. No package entry reaches it.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/responses.fixtures.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/test.test.ts": {
+      "fingerprint": "598fb95d9df67c299dec59fa7553f84a0cb287714f8a39e5d597445b8fb89d7b",
+      "snapshot": {
+        "packages/plugins/src/linear/test.test.ts": "1841cc0c4fdd769fbf191af9632b407eb1c464c26dbbdf4c2cf39bfcd279616b"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The test of Linear's connection test, now over recordFetch. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/test.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/linear/test.ts": {
+      "fingerprint": "a913d04a278619cb61d2540c3a72ac493222a3cb59df74c76c3c2b97d19fa51f",
+      "snapshot": {
+        "packages/plugins/src/linear/test.ts": "c95dae52fc76614dc5920b96db8a0c161afff5c070719431df63848f67e4c8e6"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Linear's internal connection test, now querying the viewer through the GraphQL client and callExternalAsync. Built-in internals, which no skill teaches.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/linear/test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/posthog/index.test.ts": {
+      "fingerprint": "88669dd343246d36f0bec173038b202018713951213bd506d96258342c60c67c",
+      "snapshot": {
+        "packages/plugins/src/posthog/index.test.ts": "9f132d6057621effec9023a6bd889e45578e58837aad0c7501880e9365b07451"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The PostHog definition test; it now reads the definition from posthog(). Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/posthog/index.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/posthog/index.ts": {
+      "fingerprint": "fa38e2ed7caf88588e30c9bb350c22531aa253296d3bda53ffc6b2be48421a37",
+      "snapshot": {
+        "packages/plugins/src/posthog/index.ts": "da4f75630d19230f89a9c32df1bca478b47728591dd7975c5a4be8711be2c081"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "PostHog is now posthog(), returning one module-level definition, and passes testPostHog statically as test. wfgraph-plugins covers this export and says posthog() returns the same definition on every call; its OAuth and POSTHOG_HOST claims are untouched by this diff.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/posthog/index.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/posthog/oauth.test.ts": {
+      "fingerprint": "7146f8b34cf1370cb61092fcad6a2c4de2963412b99289a1b620d67a1b8f9bb2",
+      "snapshot": {
+        "packages/plugins/src/posthog/oauth.test.ts": "9d68f76487c3c20a6286d5ba265c97ed85cd78f880c4779f4ada7935854cef4f"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The PostHog OAuth adapter test; it now reads oauth from posthog(). Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/posthog/oauth.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/resend/find-email.test.ts": {
+      "fingerprint": "ff6461bfe351956d1c35f69cfab5d0e1009145d8bfb4aa17918c4605a9e45f71",
+      "snapshot": {
+        "packages/plugins/src/resend/find-email.test.ts": "b53c8dc473520f64dbe82be35ce468bf189ce5df1a21b63f886d451139127ddf"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Resend Find Email tests; runAction now takes resend(). Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/resend/find-email.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/resend/index.test.ts": {
+      "fingerprint": "2053f09d328e040ea90e55f30e04a907c00f8388a06a43bc203602d504c81305",
+      "snapshot": {
+        "packages/plugins/src/resend/index.test.ts": "16c0d1e470644ae14237539b02a24a989add9321ce0e8700b9aa2349774e2691"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Resend definition test; it now calls resend(). Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/resend/index.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/resend/oauth.test.ts": {
+      "fingerprint": "66c4822b31da346043a601e56d7ce15659ef3fa2828d1f5fb57be4608d92704d",
+      "snapshot": {
+        "packages/plugins/src/resend/oauth.test.ts": "f3809dd41af4d3e288af946d65ff1add197fc63bf9998ecfdd9c5d51c8d96c8d"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Resend OAuth adapter test; it now reads oauth from resend(). Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/resend/oauth.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/twilio/index.test.ts": {
+      "fingerprint": "689f1aad3ba0f0405e0971af2b93c6df1fbb011baa8b66019f4068b9879eaa62",
+      "snapshot": {
+        "packages/plugins/src/twilio/index.test.ts": "f8644805bc4cadbb1d56bd494c36349411d6a354fc6fe06d0daa76dd092d3c73"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Twilio definition test; it now calls twilio(). Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/twilio/index.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/src/ui.ts": {
+      "fingerprint": "97c20f5daf5ac982f39a0d285fcd5887bc67d8012e43d3c831f6e0d1e460645f",
+      "snapshot": {
+        "packages/plugins/src/ui.ts": "546e2d051beff7b467646d6ce09fef1f4290af4298900abaa63c5fd9a87e6777"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "no-change",
+      "reason": "Only the header comment changed, to say a server imports integration entries such as @wfgraph/plugins/slack and carries no React. wfgraph-plugins says @wfgraph/plugins/ui is browser-only and that no integration entry imports React, which holds.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/src/ui.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:packages/plugins/tsdown.config.ts": {
+      "fingerprint": "27ab857de03f0076aa8df3debc0ba4e1a46d712719f631b9529dfc5e2d2e9d6f",
+      "snapshot": {
+        "packages/plugins/tsdown.config.ts": "f5124e7aca6db6c7c2666c1bf612e8db84c37e8f6dadb0c0578e84be4f4cc808"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The package's build configuration, now deriving one entry per subpath of the exports map. An adopter consumes the built entries, which wfgraph-plugins names, and never runs this file.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- packages/plugins/tsdown.config.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:scripts/plugins/worker-bundle.test.ts": {
+      "fingerprint": "add38a3dff554c698025abbb3d3031c5280daa241e5c692528f01a9dad0e21a8",
+      "snapshot": {
+        "scripts/plugins/worker-bundle.test.ts": "3afbc0d566ef4efc5235a138cfd27a6ea1b78cf65f2b3b1c4cadfd626126c902"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "A repository test that bundles each integration entry with wrangler's esbuild settings, refuses an import() of bundled code and holds each entry to a byte ceiling. A repository script an adopter never runs.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- scripts/plugins/worker-bundle.test.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:scripts/plugins/workspace-source-aliases.ts": {
+      "fingerprint": "6725d7a6aba56451107762a7ad25ec2c40ab94a0ea31ef1a9d136fc96c6e671c",
+      "snapshot": {
+        "scripts/plugins/workspace-source-aliases.ts": "e98c566a026d8e3dc0e6981016138982ff77e350aa1773e77f0f63e403d4c110"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "The Vite and Vitest source aliases for this repository: @wfgraph/plugins/ui resolves to src/ui.ts and @wfgraph/plugins/<name> to src/<name>/index.ts. Repository tooling an adopter never sees.",
+      "evidence": [
+        "git diff origin/main...718ca8a4 -- scripts/plugins/workspace-source-aliases.ts",
+        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+      ]
+    },
+    "source:tsconfig.build.json": {
+      "fingerprint": "0d775fea64fea09d5530e8e029c9f592fea20130617b69b18db1a4c281d77e69",
+      "snapshot": {
+        "tsconfig.build.json": "57b6ac05f8f72ae7f15d8955b03c0476086eb74a99a06818f35860aa3a655dfe"
+      },
+      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "outcome": "out-of-scope",
+      "reason": "Repository build paths: @wfgraph/plugins/ui and @wfgraph/plugins/* now map to src/ui.ts and src/*/index.ts, and the root mapping is gone. Repository configuration an adopter never sees.",
+      "evidence": ["git diff origin/main...718ca8a4 -- tsconfig.build.json"]
     }
   }
 }
