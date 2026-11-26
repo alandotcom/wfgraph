@@ -389,8 +389,6 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
     view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
   const title = () =>
     aside()?.querySelector("header h2")?.textContent ?? undefined;
-  const path = () =>
-    aside()?.querySelector('[data-slot="reveal-path"]')?.textContent;
   const rows = () => view.queryAllByTestId("workflow-run-summary-row");
   const show = async (next: WorkflowRouteSearch) => {
     await act(async () => {
@@ -434,7 +432,6 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
     queryClient,
     aside,
     title,
-    path,
     rows,
     show,
     back,

@@ -33,16 +33,6 @@ import {
 /** What a subject kind puts in the Inspector's header. */
 export type RevealHeaderModel = {
   title: string;
-  /**
-   * Ancestors of the shown object, outermost first, ending with the object.
-   * The header draws no path; the kinds still build one.
-   */
-  path: readonly string[];
-  /**
-   * The one ancestor in `path`, by index, that opens when pressed. The header
-   * draws no path, so nothing presses it; Back reaches the same place.
-   */
-  pathLink?: { index: number; onSelect: () => void } | undefined;
   /** A step's validation status or a run's status, in its signal color. */
   status: { text: string; tone: StatusTone } | null;
   /** Whether Back is offered. */

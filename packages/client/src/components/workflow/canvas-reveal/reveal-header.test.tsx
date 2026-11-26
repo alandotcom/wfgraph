@@ -62,7 +62,6 @@ function renderHeader() {
               controls={{ onBack: () => {}, titleRef: { current: null } }}
               model={{
                 title: "Send reminder",
-                path: ["Appointment reminders", "Send reminder"],
                 status: { text: "2 issues", tone: "warning" },
                 showsBack: false,
               }}
@@ -76,14 +75,13 @@ function renderHeader() {
 }
 
 describe("RevealHeader", () => {
-  it("names the step by number and title with its status, and draws no path", () => {
+  it("names the step by number and title with its status", () => {
     renderHeader();
     expect(screen.getByRole("heading", { name: "Send reminder" })).toBeTruthy();
     expect(
       document.querySelector('[data-slot="reveal-number"]')?.textContent
     ).toBe("1");
     expect(screen.getByText("2 issues")).toBeTruthy();
-    expect(screen.queryByText(/Appointment reminders/u)).toBeNull();
   });
 
   it("offers the step's commands in its ⋯ menu, without Edit", async () => {

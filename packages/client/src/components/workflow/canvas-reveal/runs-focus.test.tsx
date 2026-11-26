@@ -109,7 +109,6 @@ describe("Runs Focus node evidence", () => {
       store,
       aside,
       title,
-      path,
       escape,
       evidence,
       canvasNode,
@@ -123,7 +122,6 @@ describe("Runs Focus node evidence", () => {
     fireEvent.click(node);
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(title()).toBe("Send reminder");
-    expect(path()).toBeUndefined();
     expect(aside()?.querySelector("header")?.textContent).toContain(
       "Completed"
     );

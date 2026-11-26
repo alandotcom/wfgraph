@@ -54,8 +54,9 @@ describe("Runs Browse run list and selected run", () => {
       execution("exec_b", "completed", "appt_2"),
       execution("exec_a", "running"),
     ];
-    const { view, router, aside, title, path, rows, show } =
-      await renderRunsReveal({ view: "runs" });
+    const { view, router, aside, title, rows, show } = await renderRunsReveal({
+      view: "runs",
+    });
 
     // Runs opens no run by itself: the list shows, and the route stays put.
     await waitFor(() => expect(rows()).toHaveLength(2));
@@ -66,8 +67,6 @@ describe("Runs Browse run list and selected run", () => {
     // The run is named by its Entity Value, and its Event is a detail row.
     await waitFor(() => expect(title()).toBe(runHeading("exec_b", "appt_2")));
     expect(aside()?.getAttribute("aria-label")).toBe("Runs inspector");
-    // The Inspector's header draws no path.
-    expect(path()).toBeUndefined();
     expect(aside()?.querySelector("header")?.textContent).toContain(
       "Completed"
     );
@@ -93,12 +92,11 @@ describe("Runs Browse run list and selected run", () => {
       execution("exec_b", "completed"),
       execution("exec_a", "running"),
     ];
-    const { view, router, title, path, rows, back } = await renderRunsReveal({
+    const { view, router, title, rows, back } = await renderRunsReveal({
       view: "runs",
     });
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(title()).toBe("Runs");
-    expect(path()).toBeUndefined();
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
     expect(view.getByRole("button", { name: "Refresh" })).toBeTruthy();
 

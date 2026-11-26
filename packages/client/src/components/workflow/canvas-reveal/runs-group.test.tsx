@@ -66,7 +66,7 @@ describe("Runs Group summary", () => {
         }),
       ],
     };
-    const { view, store, router, aside, title, path, evidence, canvasNode } =
+    const { view, store, router, aside, title, evidence, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_f" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_f")));
 
@@ -74,7 +74,6 @@ describe("Runs Group summary", () => {
     const summary = await view.findByTestId("runs-group-summary");
     expect(aside()?.dataset.level).toBe("browse");
     expect(title()).toBe("Outreach");
-    expect(path()).toBeUndefined();
     expect(aside()?.querySelector("header")?.textContent).toContain("Failed");
     expect(
       within(summary).getByText("2 of 3 steps reached, 1 failed")
