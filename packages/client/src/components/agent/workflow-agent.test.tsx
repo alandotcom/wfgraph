@@ -22,7 +22,16 @@ import {
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { openReviewPageAtom } from "#src/lib/workflow-review-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  autosaveDelayAtom,
+  currentWorkflowIdAtom,
+  hasUnsavedChangesAtom,
+  workflowApiAtom,
+} from "#src/lib/workflow-save-store";
+import {
+  savedWorkflow,
+  unreadableDraft,
+} from "#src/lib/workflow-save-test-support";
 import {
   activeAgentTurnIdAtom,
   agentConversationOpenAtom,
@@ -377,14 +386,26 @@ describe("WorkflowAgentView", () => {
         });
       })
     );
+    // The agent's runtime writes to the application's store, which every test
+    // file in this worker shares. The agent's edit queues a draft save there,
+    // so this case saves through its own API under its own workflow id, and
+    // gives the store back empty once that save has answered.
     const store = appStore;
-    store.set(currentWorkflowIdAtom, "workflow_1");
+    const workflowId = "workflow_agent_edit";
+    const sharedApi = store.get(workflowApiAtom);
+    const sharedAutosaveDelay = store.get(autosaveDelayAtom);
+    store.set(workflowApiAtom, {
+      update: vi.fn(() => Promise.resolve(savedWorkflow(workflowId))) as never,
+      read: unreadableDraft,
+    });
+    store.set(autosaveDelayAtom, 0);
+    store.set(currentWorkflowIdAtom, workflowId);
     store.set(loadWorkflowGraphAtom, { nodes: [SEND_NODE], edges: [] });
     showWorkspaceRoute(store, {});
     render(
       <JotaiProvider store={store}>
         <ExtensionCatalogProvider value={emptyExtensionCatalog}>
-          <WorkflowAgentView variant="canvas" workflowId="workflow_1" />
+          <WorkflowAgentView variant="canvas" workflowId={workflowId} />
         </ExtensionCatalogProvider>
       </JotaiProvider>
     );
@@ -438,6 +459,11 @@ describe("WorkflowAgentView", () => {
     } finally {
       store.set(agentConversationOpenAtom, false);
       store.set(activeAgentTurnIdAtom, null);
+      await waitFor(() => expect(store.get(hasUnsavedChangesAtom)).toBe(false));
+      store.set(currentWorkflowIdAtom, null);
+      store.set(loadWorkflowGraphAtom, { nodes: [], edges: [] });
+      store.set(workflowApiAtom, sharedApi);
+      store.set(autosaveDelayAtom, sharedAutosaveDelay);
     }
   });
 });
