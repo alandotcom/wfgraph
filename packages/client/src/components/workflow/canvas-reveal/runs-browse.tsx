@@ -88,7 +88,7 @@ function runHeader(
   title: string,
   status: RevealHeaderModel["status"]
 ): RunsHeaderModel {
-  return { title, status, showsBack: true, backLabel: "Runs" };
+  return { title, name: null, status, showsBack: true, backLabel: "Runs" };
 }
 
 /**
@@ -107,6 +107,7 @@ function runsHeaderModel(input: {
   const { openRun, target, catalog } = input;
   const list: RunsHeaderModel = {
     title: "Runs",
+    name: null,
     status: null,
     showsBack: false,
     backLabel: null,
@@ -218,6 +219,7 @@ export function RunsMobileHeader({ state, controls }: MobileKindHeaderProps) {
       backLabel={model.backLabel}
       controls={controls}
       fullSheetLabel={MOBILE_EVIDENCE_LABEL}
+      name={null}
       status={model.status}
       title={model.title}
     />

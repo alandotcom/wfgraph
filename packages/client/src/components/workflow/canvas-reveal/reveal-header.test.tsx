@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { createStore, Provider as JotaiProvider } from "jotai";
+import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
@@ -16,9 +16,33 @@ import {
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
-import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
+import {
+  type WfGraphOperationId,
+  WfGraphOperationIds,
+} from "@wfgraph/shared/authorization/operations";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { RevealHeader } from "./reveal-header";
+import { RevealHeader, type RevealHeaderControls } from "./reveal-header";
+
+/**
+ * The header over the "send" step's stored label, as the shell builds it from
+ * the step kind's model, so a rename shows in the title as it is typed.
+ */
+function SendHeader({ controls }: { controls: RevealHeaderControls }) {
+  const label =
+    useAtomValue(nodesAtom).find((node) => node.id === "send")?.data.label ??
+    "";
+  return (
+    <RevealHeader
+      controls={controls}
+      model={{
+        title: label === "" ? "Send email" : label,
+        name: { nodeId: "send", label, fallback: "Send email" },
+        status: { text: "2 issues", tone: "warning" },
+        showsBack: false,
+      }}
+    />
+  );
+}
 
 // The ⋯ menu offers topology commands, which need the desktop layout, and
 // another file in the worker may have left happy-dom at phone width.
@@ -33,9 +57,10 @@ afterEach(resetAuthorizationGrantsForTests);
 
 function renderHeader(
   onClose: () => void = () => {},
-  selectedId: "send" | "group" = "send"
+  selectedId: "send" | "group" = "send",
+  grants: readonly WfGraphOperationId[] = WfGraphOperationIds
 ) {
-  installAuthorizationGrantsForTests(WfGraphOperationIds);
+  installAuthorizationGrantsForTests(grants);
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(loadWorkflowGraphAtom, {
@@ -85,16 +110,11 @@ function renderHeader(
       <QueryClientProvider client={new QueryClient()}>
         <ExtensionCatalogProvider value={emptyExtensionCatalog}>
           <OverlayProvider>
-            <RevealHeader
+            <SendHeader
               controls={{
                 onBack: () => {},
                 onClose,
                 titleRef: { current: null },
-              }}
-              model={{
-                title: "Send reminder",
-                status: { text: "2 issues", tone: "warning" },
-                showsBack: false,
               }}
             />
           </OverlayProvider>
@@ -109,6 +129,9 @@ describe("RevealHeader", () => {
   it("names the step by number and title with its status", () => {
     renderHeader();
     expect(screen.getByRole("heading", { name: "Send reminder" })).toBeTruthy();
+    expect(
+      (screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value
+    ).toBe("Send reminder");
     expect(
       document.querySelector('[data-slot="reveal-number"]')?.textContent
     ).toBe("1");
@@ -165,5 +188,62 @@ describe("RevealHeader", () => {
     renderHeader(onClose);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("renames the step as the title is typed, and Enter keeps the name", () => {
+    const store = renderHeader();
+    const field = screen.getByRole("textbox", { name: "Name" });
+    const labelOf = () =>
+      store.get(nodesAtom).find((node) => node.id === "send")?.data.label;
+
+    field.focus();
+    fireEvent.change(field, { target: { value: "Send confirmation" } });
+    expect(labelOf()).toBe("Send confirmation");
+
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(labelOf()).toBe("Send confirmation");
+    // Focus moves to the heading, so the next Escape is the Inspector's.
+    expect(document.activeElement).toBe(
+      document.querySelector('[data-slot="reveal-title"]')
+    );
+  });
+
+  it("puts the name back on Escape and keeps the Escape from the Inspector", () => {
+    const store = renderHeader();
+    const field = screen.getByRole("textbox", { name: "Name" });
+    const outer = vi.fn();
+    document.addEventListener("keydown", outer);
+    try {
+      field.focus();
+      fireEvent.change(field, { target: { value: "Send" } });
+      fireEvent.change(field, { target: { value: "" } });
+      // An empty label shows the kind's own name in its place.
+      expect((field as HTMLInputElement).placeholder).toBe("Send email");
+
+      fireEvent.keyDown(field, { key: "Escape" });
+    } finally {
+      document.removeEventListener("keydown", outer);
+    }
+
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "send")?.data.label
+    ).toBe("Send reminder");
+    expect(outer).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(
+      document.querySelector('[data-slot="reveal-title"]')
+    );
+  });
+
+  it("shows the name as plain text to a person who cannot edit the workflow", () => {
+    renderHeader(() => {}, "send", []);
+    expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Send reminder" })).toBeTruthy();
+  });
+
+  it("shows the name as plain text while an agent turn holds the draft", () => {
+    const store = renderHeader();
+    act(() => store.set(activeAgentTurnIdAtom, Symbol("turn")));
+    expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Send reminder" })).toBeTruthy();
   });
 });

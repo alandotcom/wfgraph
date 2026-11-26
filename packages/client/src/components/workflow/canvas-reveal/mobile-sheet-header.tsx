@@ -4,6 +4,7 @@ import { Button } from "#src/components/ui/button";
 import { statusToneTextClass } from "#src/components/workflow/workflow-run-shared";
 import { cn } from "@wfgraph/shared/utils";
 import type { RevealHeaderModel } from "./reveal-header";
+import { RevealTitle } from "./reveal-title";
 
 /**
  * What the mobile Reveal shell hands a sheet header. `back` runs Back, which
@@ -19,18 +20,21 @@ export type MobileSheetControls = {
 
 /**
  * The header of a mobile Reveal sheet. Back is named for the kind's
- * `backLabel`; without one, the sheet offers Close. The sheet's title and status follow,
+ * `backLabel`; without one, the sheet offers Close. The sheet's title, which
+ * renames a Draft object in place as the Inspector's does, and status follow,
  * and then the control named `fullSheetLabel` that opens the full sheet, shown when the sheet
  * offers one and the kind names the control.
  */
 export function MobileSheetHeader({
   title,
+  name,
   status,
   backLabel,
   fullSheetLabel,
   controls,
 }: {
   title: string;
+  name: RevealHeaderModel["name"];
   status: RevealHeaderModel["status"];
   backLabel: string | null;
   fullSheetLabel?: string | undefined;
@@ -53,14 +57,12 @@ export function MobileSheetHeader({
         </Button>
       )}
       <div className="min-w-0 flex-1 px-2">
-        <h2
-          className="truncate font-semibold text-sm outline-none"
-          data-slot="reveal-title"
-          ref={titleRef}
-          tabIndex={-1}
-        >
-          {title}
-        </h2>
+        <RevealTitle
+          name={name}
+          size="sheet"
+          title={title}
+          titleRef={titleRef}
+        />
         {status ? (
           <p
             className={cn("truncate text-xs", statusToneTextClass(status.tone))}
