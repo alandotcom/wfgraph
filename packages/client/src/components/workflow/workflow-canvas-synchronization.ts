@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkspaceKey } from "#src/lib/workflow-navigation-state";
 import type { WorkflowGraphUpdate } from "#src/lib/workflow-ui-store";
 export { lifecycleAnchorViewport } from "./workflow-viewport";
 
@@ -128,6 +129,24 @@ export function canvasViewportCorrectionKey({
     workspaceView,
     presentation,
   };
+}
+
+/**
+ * Whether the canvas stays hidden after placing the Draft it paints in Runs:
+ * true while the route names a run whose pinned graph has not arrived. The
+ * Draft would otherwise show under the run for the frames the graph takes to
+ * load, at its own placement, before the run's graph replaces it. With no run
+ * named the run list shows the Draft canvas itself, so it is shown at once.
+ */
+export function awaitsRunGraph(input: {
+  workspaceKey: WorkspaceKey;
+  runGraph: unknown;
+}): boolean {
+  return (
+    input.workspaceKey.workspace === "runs" &&
+    input.workspaceKey.executionId !== null &&
+    input.runGraph === null
+  );
 }
 
 /** Fit the full canvas after React Flow has installed a complete graph update. */

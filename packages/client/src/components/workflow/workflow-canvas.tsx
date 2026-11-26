@@ -110,6 +110,7 @@ import {
 import { WORKFLOW_NODE_WIDTH } from "#src/lib/workflow-node-dimensions";
 import { accessibleGraphElements } from "./workflow-canvas-accessibility";
 import {
+  awaitsRunGraph,
   canvasSynchronizationKey,
   canvasViewportCorrectionKey,
   synchronizeCanvasGraph,
@@ -273,6 +274,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     if (fittedWorkflowIdRef.current !== currentWorkflowId) {
       if (provisionalWorkflowIdRef.current === currentWorkflowId) {
         placeWorkflow(currentWorkflowId, lifecycle);
+        // The canvas waited hidden for this run's graph, and shows it placed
+        // in the same frame.
+        setReadyWorkflowId(currentWorkflowId);
       }
       return;
     }
@@ -422,6 +426,14 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           lifecycle,
           zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
         });
+      }
+      if (
+        awaitsRunGraph({
+          workspaceKey,
+          runGraph: resolvedWorkspacePresentation,
+        })
+      ) {
+        return;
       }
     }
     setReadyWorkflowId(currentWorkflowId);
