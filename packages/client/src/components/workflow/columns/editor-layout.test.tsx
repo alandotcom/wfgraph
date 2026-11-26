@@ -12,7 +12,7 @@ import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { revealPlacementRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { EditorLayout } from "./editor-layout";
 import {
-  detailsFloatOpenAtom,
+  inspectorOpenAtom,
   outlineFilterFocusRequestAtom,
   outlineHiddenAtom,
   phoneShowsMapAtom,
@@ -71,7 +71,7 @@ function renderLayout() {
 }
 
 function inspector(): HTMLElement | null {
-  return document.querySelector<HTMLElement>('[data-slot="details-float"]');
+  return document.querySelector<HTMLElement>('[data-slot="inspector-card"]');
 }
 
 function floatingOutline(): HTMLElement | null {
@@ -165,7 +165,7 @@ describe("EditorLayout", () => {
     act(() => store.set(selectOnlyNodeAtom, "send"));
     expect(inspector()?.dataset.open).toBe("true");
 
-    act(() => store.set(detailsFloatOpenAtom, false));
+    act(() => store.set(inspectorOpenAtom, false));
     expect(inspector()?.dataset.open).toBe("false");
 
     act(() => store.set(clearSelectionAtom));

@@ -90,7 +90,7 @@ export function UnplacedNodeIssues({ nodeId }: { nodeId: string }) {
  * action takes, each with the issues that name it beneath it, the action's
  * links, then its Label and Notes after a divider, and last any issue that
  * names no field. It holds settings only: disabling, duplicating and deleting
- * the step are commands of the details header's menu and the context menu.
+ * the step are commands of the Inspector header's ⋯ menu and the context menu.
  * Every value writes straight to the graph store, so the form can unmount and
  * mount again without losing an edit or skipping autosave.
  */

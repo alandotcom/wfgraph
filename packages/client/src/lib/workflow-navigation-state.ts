@@ -53,14 +53,14 @@ export type FormFactor = "desktop" | "mobile";
 export type WorldCamera = { centerX: number; centerY: number; zoom: number };
 
 /**
- * What the desktop details column shows in Runs: the run list or a run at
- * Browse, and a run node's evidence at Focus. A Draft object offers Browse
+ * What the desktop Inspector shows in Runs: a run at Browse, and a run
+ * node's evidence at Focus. A Draft object offers Browse
  * alone, which holds its editable form.
  */
 export type RevealLevel = "browse" | "focus";
 
 /**
- * Whether a selection decides what the details column inspects in a
+ * Whether a selection decides what the Inspector inspects in a
  * workspace. Draft follows its selection; a run address inspects the node
  * whose evidence it shows.
  */
@@ -68,11 +68,11 @@ export function revealFollowsSelection(workspace: WorkspaceView): boolean {
   return workspace === "draft";
 }
 
-/** The one node or edge the details column shows. */
+/** The one node or edge the Inspector shows. */
 export type InspectedObject = { kind: "node" | "edge"; id: string };
 
 /**
- * The node the details column jumped from to reach the inspected object, which
+ * The node the Inspector jumped from to reach the inspected object, which
  * Back returns to by selecting it again.
  */
 export type InspectedOrigin = { nodeId: string };
@@ -93,7 +93,7 @@ export type SelectionChange = { id: string; selected: boolean };
 export type FormFactorPresentation = { camera: WorldCamera | null };
 
 /**
- * The desktop presentation adds the details column. A null `revealLevel`
+ * The desktop presentation adds the Inspector. A null `revealLevel`
  * belongs to an address that has never set one, which shows Browse. `inspected`
  * is the object `inspectorScroll` (pixels from the top, per level) belongs to.
  * `inspectedOrigin` is where a jump to `inspected` started. It lasts while the
@@ -395,7 +395,7 @@ function withoutSelection(workspace: WorkspaceNavigation): WorkspaceNavigation {
   return withoutMobileSheets(withSelection(workspace, EMPTY_SELECTION));
 }
 
-/** Set the level the desktop details column shows Runs at. */
+/** Set the level the desktop Inspector shows Runs at. */
 export function withDesktopRevealLevel(
   workspace: WorkspaceNavigation,
   revealLevel: RevealLevel

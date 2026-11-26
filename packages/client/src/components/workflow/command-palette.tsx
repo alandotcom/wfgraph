@@ -377,7 +377,7 @@ function CommandPaletteDialog({
   const topologyAuthoring = useTopologyAuthoring();
   const store = useStore();
   // The palette's search box is gone once a row is chosen, so a row that
-  // selects a step asks the details column to put focus on the step's title.
+  // selects a step asks the Inspector to put focus on the step's title.
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const outline = useOutlineControls();
   const hintsId = useId();
@@ -641,7 +641,7 @@ function CommandPaletteDialog({
   });
 
   // The selected step's own commands come first, under the step's name, as
-  // its context menu and its details column offer them.
+  // its context menu and its Inspector offer them.
   const rootGroups: readonly PaletteGroup[] =
     selectedStepCommands === null
       ? rootPageGroups

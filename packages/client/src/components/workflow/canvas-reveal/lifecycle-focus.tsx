@@ -253,10 +253,10 @@ export function LifecycleFocus({ subject, scrollToTop }: RevealBodyProps) {
 }
 
 /**
- * The Lifecycle inspector in the details column: the Start's one form, then
+ * The Lifecycle Node's body in the Inspector: the Start's one form, then
  * its label after a divider, then any of the node's issues that no rule
  * shows beneath itself. Focus moves into a rule a person adds through the
- * column's field request, which scrolls only when the rule is out of view.
+ * Inspector's field request, which scrolls only when the rule is out of view.
  */
 function LifecycleEditorBody({
   node,
@@ -291,7 +291,7 @@ function LifecycleEditorBody({
 }
 
 /**
- * The inspector of the Lifecycle Node in the details column, keyed to the
+ * The Lifecycle Node's body in the Inspector, keyed to the
  * node so the form's pickers start clean for each Lifecycle Node.
  */
 export function LifecycleEditor({ subject, focusField }: RevealBodyProps) {

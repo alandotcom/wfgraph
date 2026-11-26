@@ -728,7 +728,7 @@
 }
 
 /* Every control in the mobile Reveal sequence answers a finger. Its bodies are
-   the ones the details column shows on desktop at compact heights, so this raises
+   the ones the Inspector shows on desktop at compact heights, so this raises
    each button, checkbox, switch, select trigger and text field inside the
    sequence to the 44px touch target instead of giving each body a second set
    of sizes. Text fields also read at 1rem, below which iOS zooms the page when

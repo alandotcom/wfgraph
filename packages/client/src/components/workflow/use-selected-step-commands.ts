@@ -43,7 +43,7 @@ export type SelectedStepCommands = {
 };
 
 /**
- * The commands the selected step's context menu and details column offer, for
+ * The commands the selected step's context menu and Inspector offer, for
  * the command palette, each named with the step: Edit, Disable or Enable,
  * Duplicate, Delete, Add step after it on each outlet, and Move up and down
  * its sequence. Null with no step selected, outside Draft, and for a person

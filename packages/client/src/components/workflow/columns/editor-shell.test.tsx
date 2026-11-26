@@ -104,7 +104,7 @@ describe("EditorShell", () => {
     renderEditor();
     expect(
       document
-        .querySelector('[data-slot="details-float"]')
+        .querySelector('[data-slot="inspector-card"]')
         ?.contains(screen.getByTestId("details-body"))
     ).toBe(true);
     expectOnlyTheInspectorBodyScrolls();

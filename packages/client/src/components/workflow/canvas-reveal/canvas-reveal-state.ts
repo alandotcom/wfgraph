@@ -1,5 +1,5 @@
 /**
- * What the details column and the mobile Reveal sheets show, derived from the
+ * What the Inspector and the mobile Reveal sheets show, derived from the
  * active address's selection, presented graph, and stored desktop
  * presentation, and the write that moves Runs between a run and a node's
  * evidence. Levels create no history entry.
@@ -139,7 +139,7 @@ function showsSheet(input: {
 
 /**
  * The mobile Reveal state while the viewport is below `md`, and null at wider
- * viewports, where the details column shows the selection.
+ * viewports, where the Inspector shows the selection.
  */
 export function useShownMobileReveal(): MobileRevealState | null {
   const isMobile = useIsMobile();
@@ -147,7 +147,7 @@ export function useShownMobileReveal(): MobileRevealState | null {
   return isMobile ? state : null;
 }
 
-/** Show one level of the details column for the active address. */
+/** Show one level of the Inspector for the active address. */
 export const showCanvasRevealLevelAtom = atom(
   null,
   (get, set, level: RevealLevel) => {

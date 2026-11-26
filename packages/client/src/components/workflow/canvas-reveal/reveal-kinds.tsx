@@ -1,5 +1,5 @@
 /**
- * The subject kinds the details column and the phone's sheets can show, one
+ * The subject kinds the Inspector and the phone's sheets can show, one
  * record each: `header` builds the header, `unwind` answers Back and Escape,
  * `mobile` adapts the sheets below `md`, and `shellOwnsScroll` names the
  * body's scroller. The shell keys the body by kind, so one component
@@ -92,7 +92,7 @@ export type RevealBodyProps = {
   scrollToTop: () => void;
   /**
    * The mobile Reveal sheet the body shows on below `md`, or null when the
-   * details column shows it. The shell passes it so a body reads the sheet
+   * Inspector shows it. The shell passes it so a body reads the sheet
    * without importing the state module, which imports every kind.
    */
   mobile: MobileRevealState | null;

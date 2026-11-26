@@ -700,9 +700,9 @@ export function ToolbarPublishControls({
         </div>
       ) : null}
       {state.canUpdate && mobileReveal === null ? (
-        // Hidden at `md` and wider, the breakpoint that shows the details
-        // column in place of the mobile sheets, so this button and the
-        // details column are never on screen together. An open mobile Reveal sheet already shows
+        // Hidden at `md` and wider, the breakpoint that shows the Inspector
+        // in place of the mobile sheets, so this button and the Inspector are
+        // never on screen together. An open mobile Reveal sheet already shows
         // the selection, so the button is absent while one shows.
         <ControlTooltip label="Configuration">
           <Button

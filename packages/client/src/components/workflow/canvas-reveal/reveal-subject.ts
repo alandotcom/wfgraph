@@ -1,5 +1,5 @@
 /**
- * The subjects the details column can show, and the pure rules that recognize each
+ * The subjects the Inspector can show, and the pure rules that recognize each
  * kind in a selection. `reveal-kinds.tsx` pairs each rule with what the shell
  * renders for that kind.
  */
@@ -46,7 +46,7 @@ export type RevealSubject = {
   nodeId: string | null;
   placement: RevealPlacement;
   /**
-   * The levels the desktop details column offers, Browse first. A Draft
+   * The levels the desktop Inspector offers, Browse first. A Draft
    * subject offers Browse alone, which holds its editable form.
    */
   levels: readonly RevealLevel[];
@@ -341,7 +341,7 @@ const CONDITION_RULE_FIELD_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The element the details column focuses in an editor for an issue naming
+ * The element the Inspector focuses in an editor for an issue naming
  * `fieldKey`, on a subject of kind `kind`. A Condition's two rule config keys
  * both resolve to its rule builder; every other kind focuses the field the
  * issue named. Both the issue list inside Reveal and the workflow issues
@@ -358,7 +358,7 @@ export function revealFocusTarget(
 }
 
 /**
- * The level the details column presents: the stored level limited to the
+ * The level the Inspector presents: the stored level limited to the
  * levels the subject offers, and Browse with no subject. A Focus level stored
  * for a Draft object, which offers Browse alone, presents Browse.
  */

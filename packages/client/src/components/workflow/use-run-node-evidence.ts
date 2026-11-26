@@ -122,7 +122,7 @@ export function useRunGroupSummary(
 }
 
 /**
- * Show a run node's evidence from outside the canvas, in the details column or
+ * Show a run node's evidence from outside the canvas, in the Inspector or
  * the mobile evidence inspector. A node in the pinned graph is selected on the
  * one canvas, its Group drawn in place if the viewer collapsed it, and placed
  * in view. A node the pinned graph lacks, or any node while

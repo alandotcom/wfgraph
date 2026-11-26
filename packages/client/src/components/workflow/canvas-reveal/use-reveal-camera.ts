@@ -25,10 +25,10 @@ import { revealPlacementRequestAtom } from "./reveal-requests";
 
 /**
  * The pixels covered at the right of the canvas element: by the review sheet,
- * which overlays the canvas from the editor's right edge, or by details
- * floating over the canvas, whichever covers more, and 0 while neither shows.
- * Floating details states its width with its inset, because it may still be
- * sliding in when the camera measures.
+ * which overlays the canvas from the editor's right edge, or by the Inspector
+ * card, whichever covers more, and 0 while neither shows. The Inspector card
+ * states its width with its inset, because it may still be sliding in when the
+ * camera measures.
  */
 function coveredRightWidth(canvas: HTMLElement): number {
   const sheet = document.querySelector('[data-slot="review-sheet"]');
@@ -40,21 +40,21 @@ function coveredRightWidth(canvas: HTMLElement): number {
           canvas.getBoundingClientRect().right -
             sheet.getBoundingClientRect().left
         );
-  const floating = Number(
+  const inspector = Number(
     document
-      .querySelector<HTMLElement>('[data-slot="details-float"]')
+      .querySelector<HTMLElement>('[data-slot="inspector-card"]')
       ?.getAttribute("data-covers-width") ?? 0
   );
-  return Math.max(sheetOverlap, Number.isFinite(floating) ? floating : 0);
+  return Math.max(sheetOverlap, Number.isFinite(inspector) ? inspector : 0);
 }
 
 /**
  * Answers each placement request once: the command palette, an issue, an
- * outline row, a jump between scopes, the review sheet, and a selection while
- * details floats over the canvas ask for nodes to be shown. The camera moves
- * the least it must to bring those nodes fully into the canvas, clear of the
- * controls floating over it, the review sheet and floating details, so a node
- * already in view moves nothing. A docked column never moves it. It only calls
+ * outline row, a jump between scopes, the review sheet, and a selection that
+ * opens the Inspector ask for nodes to be shown. The camera moves the least it
+ * must to bring those nodes fully into the canvas, clear of the controls
+ * floating over it, the review sheet and the Inspector card, so a node already
+ * in view moves nothing. It only calls
  * `setViewport`: no layout runs and no node moves. A request waits until its
  * address shows, the canvas can be placed, and React Flow holds every node it
  * names. `canvas` is the element React Flow fills.

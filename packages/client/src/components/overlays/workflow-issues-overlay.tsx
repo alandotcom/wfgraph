@@ -57,7 +57,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
   const totalIssues = workflowIssueCount(issues);
 
   const handleGoToStep = (nodeId: string, fieldKey?: string) => {
-    // `onGoToStep` opens the step in the details column, or in the mobile Reveal
+    // `onGoToStep` opens the step in the Inspector, or in the mobile Reveal
     // sequence on a phone, so the list closes to show it.
     onGoToStep(nodeId, fieldKey);
     closeAll();

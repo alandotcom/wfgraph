@@ -16,7 +16,7 @@ import { openingViewport, revealViewport } from "./workflow-viewport";
  * Places the camera where a workflow opens, or where a workspace view with no
  * remembered camera starts, in one `setViewport` with no animation. The graph
  * is placed by `openingViewport` inside the usable canvas: the canvas less the
- * controls floating over it. Then the nodes the details column's subject
+ * controls floating over it. Then the nodes the Inspector's subject
  * names, or on a run that stopped the step where it stopped, move the least
  * distance that keeps them inside that usable canvas. A step inside a collapsed Group is placed by its Group card.
  *

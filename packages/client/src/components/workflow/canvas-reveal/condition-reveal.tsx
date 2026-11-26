@@ -283,7 +283,7 @@ export function ConditionSummarySheet({
  * rules edited in place beneath it with the issues that name them under them,
  * both branch destinations, every available input, then its Label and Notes
  * after a divider. Every edit writes to the graph store. Disabling and
- * deleting it are commands of the details header's menu and the context menu.
+ * deleting it are commands of the Inspector header's ⋯ menu and the context menu.
  */
 export function ConditionEditor({ subject }: RevealBodyProps) {
   const { nodeId } = subject;

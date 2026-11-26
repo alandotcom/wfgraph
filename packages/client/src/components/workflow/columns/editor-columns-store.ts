@@ -26,7 +26,7 @@ export const outlineHiddenAtom = atom(false);
  * nothing left to unwind close it while the subject stays selected, and
  * pressing a step on the canvas or its outline row opens it again.
  */
-export const detailsFloatOpenAtom = atom(false);
+export const inspectorOpenAtom = atom(false);
 
 /**
  * Whether Cmd+F or "Find a step" has asked for the outline's filter field and

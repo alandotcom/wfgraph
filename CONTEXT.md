@@ -457,8 +457,9 @@ An integration-owned Event names the one it arrives through.
 
 **Action Link**:
 A labelled URL a host action declares, naming a page the host serves, such as a
-preview of the email a node will send. The editor shows it in the node's
-inspector, and fills in the open workflow's id and the node's id.
+preview of the email a node will send. The editor shows it in the Inspector
+while the node is selected, and fills in the open workflow's id and the node's
+id.
 Workflow Graph renders nothing behind it and calls no host code when it is
 followed; the host's page reads the node's saved draft with `readDraftNode`
 after its own authorization.

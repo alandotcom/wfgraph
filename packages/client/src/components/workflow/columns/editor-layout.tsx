@@ -10,10 +10,7 @@ import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reve
 import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
-import {
-  detailsFloatOpenAtom,
-  phoneShowsMapAtom,
-} from "./editor-columns-store";
+import { inspectorOpenAtom, phoneShowsMapAtom } from "./editor-columns-store";
 import {
   useFindStepShortcut,
   useOutlineControls,
@@ -98,7 +95,7 @@ function InspectorCard({
       className="absolute inset-y-2 right-2 z-20 flex flex-col overflow-clip rounded-xl border bg-card shadow-lg transition-transform duration-200 ease-out motion-reduce:transition-none"
       data-covers-width={open ? INSPECTOR_WIDTH_PX + INSPECTOR_INSET_PX : 0}
       data-open={open}
-      data-slot="details-float"
+      data-slot="inspector-card"
       inert={!open}
       style={{
         width: INSPECTOR_WIDTH_PX,
@@ -159,7 +156,7 @@ function ComposerBox({
  */
 function useInspectorFollowsSubject(input: { enabled: boolean }): boolean {
   const store = useStore();
-  const [open, setOpen] = useAtom(detailsFloatOpenAtom);
+  const [open, setOpen] = useAtom(inspectorOpenAtom);
   const requestPlacement = useSetAtom(requestRevealPlacementAtom);
   const reveal = useAtomValue(canvasRevealAtom);
   const selectedNodeCount = useAtomValue(activeSelectionAtom).nodeIds.length;

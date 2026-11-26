@@ -25,7 +25,7 @@ import {
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
 import {
   activeSelectionAtom,
@@ -68,7 +68,7 @@ function useCloseInspector(): () => void {
         )
       )?.focus({ preventScroll: true });
     }
-    store.set(detailsFloatOpenAtom, false);
+    store.set(inspectorOpenAtom, false);
   };
 }
 

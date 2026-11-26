@@ -396,7 +396,7 @@ describe("cameraStep", () => {
   });
 });
 
-describe("details column state", () => {
+describe("Inspector state", () => {
   const nodeSelection = (id: string) => ({ nodeIds: [id], edgeIds: [] });
   const EMPTY = workspaceNavigationAt(
     EMPTY_WORKFLOW_NAVIGATION,
