@@ -87,6 +87,8 @@ export function WorkflowContextMenu({
   const nodeItems = useStepMenuItems({
     nodeId: menuState?.type === "node" ? menuState.nodeId : undefined,
     selectedIds: menuState?.selectedIds ?? new Set<string>(),
+    naming: "name",
+    withEdit: true,
   });
 
   // Deleting a connection is one undo step, as deleting a step is, so it

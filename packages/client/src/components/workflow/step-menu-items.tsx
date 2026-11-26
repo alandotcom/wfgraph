@@ -62,9 +62,21 @@ import { deleteGroupWithStepsConfirmation } from "./group-delete-confirmation";
  */
 type StepMenuGroup = "edit" | "add" | "arrange" | "delete";
 
+/** Which command a menu row runs. */
+type StepMenuItemId =
+  | "edit"
+  | "toggle-enabled"
+  | `add-after-${string}`
+  | "copy"
+  | "duplicate"
+  | "group"
+  | "ungroup"
+  | "toggle-collapsed"
+  | "delete";
+
 /** One command a step's menus offer, with everything a menu needs to draw it. */
 export type StepMenuItem = {
-  id: string;
+  id: StepMenuItemId;
   label: string;
   icon: ReactNode;
   group: StepMenuGroup;
@@ -95,6 +107,17 @@ function stepsNoun(count: number): string {
 export function useStepMenuItems(input: {
   nodeId: string | undefined;
   selectedIds: ReadonlySet<string>;
+  /**
+   * How a row names its subject. A context menu names the step, as in
+   * "Disable Send reminder". The Inspector's header already names it, so
+   * its ⋯ menu names the kind, as in "Disable step" or "Duplicate group".
+   */
+  naming: "name" | "kind";
+  /**
+   * Whether to offer Edit, which opens the Inspector on the subject. The
+   * Inspector's own ⋯ menu leaves it out.
+   */
+  withEdit: boolean;
 }): readonly StepMenuItem[] {
   const interaction = useCanvasInteraction();
   const canInsert = interaction.insertsNodes;
@@ -171,14 +194,19 @@ export function useStepMenuItems(input: {
   const nodeLabel = node.data.label || "Step";
   const isLifecycle = node.data.type === "lifecycle";
   const isGroup = isGroupNode(node);
+  // The word a row ends on in place of the subject's name: its kind under
+  // "kind" naming, for a step or a Group. The Lifecycle node keeps its name.
+  const kind = isGroup ? "group" : isLifecycle ? null : "step";
+  const subject = input.naming === "kind" && kind !== null ? kind : nodeLabel;
   const isDisabled = node.data.enabled === false;
   const grouping = analyzeGroupableSelection({
     nodes,
     edges,
     selectedIds: input.selectedIds,
   });
-  const items: StepMenuItem[] = [
-    {
+  const items: StepMenuItem[] = [];
+  if (input.withEdit) {
+    items.push({
       id: "edit",
       label: `Edit ${nodeLabel}`,
       icon: <SlidersHorizontal />,
@@ -193,14 +221,14 @@ export function useStepMenuItems(input: {
         });
         requestEditFocus({ nodeId, targetId: editFocusTarget(node) });
       },
-    },
-  ];
+    });
+  }
   // A step switches on and off by itself, inside a Group or outside one. A
   // frame is organization only and has no enabled state of its own.
   if (node.data.type === "action") {
     items.push({
       id: "toggle-enabled",
-      label: `${isDisabled ? "Enable" : "Disable"} ${nodeLabel}`,
+      label: `${isDisabled ? "Enable" : "Disable"} ${subject}`,
       icon: isDisabled ? <Eye /> : <EyeOff />,
       group: "edit",
       run: () => updateNodeData({ id: nodeId, data: { enabled: isDisabled } }),
@@ -234,7 +262,10 @@ export function useStepMenuItems(input: {
     },
     {
       id: "duplicate",
-      label: "Duplicate",
+      label:
+        input.naming === "kind" && kind !== null
+          ? `Duplicate ${kind}`
+          : "Duplicate",
       icon: <CopyPlus />,
       group: "arrange",
       shortcut: keys.duplicate,
@@ -292,7 +323,7 @@ export function useStepMenuItems(input: {
         }
       : {
           id: "delete",
-          label: `Delete ${nodeLabel}`,
+          label: `Delete ${subject}`,
           icon: <Trash2 />,
           group: "delete",
           destructive: true,
