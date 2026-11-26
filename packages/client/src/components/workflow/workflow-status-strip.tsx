@@ -109,7 +109,7 @@ function StripDivider() {
 function StatusItems({ children }: { children: React.ReactNode }) {
   return (
     // `overflow-x-auto` rather than `overflow-hidden`: the save label sits last
-    // and would otherwise be the first thing a narrowing column made
+    // and would otherwise be the first thing a narrowing window made
     // unreachable, which is exactly the item that changes on its own. The
     // scrollbar is hidden because this row's height is fixed and a classic
     // scrollbar would eat half of it.

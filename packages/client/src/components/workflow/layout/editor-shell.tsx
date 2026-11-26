@@ -28,7 +28,7 @@ export function EditorShell({ children }: { children: ReactNode }) {
           The frame carries the shadow outside that clip and the same radius, so
           the shell fills it exactly and the two curves are one curve. */}
       <div className="size-full bg-background md:rounded-xl md:shadow-xs">
-        {/* The editor shell: the toolbar over the canvas column.
+        {/* The editor shell: the toolbar over the canvas and the status strip.
 
             Three things hold the contents inside the corner, and all three are
             needed. The radius and `overflow-clip` clip an ordinary child.

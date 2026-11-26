@@ -343,8 +343,9 @@ Coverage of `docs/embedding.md` by section:
   backend".
 - Covered by cloudflare-worker: "Cloudflare Workers and Hyperdrive" with its
   four subsections, and the Worker use of "PostgreSQL migrations".
-- Assessed and left without a skill: "Workspaces and columns" (named
-  "Workspaces and Canvas Reveal" before batch 9) and "On a phone" describe the
+- Assessed and left without a skill: "Workspaces and the canvas" (named
+  "Workspaces and Canvas Reveal" before batch 9 and "Workspaces and columns"
+  from batch 9 until the floating Inspector) and "On a phone" describe the
   editor for the people who use it and hold no adopter code task. "Package exports" is a reference table that each skill's entry points
   already name.
 - Open: the build agent options in "createWfGraphApp options" and "API

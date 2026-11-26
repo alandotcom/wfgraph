@@ -53,9 +53,9 @@ describe("RunsOutline", () => {
     fireEvent.click(view.getByRole("button", { name: "Back to runs" }));
     await waitFor(() => expect(rows()).toHaveLength(2));
 
-    const column = view.getByTestId("editor-outline");
+    const outline = view.getByTestId("editor-outline");
     expect(
-      within(column).getAllByTestId("workflow-run-summary-row")
+      within(outline).getAllByTestId("workflow-run-summary-row")
     ).toHaveLength(2);
     expect(title()).toBeUndefined();
     expect(aside()?.textContent).toBe("");
@@ -132,10 +132,10 @@ describe("RunsOutline", () => {
       executionId: "exec_v",
     });
     await waitFor(() => expect(title()).toBe(runHeading("exec_v")));
-    const column = view.getByTestId("editor-outline");
+    const outline = view.getByTestId("editor-outline");
     await waitFor(() =>
       expect(
-        within(column).getByText(
+        within(outline).getByText(
           "Steps as of v2, so a number can differ from the draft."
         )
       ).toBeTruthy()
@@ -143,6 +143,6 @@ describe("RunsOutline", () => {
 
     await show({ view: "runs", executionId: "exec_d" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_d")));
-    expect(column.querySelector('[data-slot="run-steps-version"]')).toBeNull();
+    expect(outline.querySelector('[data-slot="run-steps-version"]')).toBeNull();
   });
 });

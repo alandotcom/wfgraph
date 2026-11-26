@@ -118,7 +118,7 @@ describe("EditorLayout", () => {
     renderLayout();
 
     const box = canvasBox();
-    // Nothing docks beside the canvas: the box is the layout's only column.
+    // The canvas box is the layout's only child; the rest floats inside it.
     expect(
       [
         ...document.querySelectorAll<HTMLElement>(
