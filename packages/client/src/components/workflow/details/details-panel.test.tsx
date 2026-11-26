@@ -987,6 +987,27 @@ function stubFieldBox(input: { fieldId: string; top: number }): void {
   );
 }
 
+/**
+ * Every element above the Inspector body, up to the document, kept its scroll
+ * at the origin. A focus move or scroll that reached any of them would carry
+ * the editor, toolbar included, under the pointer.
+ */
+function expectNoAncestorScrolled(body: HTMLElement | null | undefined): void {
+  const scrolled: string[] = [];
+  for (
+    let element = body?.parentElement ?? null;
+    element !== null;
+    element = element.parentElement
+  ) {
+    if (element.scrollTop !== 0 || element.scrollLeft !== 0) {
+      scrolled.push(element.dataset.slot ?? element.tagName);
+    }
+  }
+  expect(scrolled).toEqual([]);
+  expect(window.scrollX).toBe(0);
+  expect(window.scrollY).toBe(0);
+}
+
 describe("details panel subjects and focus return", () => {
   it("hands focus to the selected node on Escape when it has none to step back to", async () => {
     const { view, store, escape } = await renderReveal();
@@ -1062,6 +1083,7 @@ describe("details panel subjects and focus return", () => {
     const body = aside()?.querySelector<HTMLElement>(".overflow-y-auto");
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(body?.scrollTop).toBe(320);
+    expectNoAncestorScrolled(body);
     vi.restoreAllMocks();
   });
   it("holds a field request while the card is closed and answers it once a press opens it", async () => {
@@ -1107,9 +1129,9 @@ describe("details panel subjects and focus return", () => {
 
     // A field already in view stays under the pointer.
     expect(scrollIntoView).not.toHaveBeenCalled();
-    expect(
-      aside()?.querySelector<HTMLElement>(".overflow-y-auto")?.scrollTop
-    ).toBe(0);
+    const body = aside()?.querySelector<HTMLElement>(".overflow-y-auto");
+    expect(body?.scrollTop).toBe(0);
+    expectNoAncestorScrolled(body);
     const subjectFocus = focus.mock.contexts.findIndex(
       (element) => (element as HTMLElement).id === "subject"
     );
