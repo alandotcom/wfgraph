@@ -12,12 +12,18 @@ import {
 } from "#src/components/ui/dropdown-menu";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import {
+  type StepMenuItem,
   startsGroup,
   useStepMenuItems,
 } from "#src/components/workflow/step-menu-items";
 import { can } from "#src/lib/authorization";
 import { stepNumbersAtom } from "#src/lib/step-numbers";
-import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
+import {
+  canvasEditingLockedAtom,
+  nodesAtom,
+} from "#src/lib/workflow-graph-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
@@ -67,12 +73,45 @@ function useCloseInspector(): () => void {
 }
 
 /**
+ * A row's label in the Inspector's ⋯ menu. The header already names the
+ * subject, so the rows that name it on the canvas's context menu ("Disable
+ * Send reminder") name its kind here instead: "Disable step", "Duplicate
+ * step", "Delete step", or "Duplicate group" for a Group.
+ */
+function inspectorMenuLabel(
+  item: StepMenuItem,
+  node: WorkflowNode | undefined
+): string {
+  const noun =
+    node?.data.type === "action"
+      ? "step"
+      : node && isGroupNode(node)
+        ? "group"
+        : null;
+  if (noun === null) {
+    return item.label;
+  }
+  if (item.id === "toggle-enabled") {
+    return `${node?.data.enabled === false ? "Enable" : "Disable"} ${noun}`;
+  }
+  if (item.id === "duplicate") {
+    return `Duplicate ${noun}`;
+  }
+  // A Group's delete row already says what it removes.
+  if (item.id === "delete" && noun === "step") {
+    return "Delete step";
+  }
+  return item.label;
+}
+
+/**
  * The ⋯ menu of a Draft step, Group or Lifecycle node: the commands its
  * context menu on the canvas offers, from the same source, less Edit, since
  * the Inspector already shows its editor.
  */
 function StepActionsMenu({ nodeId }: { nodeId: string }) {
   const locked = useAtomValue(canvasEditingLockedAtom);
+  const node = useAtomValue(nodesAtom).find((item) => item.id === nodeId);
   const topologyAuthoring = useTopologyAuthoring();
   const canEdit =
     can(WfGraphOperations.workflowUpdate.id) && !locked && topologyAuthoring;
@@ -110,7 +149,7 @@ function StepActionsMenu({ nodeId }: { nodeId: string }) {
               variant={item.destructive ? "destructive" : "default"}
             >
               {item.icon}
-              {item.label}
+              {inspectorMenuLabel(item, node)}
               {item.shortcut && !item.disabled ? (
                 <DropdownMenuShortcut>{item.shortcut}</DropdownMenuShortcut>
               ) : null}

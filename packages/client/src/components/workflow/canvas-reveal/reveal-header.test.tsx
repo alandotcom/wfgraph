@@ -91,13 +91,15 @@ describe("RevealHeader", () => {
     const items = (await screen.findAllByRole("menuitem")).map(
       (item) => item.textContent
     );
-    expect(items).toContain("Disable Send reminder");
+    // The header names the step, so each row names its kind instead.
+    expect(items).toContain("Disable step");
     expect(items).toContain("Add step after");
-    expect(items.some((item) => item?.startsWith("Duplicate"))).toBe(true);
-    expect(items).toContain("Delete Send reminder");
+    expect(items.some((item) => item?.startsWith("Duplicate step"))).toBe(true);
+    expect(items).toContain("Delete step");
+    expect(items.some((item) => item?.includes("Send reminder"))).toBe(false);
     expect(items.some((item) => item?.startsWith("Edit"))).toBe(false);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: /^Disable/u }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Disable step/u }));
     expect(
       store.get(nodesAtom).find((node) => node.id === "send")?.data.enabled
     ).toBe(false);

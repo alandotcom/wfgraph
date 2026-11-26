@@ -364,8 +364,11 @@ the step's number and title, its status or issue count, a ⋯ menu, and
 **Close**. It draws no path. The ⋯ menu of a Draft step, Group or Lifecycle
 node holds the commands its context menu on the canvas offers, from the same
 source, less Edit: Disable or Enable, Add step after on each outlet, Copy,
-Duplicate, Group, Ungroup, Collapse or Expand group, and Delete. The body
-scrolls inside the card while the header stays put.
+Duplicate, Group, Ungroup, Collapse or Expand group, and Delete. The header
+already names the subject, so a row names its kind where the context menu
+names the step: **Disable step**, **Duplicate step**, **Delete step**, and
+**Duplicate group** for a Group. The body scrolls inside the card while the
+header stays put.
 
 The build agent works on the whole workflow, so it sits on the canvas rather
 than in the Inspector. In Draft and Runs, for a viewer who may use it on
