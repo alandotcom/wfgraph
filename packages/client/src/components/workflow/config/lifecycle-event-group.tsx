@@ -182,9 +182,9 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
 
   return (
     <ConfigGroup
-      help={[...copy.help, entityIdentityCopy].map((sentence) =>
-        sentence === undefined ? null : <p key={sentence}>{sentence}</p>
-      )}
+      help={compact([...copy.help, entityIdentityCopy]).map((sentence) => (
+        <p key={sentence}>{sentence}</p>
+      ))}
       label={copy.label}
       prominent
       trailing={
