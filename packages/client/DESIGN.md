@@ -381,13 +381,13 @@ removes it, and nothing is attached unless the person attaches it. Every fit
 and every camera placement keeps the graph above the line and above the 24px
 row that chip adds, so selecting a step never covers a card the fit placed. A sent
 message shows its attached step above it in the thread. The command palette's
-**Agent** and **Describe it to the agent** put the cursor in the line. Opening
+**Agent** puts the cursor in the line. Opening
 or closing the conversation moves no camera and no column, and neither ever
 changes the canvas box. Opening a workflow, Fit view, and a placement keep
 cards clear of the line. While the review sheet is open the line and the
 conversation hide, since the canvas is read-only then.
 
-A workflow that holds only its Lifecycle Node shows its starting moves one rank below that card, in a dashed block on the canvas: one line saying it has no steps yet, then **Choose what starts it**, **Add step**, and **Describe it to the agent** when the host runs the build agent. The first opens the Lifecycle node with its Start Events editor open and leaves once a Start Event or schedule exists. The block leaves once the workflow has a step. The build agent's empty conversation offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
+A workflow that holds only its Lifecycle Node draws nothing more on the canvas: choosing what starts it is the details column's, adding a step is the outline's **Add a step** row and the start card's +, and the agent's prompt line sits at the foot of the canvas. The build agent's empty conversation offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
 
 On a phone the zoom controls sit in a row along the bottom edge. The zoom
 controls draw on the card surface, so the graph never shows through them.

@@ -81,7 +81,6 @@ import {
 } from "#src/lib/workflow-workspace-navigation";
 import { editFocusTarget } from "./canvas-reveal/reveal-edit-target";
 import { requestRevealEditFocusAtom } from "./canvas-reveal/reveal-requests";
-import { EmptyWorkflowStart } from "./empty-workflow-start";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasConnections } from "./use-canvas-connections";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
@@ -731,9 +730,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
               }
             />
           </Panel>
-          {/* A workflow with nothing but its Lifecycle Node shows how to
-                begin, wherever the canvas can add a step. */}
-          {interaction.insertsNodes ? <EmptyWorkflowStart /> : null}
           {showMinimap && (
             // maskColor and nodeColor default to hardcoded light-mode values that
             // never invert: the viewport rectangle was invisible in light (1.05:1)

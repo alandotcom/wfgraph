@@ -32,7 +32,6 @@ import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
-import { commandPaletteAtom } from "#src/lib/command-palette-store";
 import {
   beginPublicationReviewAtom,
   clearPublicationReviewAtom,
@@ -455,43 +454,28 @@ describe("canvas selection", () => {
 });
 
 describe("an empty workflow", () => {
-  const lifecycleOnly: WorkflowNode[] = [
-    {
-      id: "life",
-      type: "lifecycle",
-      position: { x: 400, y: 0 },
-      data: { label: "", type: "lifecycle" },
-    },
-  ];
-
-  it("offers its starting moves below the Lifecycle Node", async () => {
-    const { view, store } = await renderEditor("", {
+  // Each starting move has one place: what starts it in the details column,
+  // a step from the outline's Add a step row and the start card's +, and the
+  // agent from its prompt line. The canvas draws no block of its own.
+  it("draws no starting block on the canvas", async () => {
+    const lifecycleOnly: WorkflowNode[] = [
+      {
+        id: "life",
+        type: "lifecycle",
+        position: { x: 400, y: 0 },
+        data: { label: "", type: "lifecycle" },
+      },
+    ];
+    const { view } = await renderEditor("", {
       nodes: lifecycleOnly,
       edges: [],
     });
 
-    const start = await view.findByRole("region", {
-      name: "Start this workflow",
-    });
-    expect(
-      within(start).getByRole("button", { name: "Choose what starts it" })
-    ).toBeTruthy();
-    // No agent runs in this host, so the block does not offer one.
-    expect(
-      within(start).queryByRole("button", { name: "Describe it to the agent" })
-    ).toBeNull();
-
-    fireEvent.click(within(start).getByRole("button", { name: "Add step" }));
-    expect(store.get(commandPaletteAtom)?.pages.at(-1)?.id).toBe("add-step");
-  });
-
-  it("leaves once the workflow has a step", async () => {
-    const { view } = await renderEditor();
-
-    await view.findByTestId("action-node-route");
+    await view.findByTestId("canvas-area");
     expect(
       view.queryByRole("region", { name: "Start this workflow" })
     ).toBeNull();
+    expect(view.queryByRole("button", { name: "Add step" })).toBeNull();
   });
 });
 

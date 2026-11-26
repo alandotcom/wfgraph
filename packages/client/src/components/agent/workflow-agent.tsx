@@ -355,8 +355,7 @@ function AgentSurface({
     }
   });
 
-  // The palette's Agent command and "Describe it to the agent" ask for the
-  // line with the cursor in it.
+  // The palette's Agent command asks for the line with the cursor in it.
   useAfterPaint(focusRequest?.sequence ?? 0, () => {
     if (focusRequest === null) {
       return;

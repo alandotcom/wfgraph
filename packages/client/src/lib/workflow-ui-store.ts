@@ -78,7 +78,7 @@ export const agentComposerFocusRequestAtom =
 
 /**
  * Focus the agent's composer and open its conversation, as the palette's
- * Agent command and "Describe it to the agent" do.
+ * Agent command does.
  */
 export const focusAgentComposerAtom = atom(null, (get, set, text?: string) => {
   set(agentConversationOpenAtom, true);
