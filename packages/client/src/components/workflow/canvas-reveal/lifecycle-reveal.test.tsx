@@ -38,6 +38,7 @@ import {
   loadWorkflowGraphAtom,
   nodesAtom,
   selectOnlyNodeAtom,
+  undoAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
@@ -420,6 +421,53 @@ describe("Lifecycle form", () => {
       )
     );
     expect(document.activeElement?.textContent).toBe("Filter the arrivals");
+  });
+
+  it("offers Only start when again after backing out without a filter", async () => {
+    const { view } = await renderLifecycle({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: [],
+      concurrency: "unlimited",
+    });
+
+    addRule(view, "Only start when…");
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe(
+        lifecycleFilterTargetId("start-events")
+      )
+    );
+
+    expect(offeredRules(view)).toContain("Only start when…");
+  });
+
+  it("keeps an added rule while the person empties it, and drops it once Undo leaves it unset", async () => {
+    const { view, store, region, rulesNow } = await renderLifecycle({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: [],
+      concurrency: "unlimited",
+    });
+    const addSchedule = () =>
+      fireEvent.click(
+        within(region("On a schedule")).getByRole("button", {
+          name: "Add schedule",
+        })
+      );
+
+    addRule(view, "On a schedule…");
+    addSchedule();
+    fireEvent.click(view.getByRole("button", { name: "Remove schedule 1" }));
+    // Emptied from inside the form, the rule keeps its controls.
+    expect(rulesNow()?.schedules).toBeUndefined();
+    expect(view.getByRole("heading", { name: "On a schedule" })).toBeTruthy();
+
+    addSchedule();
+    expect(rulesNow()?.schedules).toHaveLength(1);
+    act(() => {
+      store.set(undoAtom);
+    });
+    expect(rulesNow()?.schedules).toBeUndefined();
+    expect(view.queryByRole("heading", { name: "On a schedule" })).toBeNull();
+    expect(offeredRules(view)).toContain("On a schedule…");
   });
 
   it("removes a set rule from its label row as one undoable edit", async () => {

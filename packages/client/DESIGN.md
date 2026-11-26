@@ -512,7 +512,9 @@ when…" (Cancel Events), "If a run is already in progress…" (Overlapping runs
 "On a schedule…", "One run per…" (the tracked Entity) and "Only while the
 record matches…" (its eligibility rule). Choosing one shows that rule's
 controls in place and moves focus into them, scrolling only as far as bringing
-them into view needs; a rule added and left empty stays until it is removed. A
+them into view needs; a rule added and left empty stays until it is removed or
+a write from outside the form, such as Undo or the build agent, leaves it
+unset. A
 rule goes by that one name in its menu item and its label. CONTEXT.md keeps the
 domain nouns for the same rules. A set rule's **Remove**, a small control on
 its label row, puts it back to its default, every arrival starting its own run,

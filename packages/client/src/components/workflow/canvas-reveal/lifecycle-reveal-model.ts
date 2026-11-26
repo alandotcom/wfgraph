@@ -118,6 +118,14 @@ const RULE_IS_SET: Readonly<
   eligibility: (rules) => rules.entityEligibility !== undefined,
 };
 
+/** Whether the rule `choice` adds is set in `rules`. */
+export function lifecycleRuleIsSet(
+  choice: LifecycleRuleChoice,
+  rules: LifecycleRules
+): boolean {
+  return RULE_IS_SET[choice.id](rules);
+}
+
 /**
  * The rules "Add a rule" offers for `rules`: each one not set yet. "Only
  * start when…" waits for a Start Event, since a Start Filter reads one.
