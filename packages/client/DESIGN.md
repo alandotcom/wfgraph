@@ -350,7 +350,7 @@ connection, a Group, the Lifecycle node, or in Runs an open run or a run node.
 Two or more selected steps close it, since their commands are the context
 menu's. It closes when the selection clears, on its **Close**
 control, and on Escape with nothing left to step back through, which returns
-focus to the selected step's outline row as before. Pressing a step on the
+focus to the selected step's outline row. Pressing a step on the
 canvas or its outline row opens it again. Selecting something else while it is
 open replaces its content in place, and the card does not move or resize. In
 Draft with nothing selected, and on the run list, there is no card; the
