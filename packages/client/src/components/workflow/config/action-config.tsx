@@ -55,7 +55,7 @@ import { ActionConfigRenderer } from "./action-config-renderer";
 import type { ConfigOptionsOwner } from "#src/lib/config-options-query";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigHelp } from "./config-section";
-import { FieldIssueMessages } from "./field-issues";
+import { FieldIssueMessages, useFieldRevealed } from "./field-issues";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
 import {
@@ -149,6 +149,9 @@ export function ConditionFields({
     },
     [onUpdateConfig]
   );
+  // A Condition whose rules do not compile stores no `condition`, which is
+  // the required field a refused Run draft or Publish names.
+  const revealUnfinished = useFieldRevealed("condition");
 
   return (
     <ConditionBuilderRow
@@ -161,6 +164,7 @@ export function ConditionFields({
       // on a node called Condition said nothing about which way True leads.
       label="Continue when"
       onChange={handleChange}
+      revealUnfinished={revealUnfinished}
       // The one condition row mounted straight into the panel's column, so its
       // header is the one that may pin while the rules below it scroll.
       stickyHeader

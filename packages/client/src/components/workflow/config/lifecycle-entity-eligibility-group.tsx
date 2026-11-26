@@ -26,7 +26,8 @@ import { whenChosen } from "#src/lib/select-choice";
 import { lifecycleRuleTargetId } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigGroup, ConfigHelp, RemoveGroupButton } from "./config-section";
-import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
+import { lifecycleCheckFieldKey } from "#src/lib/required-field-errors";
+import { FieldIssueMessages, useFieldRevealed } from "./field-issues";
 import type { LifecycleRuleGroupProps } from "./use-lifecycle-rules-editor";
 import {
   START_RULE_NAMES,
@@ -281,6 +282,9 @@ export function LifecycleEntityEligibilityGroup({
   onRemove,
 }: LifecycleRuleGroupProps<"entity-eligibility">) {
   const { rules, catalog, setRules: onChange } = editor;
+  const revealUnfinished = useFieldRevealed(
+    lifecycleCheckFieldKey("entity_eligibility")
+  );
   const tracked = rules.trackedEntity;
   const eligibility = rules.entityEligibility;
   const entity = tracked ? findEntity(catalog, tracked.type) : undefined;
@@ -465,6 +469,7 @@ export function LifecycleEntityEligibilityGroup({
               emptyFieldsMessage={`The ${entityLabel} has no fields available for an eligibility rule.`}
               fields={entityFields}
               label={`Only while the ${lowerFirst(entityLabel)} matches`}
+              revealUnfinished={revealUnfinished}
               // Entity Eligibility refuses a set comparison on a string field
               // with no enum values, so the builder does not offer one.
               setOperatorsRequireEnumValues

@@ -104,6 +104,7 @@ function ControlledRow({
   initialValue,
   onChange = vi.fn(),
   setOperatorsRequireEnumValues,
+  revealUnfinished = false,
   disabled = false,
 }: {
   fields: ConditionSelectableField[];
@@ -112,6 +113,7 @@ function ControlledRow({
     | ((next: { model: string; expression: string }) => void)
     | undefined;
   setOperatorsRequireEnumValues?: boolean | undefined;
+  revealUnfinished?: boolean | undefined;
   disabled?: boolean | undefined;
 }) {
   const [value, setValue] = useState(initialValue);
@@ -128,6 +130,7 @@ function ControlledRow({
         setValue(next.model);
         onChange(next);
       }}
+      revealUnfinished={revealUnfinished}
       setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
       stickyHeader
       value={value}
@@ -143,6 +146,8 @@ function renderRow(
     setOperatorsRequireEnumValues?: boolean | undefined;
     /** A person who may not edit, who reads the rules as text. */
     disabled?: boolean | undefined;
+    /** A Run draft or Publish was refused for these rules. */
+    revealUnfinished?: boolean | undefined;
   }
 ) {
   return render(
@@ -152,6 +157,7 @@ function renderRow(
         initialValue={initialValue}
         onChange={onChange}
         disabled={options?.disabled}
+        revealUnfinished={options?.revealUnfinished}
         setOperatorsRequireEnumValues={options?.setOperatorsRequireEnumValues}
       />
     </ExtensionCatalogProvider>
@@ -728,7 +734,9 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
   // canvas badges it and Publish refuses it; this is the surface that has to say
   // why.
   it("names a rule whose value is still blank", () => {
-    const view = renderRow(DONOR_FIELDS, stringRule("email", ""));
+    const view = renderRow(DONOR_FIELDS, stringRule("email", ""), undefined, {
+      disabled: true,
+    });
 
     expect(view.getByText("Text conditions require a value")).toBeTruthy();
   });
@@ -736,7 +744,9 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
   it("says nothing about a rule that is ready to run", () => {
     const view = renderRow(
       DONOR_FIELDS,
-      stringRule("email", "ada@example.com")
+      stringRule("email", "ada@example.com"),
+      undefined,
+      { disabled: true }
     );
 
     expect(view.queryByText("Text conditions require a value")).toBeNull();
@@ -1228,6 +1238,7 @@ describe("ConditionBuilderRow removal", () => {
           fields={APPOINTMENT_FIELDS}
           label="Continue when"
           onChange={vi.fn()}
+          revealUnfinished={false}
           value={storedModel("appointment.id")}
         />
       </ExtensionCatalogProvider>
@@ -1343,5 +1354,106 @@ describe("ConditionBuilderRow value width", () => {
     expect(
       value?.closest<HTMLElement>('[data-slot="condition-rule"]')?.className
     ).toContain("minmax(min-content,1fr)");
+  });
+});
+
+describe("ConditionBuilderRow unfinished rules wait", () => {
+  const PATIENT_FIELDS: ConditionSelectableField[] = [
+    field("occurredAt", "Created", { type: "timestamp" }),
+    field("patientName", "Created"),
+  ];
+
+  function blankRule(): string {
+    return serializeConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "g",
+          logic: "and",
+          conditions: [
+            {
+              id: "r",
+              field: "occurredAt",
+              fieldType: "timestamp",
+              operator: "within_next",
+              amount: 1,
+              unit: "days",
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  function issues(view: RenderResult): string[] {
+    return view
+      .queryAllByText(
+        (_, element) =>
+          element?.getAttribute("data-slot") === "condition-rule-issue"
+      )
+      .map((element) => element.textContent ?? "");
+  }
+
+  /** The rule's text value, which a TemplateBadgeInput draws as a textbox. */
+  function valueField(view: RenderResult): HTMLElement {
+    const cell = view.container.querySelector<HTMLElement>(
+      '[data-slot="condition-rule-value"]'
+    );
+    const control = cell?.querySelector<HTMLElement>(
+      '[contenteditable="true"], input'
+    );
+    if (!control) {
+      throw new Error("The rule has no value field");
+    }
+    return control;
+  }
+
+  it("says nothing while a rule given a text field is being filled in", () => {
+    const view = renderRow(PATIENT_FIELDS, blankRule());
+
+    chooseField(view, "patientName");
+
+    expect(issues(view)).toEqual([]);
+    expect(view.queryByText("Text conditions require a value")).toBeNull();
+  });
+
+  it("names the blank value once the value field is left empty", async () => {
+    const view = renderRow(PATIENT_FIELDS, blankRule());
+    chooseField(view, "patientName");
+
+    const value = valueField(view);
+    fireEvent.focus(value);
+    fireEvent.blur(value);
+
+    await vi.waitFor(() => {
+      expect(issues(view)).toEqual(["Text conditions require a value"]);
+    });
+  });
+
+  it("names the blank value at once after a refused Run draft or Publish", () => {
+    const view = renderRow(PATIENT_FIELDS, blankRule(), undefined, {
+      revealUnfinished: true,
+    });
+
+    chooseField(view, "patientName");
+
+    expect(issues(view)).toEqual(["Text conditions require a value"]);
+  });
+
+  it("waits again when a left rule is given a new field", async () => {
+    const view = renderRow(PATIENT_FIELDS, blankRule());
+    chooseField(view, "patientName");
+    const value = valueField(view);
+    fireEvent.focus(value);
+    fireEvent.blur(value);
+    await vi.waitFor(() => {
+      expect(issues(view)).toHaveLength(1);
+    });
+
+    chooseField(view, "occurredAt");
+    chooseField(view, "patientName");
+
+    expect(issues(view)).toEqual([]);
   });
 });
