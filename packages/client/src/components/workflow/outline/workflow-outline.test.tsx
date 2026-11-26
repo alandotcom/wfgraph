@@ -222,15 +222,13 @@ function row(name: string): HTMLElement {
 }
 
 describe("WorkflowOutline", () => {
-  it("says under Starts when what a newer start does to the run in progress", async () => {
+  it("names the start and its event in the Start's row, and leaves what a newer start does to the Start form", async () => {
     renderOutline({ concurrency: "newest-wins" });
-    const view = within(await tree());
+    await tree();
 
-    expect(
-      view.getByText(
-        "A newer Appointment created ends the run in progress. Its steps not yet reached never run."
-      )
-    ).toBeTruthy();
+    const start = row("On Appointment created");
+    expect(start.textContent).not.toContain("ends the run in progress");
+    expect(start.querySelector('[data-slot="overlap"]')).toBeNull();
   });
 
   it("lists the seeded workflow in run order with numbers, outlet labels and sections", async () => {

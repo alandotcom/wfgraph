@@ -364,32 +364,4 @@ describe("workflowOutline", () => {
       "1 A · Send Patient Message",
     ]);
   });
-
-  it("says what a newer start does to the run in progress, in the workflow's own nouns", () => {
-    const tracked = (concurrency: "newest-wins" | "first-wins" | "unlimited") =>
-      workflowOutline({
-        nodes: [
-          lifecycle({
-            startEvents: [CREATED],
-            concurrency,
-            trackedEntity: {
-              type: "patient",
-              bindings: { [CREATED]: "patientId" },
-            },
-          }),
-        ],
-        edges: [],
-        catalog,
-      }).starts[0];
-    const overlapOf = (row: OutlineRow | undefined) =>
-      row?.kind === "lifecycle" ? row.overlap : undefined;
-
-    expect(overlapOf(tracked("newest-wins"))).toBe(
-      "A newer Appointment created for the same patient ends the run in progress. Its steps not yet reached never run."
-    );
-    expect(overlapOf(tracked("first-wins"))).toBe(
-      "While a run is in progress, a newer Appointment created for the same patient starts no run."
-    );
-    expect(overlapOf(tracked("unlimited"))).toBeNull();
-  });
 });

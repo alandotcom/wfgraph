@@ -9,12 +9,16 @@ import type { EventMetadata, ExtensionCatalog } from "#src/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import {
   conditionRulesPhrase,
+  overlappingRunsSentence,
   summarizeWorkflow,
   type WorkflowSummary,
   type WorkflowSummaryLine,
 } from "#src/graph/workflow-summary";
 import { eventSplitOutlet } from "#src/lifecycle/event-split";
-import type { LifecycleRules } from "#src/lifecycle/lifecycle-rules";
+import {
+  type LifecycleRules,
+  readLifecycleRules,
+} from "#src/lifecycle/lifecycle-rules";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
 const CREATED = "app/appointment.created";
@@ -523,5 +527,32 @@ describe("conditionRulesPhrase", () => {
     ).toBeNull();
     expect(conditionRulesPhrase({})).toBeNull();
     expect(conditionRulesPhrase({ conditionModel: "{not json" })).toBeNull();
+  });
+});
+
+describe("overlappingRunsSentence", () => {
+  const sentence = (concurrency: LifecycleRules["concurrency"]) =>
+    overlappingRunsSentence(
+      readLifecycleRules(
+        lifecycle({
+          startEvents: [CREATED],
+          concurrency,
+          trackedEntity: { type: "patient", bindings: { [CREATED]: "id" } },
+        }).data.config
+      ),
+      catalog
+    );
+
+  it("says what a newer start does to the run in progress, in the workflow's own nouns", () => {
+    expect(sentence("newest-wins")).toBe(
+      "A newer Appointment created for the same patient ends the run in progress. Its steps not yet reached never run."
+    );
+    expect(sentence("first-wins")).toBe(
+      "While a run is in progress, a newer Appointment created for the same patient starts no run."
+    );
+  });
+
+  it("has nothing to say when every arrival starts a run of its own", () => {
+    expect(sentence("unlimited")).toBeNull();
   });
 });
