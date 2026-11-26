@@ -458,16 +458,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-canvas.tsx": {
-      "fingerprint": "b1e90d8f9341883ceb3fb279cdde0a18739e35d60774c231295f2a653292cdbd",
+      "fingerprint": "5adba04eabc02aae096303fb4bc79ddf6a2c160a6ccba102a623d7ae7919d23b",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-canvas.tsx": "5b2cf762b0dcb62fccc386c74325c75584192343020192d6ccd8b0ab3d197484"
+        "packages/client/src/components/workflow/workflow-canvas.tsx": "f8bed08717cbebf981d5f889f3ae17307607611727e1afb1adb0dc8d86b7835a"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/workflow-canvas.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/workflow-canvas.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-draft-sync.test.tsx": {
@@ -824,15 +824,16 @@
       ]
     },
     "source:packages/client/src/lib/workflow-ui-store.ts": {
-      "fingerprint": "ba65385c6a71a440c180c7de952c99fc20cf6e8e47e2727aeb56c744168554c3",
+      "fingerprint": "586397435ffc80ae64178e753f6acbdea90d8d7931d6dfab8e1d11c4a73ea5b7",
       "snapshot": {
-        "packages/client/src/lib/workflow-ui-store.ts": "85f4b1289ef22d209908878e242d633806aa3f5c69b4971c9c8a5af909d2bcd8"
+        "packages/client/src/lib/workflow-ui-store.ts": "6de37c3cbb726f294fa0006af4be7f1fb8956cc7b8c953f8d8b0095196216c57"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client: the empty workflow's starting block removed from the canvas, Version history and Review changes kept in the publication chip's menu only, and DESIGN.md and comments to match. Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..cbefcd44 -- packages/client/src/lib/workflow-ui-store.ts"
+        "packages/client/src/lib/workflow-ui-store.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/routes/workflows/[workflowId]/page.tsx": {
@@ -2915,16 +2916,16 @@
       ]
     },
     "source:CONTEXT.md": {
-      "fingerprint": "bb3882bee14fd545e575f2a230c0efdfa66ef141e88a47d6e427fd19845a7624",
+      "fingerprint": "d2c35f9e156157c5bd1e63c71c227e0f157d72346c010dfed0410e3a8d2f540e",
       "snapshot": {
-        "CONTEXT.md": "615513ef9dbee662cb69ad6b46fe603dc3237ae4a44bf5830f886fdd088aaa12"
+        "CONTEXT.md": "7485e863391cc99211df9e6c23a6633fa7f0357a3a83d1ef171cdabdef4fe12f"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "CONTEXT.md is the repository's domain vocabulary; its edits rename editor terms (outline, Inspector, canvas) that no published skill teaches, and host-actions already uses \"Inspector\".",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff origin/main -- CONTEXT.md touches editor vocabulary entries only",
-        "grep of packages/core/skills and packages/plugins/skills for details column finds nothing"
+        "CONTEXT.md",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/agent/src/prompt.ts": {
@@ -2950,15 +2951,16 @@
       ]
     },
     "source:packages/core/src/backend/agent/publication-validation.test.ts": {
-      "fingerprint": "38aafbdf4d8b1a1dedf707a01fcb3fbc109fc48d8eea4ab3e4b26b94659126d7",
+      "fingerprint": "09d64e741fe6f902352b58f2131fa26067ee031c8cbd25993d6f9e9d83f06bf9",
       "snapshot": {
-        "packages/core/src/backend/agent/publication-validation.test.ts": "b1e9edeedb9a15cdc32de7ea436b6bfa1d3f3b6886bc5a08eacf54a2d45240d9"
+        "packages/core/src/backend/agent/publication-validation.test.ts": "2579c72b36f1bbe722f5e0505b678f5919296d4b9a16d8d8e2f3ece7fd076d8b"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
-      "outcome": "no-change",
-      "reason": "Build agent internals and their tests (publication validation wording, chat wiring). No provider option, runner contract or grant the build-agent skill teaches changed here.",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/core/src/backend/agent/publication-validation.test.ts"
+        "packages/core/src/backend/agent/publication-validation.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/core/src/backend/agent/publication-validation.ts": {
@@ -3073,15 +3075,16 @@
       ]
     },
     "source:packages/shared/src/graph/workflow-issues.ts": {
-      "fingerprint": "630ac2a6815d5d9a58aa1f695055d84fd5398f516b99df13103ad87d11797dbf",
+      "fingerprint": "cd960571ad09061650051f2359465d21b4eaefa80f32886f104033a4a078fa6b",
       "snapshot": {
-        "packages/shared/src/graph/workflow-issues.ts": "ba187a3c394a82bacffdfad52050a9d7456d2e3706159ddce16811442ae3dc48"
+        "packages/shared/src/graph/workflow-issues.ts": "c037edc8fcf59c2de79e6b334510476f88a4fa6fdf0ed6fae06ae3ee74b299b1"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
-      "outcome": "no-change",
-      "reason": "Shared graph, outline, layout, summary, Group and time helpers for the editor and its messages. Group rules a draft save or Publish enforces are unchanged, and no skill teaches these helpers.",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/shared/src/graph/workflow-issues.ts"
+        "packages/shared/src/graph/workflow-issues.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
@@ -3699,16 +3702,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/node-config-panel.test.tsx": {
-      "fingerprint": "8c6f0de53f39fe54faf4793cdaa2b9a6c2ad1eb1ef1ab4417ca8f1cc63e679ae",
+      "fingerprint": "54c003ce5f02829a2e65ebbc8790d7f1db66d8c7e582f33cec43f0aaa68b6d8b",
       "snapshot": {
-        "packages/client/src/components/workflow/node-config-panel.test.tsx": "ec1804768d275f415cf8f67172025b70c44ae5266580275be45e86225847603c"
+        "packages/client/src/components/workflow/node-config-panel.test.tsx": "47f874c5f2d3aa3919ca04570ae5d9c81ce1a04863795373c52f8ca783397a6e"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/node-config-panel.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/node-config-panel.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-draft-sync.tsx": {
@@ -6843,15 +6846,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-builder-row.test.tsx": {
-      "fingerprint": "fe7887d34ee76a0a54e177eb00873e793f75067a6cc6da279291b40a78547991",
+      "fingerprint": "e6351ca22148b60aa49ca0ad15d14ba6ca21d2d323ca249d5569bb79007edd4d",
       "snapshot": {
-        "packages/client/src/components/workflow/config/condition-builder-row.test.tsx": "48aa25a35e40a5dd4989cd36c86cb8a0a95e1c8dee5e85fc884b4580029f204b"
+        "packages/client/src/components/workflow/config/condition-builder-row.test.tsx": "d231974741078a7e227f394692a8fde550fe85facfd58221d9bd499d76fc4e48"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/config/condition-builder-row.test.tsx"
+        "packages/client/src/components/workflow/config/condition-builder-row.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-field-combobox.tsx": {
@@ -7022,16 +7026,16 @@
       ]
     },
     "source:packages/shared/src/conditions/condition-compile.ts": {
-      "fingerprint": "af73005a0711c981dcb4f7aa4fcfdf3afefd8f44e1b11fbd4769906bcd1af7a0",
+      "fingerprint": "dec74983499a34032fcea2cb41f554f04febf3042809f932bdcde4f1ca53f50e",
       "snapshot": {
-        "packages/shared/src/conditions/condition-compile.ts": "94d66f7e64699a6eb382d1403d88994f5cd1d36770fa5f1311e0841bb6f1ab56"
+        "packages/shared/src/conditions/condition-compile.ts": "8dc89513bfc25e966527e6b0df4ab0ec3804e766f40c05561de2ed9e8df9974c"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "packages/shared/src/conditions/condition-compile.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/shared/src/conditions/condition-model.ts": {
@@ -7048,16 +7052,16 @@
       ]
     },
     "source:packages/shared/src/conditions/conditions.test.ts": {
-      "fingerprint": "dcf90e5e9ef03518c23d2f76b2c87d1e5dfaa621f3eb92e08b9bd5bd82994523",
+      "fingerprint": "8135a97ad54d30ed0c66ef1d2ba2685233246cec6bc78345f3dc02a7c557ae07",
       "snapshot": {
-        "packages/shared/src/conditions/conditions.test.ts": "cfa5c8262a675e97ccb7d59319d41e9fe6ecac2c0c2bf19922107a343b044ba7"
+        "packages/shared/src/conditions/conditions.test.ts": "4fe2e99697073a13a4911433fd98bbba43e368a106148cd709eafb8450a9166c"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "packages/shared/src/conditions/conditions.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/shared/src/conditions/conditions.ts": {
@@ -7764,16 +7768,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/node-properties-form.tsx": {
-      "fingerprint": "b8cd7a916e2a07b4301139039d5acf689575976dbd72e04092880c8e79c914a5",
+      "fingerprint": "6ec5a0f8bc9cc0fbcf1c337c88fb0cca8b2dc38c24fae43d4381ad8264545b66",
       "snapshot": {
-        "packages/client/src/components/workflow/node-properties-form.tsx": "7d3ba0dd8ece866b4762bdad78ae60e9955a1a5a4f7beb9f9c5fc715309c0ee4"
+        "packages/client/src/components/workflow/node-properties-form.tsx": "5f54fdac605ae2c08ef286f23630d995262f1feccc50dbbbaa579e7cdae92bae"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/node-properties-form.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/node-properties-form.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/vite.config.ts": {
@@ -7969,42 +7973,42 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx": {
-      "fingerprint": "918924629093dc255b9912649d532d8668b1c0e6e3294cde30702723882f94a5",
+      "fingerprint": "8bc7bd0236eaccba4e27211679866062ff5dc66e15cb7152f3de9e1e10824a9e",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx": "cf8e4d0680a52d9e29d2286cb41b4cb97e43c0633858df5a1e87d0f0f358bed1"
+        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx": "baaebfb7a377cfac01a9c0b0f06e75c57a3a1e1f6396b5c5d652bc7f8f636482"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx": {
-      "fingerprint": "22499f516effa8cf61ce2debd8ea0f6863845edd13d33f8a6b1940cb2b3164bb",
+      "fingerprint": "14ca956d0b40f30fb8385da7f24a6b8acb22f2f017ef9bcb49a0b317529f3401",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx": "f3193453278d59ee7438bb92b854d10a572acc770f991dc745e2f1dc3e48d25b"
+        "packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx": "618ae0a0c5e315cb7bb97244f6ecab9ea800a15d3df4e26e4657bc2933279110"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": {
-      "fingerprint": "badf3701eed9e7ee6c6a5b517eaa9d1f06c0f2d4697ccc73436908a4d9e7226a",
+      "fingerprint": "18bf291dfb157d3dd4b9538492b2964de3c3536a872be96b04e140e246f759c4",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": "65b10dd96267b4e6bfa0ddccb9c5f882885b608e317cb18f44a5e7f1923644e0"
+        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": "2b850f271fe7e883163a06d31a3ccf4bcafc212034f0d007e7a35aef43c92dcf"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/step-summary.test.ts": {
@@ -8058,16 +8062,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-builder-row.tsx": {
-      "fingerprint": "7dcd92f518c0cfb77c4baf5ea36bb502878a340dcfecea3b873d72a0455045cc",
+      "fingerprint": "4d30b93f82b20e249e0a4adac4c06f4d0f338fb10e929cd992645c78f17ead3b",
       "snapshot": {
-        "packages/client/src/components/workflow/config/condition-builder-row.tsx": "14b59e2af6d12d5c24e0142dffd9179ceed512e0b1b5f09e60d9b7c8b8ffbdab"
+        "packages/client/src/components/workflow/config/condition-builder-row.tsx": "939944aae86811eabc0cf32ebd99b8fed4abc527c4f72e37aa6cf4955dc4c9b5"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/condition-builder-row.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/condition-builder-row.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-set-value-input.test.tsx": {
@@ -8194,29 +8198,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx": {
-      "fingerprint": "bac954006ff25e73aed161e0b485c42237e23c76dcb0398532315d95d347fd7b",
+      "fingerprint": "f267295d774cbb92568041a4c5b14eaf270a7eb92c3913e7097bb26ada03be92",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx": "7207190062bb0d1872e0217f14b36d8c4ad8923f641cb57ce78e4d91acdf9fb6"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx": "638a5182d7bad5a52a932cd27373ff5487c9c1647829cc8942c3ea816968673d"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/action-config.tsx": {
-      "fingerprint": "d93cedf3d5ac314f87078026581397314bd7a61586c63b9b450429d08250a03a",
+      "fingerprint": "baf0f8745a9c810bc31afa73c580f5cfb60a66a9d0d17d47307ce46103674e52",
       "snapshot": {
-        "packages/client/src/components/workflow/config/action-config.tsx": "56938952a14be6b4dd686f8bb09040c9837d015224f869ba908caf983c74f53c"
+        "packages/client/src/components/workflow/config/action-config.tsx": "be50d936c3031521274e067a41ae1e455efffd7741bed424ca8c770c943e1453"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/action-config.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/action-config.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/lib/node-integration.ts": {
@@ -9109,16 +9113,16 @@
       ]
     },
     "source:packages/client/DESIGN.md": {
-      "fingerprint": "b52245463e7f8b67a85b64421a0974b36f55fa1b69072e843910c1b17023fabd",
+      "fingerprint": "3493dd79306edab1bbeac425e51e0bed21c9a2bdd29e3ec02a98f45a7b398423",
       "snapshot": {
-        "packages/client/DESIGN.md": "42b4b06eafd0d323b06ce0a1e4f522385f4636d02beb5c856ad53d6e73d0f8f6"
+        "packages/client/DESIGN.md": "5b5c8e8d0d9340ae7cddf210a54f8629b0c57ab4ea7a347697d1c18c95472b98"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/DESIGN.md is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/DESIGN.md",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/PRODUCT.md": {
@@ -9791,16 +9795,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts": {
-      "fingerprint": "522ab597a7417e7258dac18a3b662022603806c505e4fdc0b47f94c68418e27c",
+      "fingerprint": "6b0680ba95bb8c187def3dcba5edb3b00750879510a6794e5a9bf322b8e3bd31",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts": "37445972e6086a4d1748542baff603716ce677f10da09ab934d2330cb562573d"
+        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts": "0fc06907c1ac323888c974fc3ec5d4be3355f1918d36919f7caab49d5841b6f8"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/canvas-reveal.tsx": {
@@ -9949,16 +9953,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/condition-reveal.test.tsx": {
-      "fingerprint": "2c4c0b4fad09048e4db4cad1e6653e8ed7eeea059b867cd09a6982c042ca14a3",
+      "fingerprint": "6d13a0d3ce2e230a2eb75f3f55f58c4eaa387737f2bc34bb8c83d06d8bbbb6a8",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.test.tsx": "6686afad04a4ad3609a758dfac9dc82e8b42584a08e3fac505c91c4f66369e91"
+        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.test.tsx": "c02a646165e8ba910edf16d973862e0e643f6e8a5f3411efcefc12deabd87ba7"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/event-split-reveal-summary.test.ts": {
@@ -9987,29 +9991,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/event-split-reveal.test.tsx": {
-      "fingerprint": "54538c068a4216a5407fe823919bec266dd3578ee19c04235e8775f228d8ea07",
+      "fingerprint": "1fef597379c7bda5e3250dca88b1c2f03db3ead32158407073d090d6ca57a231",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/event-split-reveal.test.tsx": "1369278c061d6dc2354d4e2e80ada7a3e597739efc5bf495480034a39fefdaa0"
+        "packages/client/src/components/workflow/canvas-reveal/event-split-reveal.test.tsx": "dc152679e89c5738447629470b8943609944ff6cbfb2e85338b327a586e04781"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/event-split-reveal.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/event-split-reveal.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/group-browse.tsx": {
-      "fingerprint": "0d19a7ddddae8f3f59c8d1cd043dd0ba906533145fa3217ba48d4f1e94633821",
+      "fingerprint": "27835f3313af0af15902e3717c17f80e96a240dd31f47b3af944b82d9005b880",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/group-browse.tsx": "88cbe15fbae2459c025bdfcab0ec80b26db2c4a495c84ad19fb5cc442c1190d7"
+        "packages/client/src/components/workflow/canvas-reveal/group-browse.tsx": "4ecbab8fbe2ddc9599be335605eb31c0e618880cb0396709b33aedc6fbb3ad90"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/group-browse.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/group-browse.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/lifecycle-focus.tsx": {
@@ -10039,42 +10043,42 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/lifecycle-reveal.test.tsx": {
-      "fingerprint": "6cec2d5923cb60008a6bb3e6ca1ce3c782a4a49d462776b35009ac33fa2d715e",
+      "fingerprint": "084e61c641bd4b097bc1ab95bb99ceaf82c17b62deb827dfa8688fcbfbfcb4a7",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/lifecycle-reveal.test.tsx": "c842e51105b4533ec47b708473965bedaad8983c1ba53e0a4559c8ffb029fb64"
+        "packages/client/src/components/workflow/canvas-reveal/lifecycle-reveal.test.tsx": "1c4433ce28bba9dbdd2b1a829dc7e146fbd48df3b633a527bfd035d2828a3caf"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/lifecycle-reveal.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/lifecycle-reveal.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/mobile-reveal.test.tsx": {
-      "fingerprint": "a2999d954869e43769497deb3af9841701af70fffbd7055a4a8aab085ee66c46",
+      "fingerprint": "bffaf0bba5411fd7e16ad2b14afa6c396f142049a507a154b1af13d880456a4b",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/mobile-reveal.test.tsx": "20c889670d93b02542979951e6787aa10b221b2486cee2e63416a5d0b9057cb9"
+        "packages/client/src/components/workflow/canvas-reveal/mobile-reveal.test.tsx": "7177e56f474b1d20d3ca8beb0dcef2662072584bc7fabd675dbee0813630c7d4"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/mobile-reveal.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/mobile-reveal.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/mobile-reveal.tsx": {
-      "fingerprint": "e07aefedc12c870978414fe2400068e6b651cb7e00f303aff6b8ca1562fd12d2",
+      "fingerprint": "ea24a7dd58ad294255f1c8f99add1207aa0665d52d93dea1e65ffc1d70647334",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/mobile-reveal.tsx": "ecc12fb440b59bb2f6c008d940b4d5f38d2f7f13feb65a5635cffe1fc6311888"
+        "packages/client/src/components/workflow/canvas-reveal/mobile-reveal.tsx": "33e87c0d9e40d5b393b824b78249ffc4b4c79fd6cbdad98c58c18cae62cc68d7"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/mobile-reveal.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/mobile-reveal.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/mobile-runs.test.tsx": {
@@ -10091,16 +10095,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/mobile-sheet-header.tsx": {
-      "fingerprint": "b644f82be50d0c13ed39915945e9f0eaed7f4fb82ddb6040a8e7a24f5598dd81",
+      "fingerprint": "770d562966e2dc87fa90a97a37d4baa88e564b075dc48c09eebdb460a69fc9f5",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/mobile-sheet-header.tsx": "f09d2a3806ff34cf550fd91d0c68c1d9a2c28be5a9a441e18f6b5eb35104c7d7"
+        "packages/client/src/components/workflow/canvas-reveal/mobile-sheet-header.tsx": "89bd455f7f99f456e259188766c4ae4d9d7ab387eccd1ef2f7d94287e32ba27d"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/mobile-sheet-header.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/mobile-sheet-header.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-camera.test.ts": {
@@ -10129,27 +10133,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.test.ts": {
-      "fingerprint": "91da17bda5538b7121873e40c44c9aeb980fe2cb88d339ad198c92ae5edf8405",
+      "fingerprint": "a15581c2d401976faaa6400327e228acdde515a856ab52a91aa5d503e4f09b1c",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.test.ts": "546dfd1024d6b6cfa1d938ef85d49d78cbb414d6179934602eb39fa50cc4c199"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.test.ts": "beb5b8fb39e03f192c5cb4bb3288b9e90a9e9d11037902e91bf861e4f180abff"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.test.ts"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.ts": {
-      "fingerprint": "0f08d9a119e244f5543daf69cab656d1ca56b85b885dfd398e2ccc187a06d476",
+      "fingerprint": "75ffa05569d5bae42d898aa6760478fc88d9a081252e9d501683b4a28d5ed404",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.ts": "398ef24aff7333fafcfbc03a9b1b259ded1f51bbfe819e479826c5c0a3e14743"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.ts": "c3e5dfd3848c342582829de890a6d24b74ca4cad55c8e0031e5eac59b461b2e4"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.ts"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-edit-target.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-geometry.test.ts": {
@@ -10179,16 +10185,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-header.tsx": {
-      "fingerprint": "232dc857889e317ae39bc0265dad4915dce41bc9e6437281e98f19a99f44f2cd",
+      "fingerprint": "fa5773a5ad77641e99e61ef69cb2a4259b1ac6be82bd99e1c4a6a5190ea8152a",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/reveal-header.tsx": "24c2765df41ebdabb3d246b83d3ec0720d63fb283d04928f30c2e9eee5137975"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-header.tsx": "a702a0cc56a35693f600242bdcdfc0eb2bfc8ced7d4667cbd62905ac5ecf4e67"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/reveal-header.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-header.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-origin.ts": {
@@ -10318,16 +10324,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/runs-browse.tsx": {
-      "fingerprint": "6f7c46a0643b13635b2317677e11ccd439c81391f9f9441b21baa4c9e970d39a",
+      "fingerprint": "9790df0ea567c6819c2f877d47d47c891368f2bbde0a3a17279c3e03a300696a",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/runs-browse.tsx": "2810a9d6b6b753b1e37fd9b051c22325d3441de611d6208928a62bd38f3544c8"
+        "packages/client/src/components/workflow/canvas-reveal/runs-browse.tsx": "0fb80031dad0a52cd9947c1b86ad500fecb88a80485a2c879b9008388c163de8"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/runs-browse.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/runs-browse.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/runs-group-summary.tsx": {
@@ -10561,28 +10567,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/command-palette.integration.test.tsx": {
-      "fingerprint": "8009caf9153a8680106564ce6e15da1762abe01075ac477d53ba026ca0952e3b",
+      "fingerprint": "82b8d5254c77ae263030e7624752de7f66667dd910ef010b69c89d06d70c9c63",
       "snapshot": {
-        "packages/client/src/components/workflow/command-palette.integration.test.tsx": "c54459f6cf856a994480a168ce0d12d3810b01997ee73013cf97a0bbc8e1e6e2"
+        "packages/client/src/components/workflow/command-palette.integration.test.tsx": "d0d105e1d3cf6b4f026b65977995fa382add8063d69dba94d715076a3701b64f"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/command-palette.integration.test.tsx"
+        "packages/client/src/components/workflow/command-palette.integration.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/command-palette.tsx": {
-      "fingerprint": "67a420339760d5193c892fc163bc51bd7a8c861a355ca499bbfa6798fda60d4d",
+      "fingerprint": "60ae3f41a621c69e3610fdb66f27272d9b58f6aa50c2630e08017d95460a526e",
       "snapshot": {
-        "packages/client/src/components/workflow/command-palette.tsx": "0c8f94e1c6cc6a811c9d27df339145eeee11c1da6860f097dbc97af3c29c99b0"
+        "packages/client/src/components/workflow/command-palette.tsx": "f9262814be02a7df68379ec25aeb422c3f527db4d8d497971cbc304bf4d5bd0f"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/command-palette.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/command-palette.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/comparison-properties.test.ts": {
@@ -10698,16 +10705,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/field-issues.tsx": {
-      "fingerprint": "cee2db26ba480c327451e89f6fda1c712c2df68f3efae10661b5b09a25fada4c",
+      "fingerprint": "644fa76e501393b896bfafda0c7ec76133290dabdcc3b08afbd472d836155e38",
       "snapshot": {
-        "packages/client/src/components/workflow/config/field-issues.tsx": "066146a1a5da03df0bcc64c9127d0e6d161965c8835ebdb206d936884941b518"
+        "packages/client/src/components/workflow/config/field-issues.tsx": "d371dc4c2c673ab6b51c8bb3b29804d525aee9ba7059362be0671fda50a3ee91"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/field-issues.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/field-issues.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-concurrency-group.tsx": {
@@ -10724,16 +10731,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-entity-eligibility-group.tsx": {
-      "fingerprint": "f098df0bae4f488ec242c3edc6b7ec6c10c51d66f6c34156ec47ed3b362cb81d",
+      "fingerprint": "a94ff24b9a6de29929a29c8830309f7109d910ec70b001a1b147f4b3170bdd7c",
       "snapshot": {
-        "packages/client/src/components/workflow/config/lifecycle-entity-eligibility-group.tsx": "425733b9b1cbaa3a787599a7bf19443cac4880f7c8d88982470c4ad2e8245a68"
+        "packages/client/src/components/workflow/config/lifecycle-entity-eligibility-group.tsx": "0162c068bbfa274bca7e4b4180cc1d2ab63ad4d4d76f8f7378a6c68a91aeb0ab"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/lifecycle-entity-eligibility-group.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/lifecycle-entity-eligibility-group.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-event-group.test.tsx": {
@@ -10750,16 +10757,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-event-group.tsx": {
-      "fingerprint": "c8e740ec0f1ba99e5755579e92787b4363a73229dd40eab7719f5bdbad717ab0",
+      "fingerprint": "d93647abf29f75df7faa48dba601e06010cf6512f2a3bdd97cf5fbe2a181c310",
       "snapshot": {
-        "packages/client/src/components/workflow/config/lifecycle-event-group.tsx": "b34ee5418633fa330bf494399607190b8a5fe816791b366ee94a286c6342af2e"
+        "packages/client/src/components/workflow/config/lifecycle-event-group.tsx": "323336a1ec0bfce73113afdb687f76d410c467bfc9e636506e0a6d2d6f3b7bec"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/lifecycle-event-group.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/lifecycle-event-group.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-panel.display.test.tsx": {
@@ -10776,16 +10783,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-panel.test.tsx": {
-      "fingerprint": "42cb9a0484c61ba7959c6a7257baef93ff79ed1f11de10e1ac88b73526608b6d",
+      "fingerprint": "1d604505c33c585689f59f8d855e8909fb1d73b8b703bbacefcf4361ebf95891",
       "snapshot": {
-        "packages/client/src/components/workflow/config/lifecycle-panel.test.tsx": "fca1db941444c051d98cd3286011ff29e63062fc2d636761148506e655a8ef26"
+        "packages/client/src/components/workflow/config/lifecycle-panel.test.tsx": "052d99bb3d83849afe1046a1529f1ce6a2b0fdb248fc2bac5578e7c6f4d73d96"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/lifecycle-panel.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/lifecycle-panel.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-panel.tsx": {
@@ -10802,16 +10809,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-policy-summary.ts": {
-      "fingerprint": "5fe1defa0043942c8a33b2f63303ca96fe9bb72595ad7c9ce3c7e914c77b26b0",
+      "fingerprint": "45fb02dd87987fcf0e8f3a3969ec0fd01040f0a28446e7c5b5c5368499661450",
       "snapshot": {
-        "packages/client/src/components/workflow/config/lifecycle-policy-summary.ts": "ad5d21f9bbcb5d2504b36d6f72cd6992bb75223740e47ecd0ad643c74bc4615e"
+        "packages/client/src/components/workflow/config/lifecycle-policy-summary.ts": "2a2844afda7bc8a0f5c00466f579145e4290e3e277729cd6eb24276a16eed931"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/lifecycle-policy-summary.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/lifecycle-policy-summary.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-schedule-group.test.tsx": {
@@ -10828,16 +10835,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/lifecycle-schedule-group.tsx": {
-      "fingerprint": "ed11f6cb26ed55ef1a2732c5183d9fbd8dca02c76f8465c5f5ec19ee99196d96",
+      "fingerprint": "e2d13c1701399620d7eaf1935e1b8fcde3cb7788120f1f933fec7ab33e1c7d31",
       "snapshot": {
-        "packages/client/src/components/workflow/config/lifecycle-schedule-group.tsx": "d8eb40f1808930404b1784fabb786635d68def36e5d33b997ba854636acc381f"
+        "packages/client/src/components/workflow/config/lifecycle-schedule-group.tsx": "f9424a40dd11461adc2224099f98dd20640dcd81e4e736748617a1f7654eabcd"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/lifecycle-schedule-group.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/lifecycle-schedule-group.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/use-node-config-writer.ts": {
@@ -10866,16 +10873,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/wait-event-select.tsx": {
-      "fingerprint": "f3a032d33edd51b5d505cbd00bfa65b0312bd0ecbae8ba76a43d3f78e6ca02b4",
+      "fingerprint": "3b263a994252b0699cc532dcf29b9fa773ff346afea1732d974c8dcf601d6101",
       "snapshot": {
-        "packages/client/src/components/workflow/config/wait-event-select.tsx": "7072cdb07e3e72519b7e2f4d0bcc01fb95943b851f41c8588f7d96455965bb88"
+        "packages/client/src/components/workflow/config/wait-event-select.tsx": "dab534019968c80f0d66460ac734995c58488a66537e0f13c248035f43ceb97a"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/config/wait-event-select.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/wait-event-select.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/wait-options.ts": {
@@ -11051,16 +11058,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/group-focus.test.tsx": {
-      "fingerprint": "b34a7e600101318c60ea35c43c4a29f89775994c7adab11f61a44a632aaa21fd",
+      "fingerprint": "d1470369f0da8999ed6e3f2681a96772e6bb9ba0a5574481944093a5f3d32433",
       "snapshot": {
-        "packages/client/src/components/workflow/group-focus.test.tsx": "3be9d08bc27be74b527e4235096a891addbb916306a5620bd89d4a3bddaeb833"
+        "packages/client/src/components/workflow/group-focus.test.tsx": "597a1a9a8b27b8671fd5a6f3df1ed832bfeeb2bd5f835193b7c70363842fb7f6"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/group-focus.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/group-focus.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/group-scope-bar.tsx": {
@@ -11626,41 +11633,42 @@
       ]
     },
     "source:packages/client/src/components/workflow/use-opening-camera.test.tsx": {
-      "fingerprint": "91c3e26d46c9071ac79baeed41ec19d777a840e70c1c1b60d57ae402f15c1dc9",
+      "fingerprint": "be2b4f79f248c7d5d18f9079891225bb17b963dde913e8d6f37504f32d7b6977",
       "snapshot": {
-        "packages/client/src/components/workflow/use-opening-camera.test.tsx": "542ebed96c3ee0b2059c29db0e8886d1b4fbff79740ace797370220090558078"
+        "packages/client/src/components/workflow/use-opening-camera.test.tsx": "3e75995c35b08ff1ae87dfab6393f2d46cfb68a8607c920d30c03ed506ea68d0"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/use-opening-camera.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/use-opening-camera.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/use-opening-camera.ts": {
-      "fingerprint": "16a1c6bf59224b5f70f07da0809727a2272f7f0a021da3ec89eb662f9d534f61",
+      "fingerprint": "6841a8d5fdf0dccd684d3d6e1fb2d25926984eeec5eade948e8d00a193e0c916",
       "snapshot": {
-        "packages/client/src/components/workflow/use-opening-camera.ts": "8c831047a6d24cae19c719639e96e5443fcc4c8b15e2e39e821aee335ffcd2dc"
+        "packages/client/src/components/workflow/use-opening-camera.ts": "e1e32f2f1df75ddeb8357433ac7698427dc3d62eeac57d063ae1ff4ef9f2369c"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/use-opening-camera.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/use-opening-camera.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/use-reflow-layout.ts": {
-      "fingerprint": "58a79d0c8103c71c22820c93dfa8c202514a6ff396641be67918a40f7fa3f5ea",
+      "fingerprint": "d5580e9e06615612b639a9785298e86b8ccf597ff9fd2de63625dfb3dd5cd63c",
       "snapshot": {
-        "packages/client/src/components/workflow/use-reflow-layout.ts": "2898b729980540bb36c21dfaa7583b84cecab4197eb319c97a776a991d796e71"
+        "packages/client/src/components/workflow/use-reflow-layout.ts": "f8179d64e464d5131ec5f736f698cc99f41205ef105fe633828a29ce78e001ee"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/use-reflow-layout.ts"
+        "packages/client/src/components/workflow/use-reflow-layout.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/use-run-node-evidence.ts": {
@@ -11776,15 +11784,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/use-workspace-camera.ts": {
-      "fingerprint": "291fd1993c94a1f056080c3db12e90be61d6222fffa6931eac2c51b01f4e8e5b",
+      "fingerprint": "3c923c91d2466bdca332a49ffdb6331eabf78e5d554e76307dbc12f018b16abc",
       "snapshot": {
-        "packages/client/src/components/workflow/use-workspace-camera.ts": "8fe200946ff2dea2c182ecd43d744ea0358310fa071142e98dca0a0e86d870b5"
+        "packages/client/src/components/workflow/use-workspace-camera.ts": "def0bb4ee8773b13fba57b586471f4042e10e148a09dd7cd36d5abb3bf8fe56a"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/use-workspace-camera.ts"
+        "packages/client/src/components/workflow/use-workspace-camera.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-cancellation-failures.tsx": {
@@ -11800,29 +11809,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-canvas-synchronization.ts": {
-      "fingerprint": "da15617ab59f92ea362c1eca52dddb586f25f145109f5d8d48dba7a266366c8f",
+      "fingerprint": "b8e5f82c6df355c6f4f651ff309b8f2e65f4951d6eb1f17f7dad49657df742e1",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-canvas-synchronization.ts": "c5208110c67ca8da9d6b16d7701c168e2ac489049a3c17b6ad3e1836cb2ab535"
+        "packages/client/src/components/workflow/workflow-canvas-synchronization.ts": "18a739640ed4dea93cc0555af3e204b792371137b0fd5616d2dec126ca16820f"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/workflow-canvas-synchronization.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/workflow-canvas-synchronization.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-canvas.test.ts": {
-      "fingerprint": "da76316aa91822b137f582b154b194547961e07ef92cd5359df7746fca5cf79d",
+      "fingerprint": "1ae9e1664c9d8b0482d0ee94660b16b1b76b45cd4e3e1dc0006c9a40b1887b1a",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-canvas.test.ts": "19c6bbf0db97bba1ff684cb35a6ba3aeea6ab8bd23ffc160026684bad5a781b4"
+        "packages/client/src/components/workflow/workflow-canvas.test.ts": "23513795490ae3d11d9dc6604b28f3bc5591ea56bf2d8bfe1627667f9996442c"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/workflow-canvas.test.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/workflow-canvas.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-context-menu.test.tsx": {
@@ -12095,28 +12104,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-viewport.test.ts": {
-      "fingerprint": "589a6839cdcb54772cfdeee3d7cac4baa680fa8e3dbe8df0e88b43a8551570fd",
+      "fingerprint": "83ddae6da76aa465f1ad6ee51bf79cb7d27d4bf368527f4556d6b52cb0acff7b",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-viewport.test.ts": "b000c09eb71358a0a08fa2f53b965b62b4ced136c5c964dc363e8ed6c9fc1953"
+        "packages/client/src/components/workflow/workflow-viewport.test.ts": "e51f01c5b27cb2c57fcbbeaa8342b0f1e4fdb5b2b9f7ff320ae9c1fd7c998e54"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/workflow-viewport.test.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/workflow-viewport.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-viewport.ts": {
-      "fingerprint": "6538f4ed4b76c444506421072d30a1d70bed7b1f2f91b7e75bc2d873b11472bf",
+      "fingerprint": "f3389540d054ba1fee576a216238d44eb8052fec09dd581626acdda11c3442c6",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-viewport.ts": "7dc0af6c944fcd9d0e9c5fc860ed51b453cabf91f1070ad5802eb8435f7b9a06"
+        "packages/client/src/components/workflow/workflow-viewport.ts": "3e55fb11e768d84279a23ee3a44aba42eff466a99479bba95f7a016181fd64f4"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/workflow-viewport.ts"
+        "packages/client/src/components/workflow/workflow-viewport.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/workspace-route-sync.test.tsx": {
@@ -12534,15 +12544,16 @@
       ]
     },
     "source:packages/client/src/lib/group-canvas.ts": {
-      "fingerprint": "2681662c76440039afe6417e980e1e3893d78963a50b0c0dfec478fcb34768fb",
+      "fingerprint": "98078e106b52466c6bb495cbda0902ce8666bca2d34079ba7d5d691e8711b3a9",
       "snapshot": {
-        "packages/client/src/lib/group-canvas.ts": "d91ff5be7370165b1117ddd55d3a339be931b6510159b4423fcdb70da9fb7aea"
+        "packages/client/src/lib/group-canvas.ts": "c657daa55a95dbf55ed4cedf240eb5a2007bfe9f77e8951c8301e9e798c34ed0"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/lib/group-canvas.ts"
+        "packages/client/src/lib/group-canvas.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/lib/group-scope-canvas.test.ts": {
@@ -12717,15 +12728,16 @@
       ]
     },
     "source:packages/client/src/lib/required-field-errors.ts": {
-      "fingerprint": "c1d4db8e19442c210a0cd3f94212192aa84df03ae91d668ab5de1253770993a0",
+      "fingerprint": "81a9f01b18c7ec5c1ed59e72d2f31fc27c86513c27b289c61e270ea0d43de808",
       "snapshot": {
-        "packages/client/src/lib/required-field-errors.ts": "1d238bc146369ed9a62c19605739ab4f77759d178c02d85bf32f76a201cd1828"
+        "packages/client/src/lib/required-field-errors.ts": "c3275ea71d0689f7a6ec8fdb43e926447df4be57f6de54cbab9486b269ee9705"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/lib/required-field-errors.ts"
+        "packages/client/src/lib/required-field-errors.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/lib/row-click.ts": {
@@ -13642,15 +13654,16 @@
       ]
     },
     "source:packages/core/src/backend/services/workflows/validation/workflow-lifecycle-validation.test.ts": {
-      "fingerprint": "d9f817e2ba3aaa00daa4172be68548339c2d42ee6112e7763002b74da91eb010",
+      "fingerprint": "dafe8c068152eb1643704f831816e6711981eaaf21754fc8f0a67832fb22264a",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/validation/workflow-lifecycle-validation.test.ts": "18ac2a4663de31a02c882d512fcdf617ab60fd58f1a78dc4666714893879cf64"
+        "packages/core/src/backend/services/workflows/validation/workflow-lifecycle-validation.test.ts": "68db6c89591f79e1f2200dbeb07c327684c9367c5d252cab536b4bd70a4c4f67"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
-      "outcome": "no-change",
-      "reason": "Validation and publish checks now name a step by its outline number and label, and an unreadable Wait Duration blocks Publish. No skill quotes these messages or teaches the Wait field rules.",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/core/src/backend/services/workflows/validation/workflow-lifecycle-validation.test.ts"
+        "packages/core/src/backend/services/workflows/validation/workflow-lifecycle-validation.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/core/src/backend/services/workflows/validation/workflow-lifecycle-validation.ts": {
@@ -13983,16 +13996,16 @@
       ]
     },
     "source:packages/shared/src/lifecycle/entity-eligibility.ts": {
-      "fingerprint": "5333fdb38167820ee0ef8c55f3588b9674d254b9ac5ca875e6c3e7f6ab64eb77",
+      "fingerprint": "2c9c9128874cf3a92a4c05c28ffa9e1cfbed6fc45b45ae35d0deaab362c5600e",
       "snapshot": {
-        "packages/shared/src/lifecycle/entity-eligibility.ts": "11333768db90abf4a2e511a3901e75792a8e49400f975dbf821bc93a2f23ba15"
+        "packages/shared/src/lifecycle/entity-eligibility.ts": "edf325b1ce5befeb318b30203e89d3770352a4fc95b00e4070375eb28ca8a43d"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "@wfgraph/shared is private and inlined; these edits move the tracked Entity binding repair into the lifecycle module and drop a Start outline detail the editor no longer shows, neither of which is a host contract any skill teaches.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "commits 8a3a72dc (refactor(shared): move the tracked Entity binding repair into the lifecycle module) and 50cc474e (fix(client): show only the Start's name and event in its outline row)",
-        "packages/shared/src/lifecycle/entity-eligibility.ts is no skill's source in _artifacts/skill_tree.yaml"
+        "packages/shared/src/lifecycle/entity-eligibility.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/shared/src/utils/object-path.test.ts": {
@@ -14118,29 +14131,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/event-split-reveal.tsx": {
-      "fingerprint": "e5d25172c78964868bc0736d31452f3dac77751de43fcc1655d885fdaf865227",
+      "fingerprint": "23a08552684dbe1458a74b21290d18bbbca43cfdf22acb06efcbbbf1368339c3",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/event-split-reveal.tsx": "50448756d2b6a8aaa495d4d9c0958073eb4b3068cf3d4040635a7e5bbf9fc5e6"
+        "packages/client/src/components/workflow/canvas-reveal/event-split-reveal.tsx": "162572c311ababd15f30f14e0835b35479964c9c1a9d8c1d3e8663f5b141f1aa"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/event-split-reveal.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/event-split-reveal.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-header.test.tsx": {
-      "fingerprint": "eff067bbba51492fc71e7c47f64b19b1fabd213816025b14ee1d72b7babbe5a7",
+      "fingerprint": "c77005133c0ded950c1af110109a03eb3aed6846f56f4c6dfbcf981b45db166d",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/reveal-header.test.tsx": "6dbc170a6ce68be746917412feff217c3097bc0fb9440b08f0ed53ee937218ea"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-header.test.tsx": "b3dede20fd4d6ebdf839ca00805fe303499628fb9a4526e4cf95a6cb5558b28d"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/reveal-header.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-header.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/config/field-issues.test.tsx": {
@@ -14170,16 +14183,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/inspector/inspector-contents.test.tsx": {
-      "fingerprint": "f09f3245a87e53aefd701e33ad9b38243c92e1a9e66864374f8cb6477d55f04e",
+      "fingerprint": "b25b69cd3d7e1fa9375289d7aa1610ee8f1789eeb179631dcaf5fb8febab48b5",
       "snapshot": {
-        "packages/client/src/components/workflow/inspector/inspector-contents.test.tsx": "aa7098a34f454ec5dbd55d243c77b2b57abfe9634dda52f85d91acb9d3683fe2"
+        "packages/client/src/components/workflow/inspector/inspector-contents.test.tsx": "cdfd0c6916364f6242ec777311b319fcdd6ea47795ca97361a7e2df8c9a0a294"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/inspector/inspector-contents.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/inspector/inspector-contents.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/inspector/inspector-contents.tsx": {
@@ -14222,29 +14235,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/layout/editor-layout.test.tsx": {
-      "fingerprint": "209076d4dea4052a3631442c148c2f7020975e62bd3fc85439b2ae11cc53d858",
+      "fingerprint": "9d6995e896e55114f227d6f0927fd85adb4c4933343e37201d113977ce1d0835",
       "snapshot": {
-        "packages/client/src/components/workflow/layout/editor-layout.test.tsx": "5d2e8b45cce4abc36d393e9057afa38099b1bd34bbe507a08724aad65a9e4dca"
+        "packages/client/src/components/workflow/layout/editor-layout.test.tsx": "e7ca3d25997892eaf14815ec4344435d5fea1b064563e2159a7616178505c43f"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/layout/editor-layout.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/layout/editor-layout.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/layout/editor-layout.tsx": {
-      "fingerprint": "11460ceb865d4d4bd75562c5b97536916900377f093d9813fffba1f29e75dca7",
+      "fingerprint": "1728289dbbba25be7b83e0a72c301460047621c0288d8a3537b3a852f7303c25",
       "snapshot": {
-        "packages/client/src/components/workflow/layout/editor-layout.tsx": "5e4a42102c46e7d9426c6660b63a6eb93a91f8148f93d78bdb7dfa1aae2998e8"
+        "packages/client/src/components/workflow/layout/editor-layout.tsx": "a6b95eba930bb9ee1dfe4ab6315a5a0c001f19ab760f5dd961373194bec3a43a"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/layout/editor-layout.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/layout/editor-layout.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/components/workflow/layout/editor-shell.tsx": {
@@ -14378,16 +14391,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/step-menu-items.tsx": {
-      "fingerprint": "8b055471d7aa20e12fb9755b2590678b6b1292829a003ebf3b6b4bbf552db2fd",
+      "fingerprint": "a29036b8bca7b03fdb86ed43958535ab82b39eb8924e1d35e4edb63725b19425",
       "snapshot": {
-        "packages/client/src/components/workflow/step-menu-items.tsx": "07958f2ffdf558f3729cf551bdc3204ff8b2dbf8b6936debb7edd529867abb7c"
+        "packages/client/src/components/workflow/step-menu-items.tsx": "428514d2bdfc20e1b89e322553449e37739a8f84fcaa5630fabd27c73cee8d67"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
       "evidence": [
-        "packages/client/src/components/workflow/step-menu-items.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/step-menu-items.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     },
     "source:packages/client/src/lib/preference-cookies.ts": {
@@ -14427,6 +14440,97 @@
       "evidence": [
         "packages/client/src/lib/scroll-into-scroller.ts is no skill's source in _artifacts/skill_tree.yaml",
         "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/reveal-title.tsx": {
+      "fingerprint": "1704fc372fcc554b50bbe25e39d454fdac2283ed639f6a2e7d2e4d347b123b33",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/reveal-title.tsx": "b172449a5cbd8cab5ed4e6a854dad1a256658bdcf832fde24c99c55fede1655d"
+      },
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "evidence": [
+        "packages/client/src/components/workflow/canvas-reveal/reveal-title.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+      ]
+    },
+    "source:packages/client/src/components/workflow/use-reflow-layout.test.tsx": {
+      "fingerprint": "4b99be483d3b8a7fe9dcb1bcd631082da04dcd1bfc0a2b51e8334c9449ac45f5",
+      "snapshot": {
+        "packages/client/src/components/workflow/use-reflow-layout.test.tsx": "48190141b02dc0d487c72fe7015e31a5ca38cd429d67074f655c2cb95040781a"
+      },
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "evidence": [
+        "packages/client/src/components/workflow/use-reflow-layout.test.tsx",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+      ]
+    },
+    "source:packages/client/src/lib/required-field-errors.test.ts": {
+      "fingerprint": "d1c6e38af2b8d8128c1d7388a72016548843ed5ab41bf00631fafca08dd054a1",
+      "snapshot": {
+        "packages/client/src/lib/required-field-errors.test.ts": "647047b32353a44735c8a993422b36a9fedd383cfa47b97baa37f499e99b222a"
+      },
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "evidence": [
+        "packages/client/src/lib/required-field-errors.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+      ]
+    },
+    "source:packages/shared/src/lifecycle/cancel-filters.test.ts": {
+      "fingerprint": "e8a032eb9417c61bcb8fe56f2c50b99808698d64ff085072fb929b8e73aa0b8a",
+      "snapshot": {
+        "packages/shared/src/lifecycle/cancel-filters.test.ts": "bfdbf65a4ef2a18aecfe04e037499ca15976bb09df3039ee43cfceb79c2a393a"
+      },
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "evidence": [
+        "packages/shared/src/lifecycle/cancel-filters.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+      ]
+    },
+    "source:packages/shared/src/lifecycle/filter-helpers.ts": {
+      "fingerprint": "c758f4fc7d3bb93228f557f00c9f5078c992b05398fc1383035720b50aa7adfc",
+      "snapshot": {
+        "packages/shared/src/lifecycle/filter-helpers.ts": "54d71e11f57f5689f99e2623fcec1bea3c6ef340bb51a1d6258560f495188747"
+      },
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "evidence": [
+        "packages/shared/src/lifecycle/filter-helpers.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+      ]
+    },
+    "source:packages/shared/src/lifecycle/lifecycle-rules.ts": {
+      "fingerprint": "1b001de3103d26846c7614ca5c7f99d3292856e097d6ab40c6ceb364a6802fda",
+      "snapshot": {
+        "packages/shared/src/lifecycle/lifecycle-rules.ts": "5d33fa27b080691e6ad81ea5388b0aca3f9aca1ab4b9bba2174bf5eedebec33d"
+      },
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "evidence": [
+        "packages/shared/src/lifecycle/lifecycle-rules.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+      ]
+    },
+    "source:packages/shared/src/lifecycle/start-filters.test.ts": {
+      "fingerprint": "db98e59113aaa8c202b70162d4cf6f446df149ca124a5dabd0e8089a80b958ef",
+      "snapshot": {
+        "packages/shared/src/lifecycle/start-filters.test.ts": "6d106f0caf0bdead0bcc42ceba3ebafce6fbbb94b5dd2914c27194c66912e29d"
+      },
+      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "outcome": "out-of-scope",
+      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "evidence": [
+        "packages/shared/src/lifecycle/start-filters.test.ts",
+        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
       ]
     }
   }
