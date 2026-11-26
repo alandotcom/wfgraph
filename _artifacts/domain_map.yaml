@@ -1105,5 +1105,5 @@ gaps:
     status: open
   - skill: integrations
     question: Is the "In test runs" select (config key testBehavior, option log_only) a contract a vendor integration may declare?
-    context: packages/shared/src/actions/test-run-behavior.ts reads any action whose config fields hold a testBehavior select, and the Run draft dialog and the build agent's testRun sentence describe such a step from the option it holds, with log_only meaning the step does nothing. The editor marks such a step "Skipped (test run)" when its answer carries a reasonCode starting test_mode_ (packages/client/src/lib/test-run-skip.ts). docs/integrations.md states none of this, so the integrations skill does not teach it; until a maintainer decides, a third-party integration that copies the built-ins' setting gets that behavior without a documented contract.
-    status: open
+    context: docs/integrations.md ("The In test runs field") now states what the code does. The editor reads the key from any action, a vendor integration's included, the Run draft dialog and the build agent describe the step from the option it holds with log_only meaning it does nothing, and nothing checks that the handler acts on it. docs/embedding.md names the skip marker. The integrations skill teaches both.
+    status: resolved

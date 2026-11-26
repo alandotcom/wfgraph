@@ -72,6 +72,14 @@ The host passes it in `extensions.integrations`. Build against
   mode, call every handler with `runMode: "test"`. A handler that would reach
   a real person or record checks `bag.runMode` and answers without doing so,
   as the built-in Twilio and Resend actions do.
+- A config field keyed `testBehavior` is the step's "In test runs" setting.
+  The editor reads it from any action, a vendor integration's included: the
+  Run draft dialog and the build agent describe the step from the option it
+  holds or the field's default, and treat `log_only` as doing nothing. The
+  field acts only through the handler, which reads it in a test run; nothing
+  checks that the handler does what the option says. A test-run answer with a
+  top-level `reasonCode` starting `test_mode_`, or `status: "skipped"`, shows
+  the step as "Skipped (test run)".
 - `events` are `defineEvent` values. Assembly stamps `EventMetadata.integration`.
   Optional `webhook`: `verify` on the raw body, `receive` on parsed JSON.
   `secret` names the Connection credential that verifies a POST. `helpText`
