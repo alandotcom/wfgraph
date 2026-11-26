@@ -38,7 +38,6 @@ import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { RevealLevel } from "#src/lib/workflow-navigation-state";
 import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
-import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { WorkflowDetails } from "./workflow-details";
@@ -60,7 +59,6 @@ export function DetailsPanel() {
   const closeDetailsFloat = useSetAtom(detailsFloatOpenAtom);
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
-  const workflowName = useAtomValue(currentWorkflowNameAtom);
   const catalog = useExtensionCatalog();
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
@@ -228,7 +226,6 @@ export function DetailsPanel() {
         model={kind.header.model(subject, {
           nodes,
           issues,
-          workflowName,
           catalog,
           presentation,
         })}

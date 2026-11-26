@@ -31,7 +31,6 @@ import {
 } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 import { isBlank } from "@wfgraph/shared/types/string";
-import { compact } from "es-toolkit/array";
 import type { Getter } from "jotai";
 import type { Store } from "jotai";
 import { activeChosenExecutionAtom } from "#src/lib/workflow-workspace-navigation";
@@ -103,7 +102,6 @@ export type RevealBodyProps = {
 export type RevealHeaderContext = {
   nodes: readonly WorkflowNode[];
   issues: readonly WorkflowIssue[];
-  workflowName: string;
   catalog: ExtensionCatalog;
   /** The active scope's desktop presentation, which records where a jump began. */
   presentation: DesktopPresentation;
@@ -269,19 +267,11 @@ function stepHeaderModel(
       ? node.data.label
       : ((actionType && findAction(context.catalog, actionType)?.label) ??
         "Untitled step");
-  const parentGroupLabel = node?.parentId
-    ? context.nodes.find((item) => item.id === node.parentId)?.data.label
-    : undefined;
   const issues = context.issues.filter(
     (issue) => issue.nodeId === subject.nodeId
   );
   return {
     title,
-    path: compact([
-      context.workflowName || "Untitled workflow",
-      parentGroupLabel,
-      title,
-    ]),
     // A disabled step is not ready for anything: a run stops on reaching it.
     status:
       node?.data.enabled === false
@@ -299,7 +289,6 @@ function groupHeaderModel(
   const title = groupLabel(node?.data.label);
   return {
     title,
-    path: [context.workflowName || "Untitled workflow", title],
     // The collapsed card hides the Group's steps, so the status counts their
     // issues with the Group's own.
     status:
@@ -324,7 +313,6 @@ function lifecycleHeaderModel(
   const title = node ? startNodeTitle(context.catalog, node.data) : "Start";
   return {
     title,
-    path: [context.workflowName || "Untitled workflow", title],
     status: node
       ? issueStatus(
           context.issues.filter((issue) => issue.nodeId === subject.nodeId)
@@ -340,7 +328,7 @@ function PanelBrowse({ frame }: RevealBodyProps) {
 
 /**
  * The node config panel's header in Draft: its own title, which names
- * Properties or Connection, with no path and no status.
+ * Properties or Connection, with no status.
  */
 function PanelHeader({ controls }: RevealKindHeaderProps) {
   const title = useNodeConfigTitle();
@@ -349,7 +337,6 @@ function PanelHeader({ controls }: RevealKindHeaderProps) {
       controls={controls}
       model={{
         title,
-        path: [],
         status: null,
         showsBack: false,
       }}

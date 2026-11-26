@@ -36,7 +36,6 @@ import {
   type RevealLevel,
   workspaceAddressId,
 } from "#src/lib/workflow-navigation-state";
-import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import {
   activeWorkspaceAddressAtom,
   clearRunNodeInspectionAtom,
@@ -78,38 +77,39 @@ type RunsHeaderTarget =
   | { kind: "group"; title: string; status: GroupRunStatus };
 
 /**
- * The Runs header model. The run list names the workflow and Runs with no
- * Back. A run is titled by `runTitle`, its Entity and start time, and
- * carries its status and Back; the path's Runs segment then opens the run
- * list through `openRunList`. A node or Group target adds itself to the path
- * and is titled by its name. A node carries the shown execution's status, or
- * "Not run" for a node with no execution, and a Group carries its run status.
+ * A Runs header model with the name a phone sheet gives its Back button: the
+ * level Back returns to, or null when the model offers no Back.
+ */
+type RunsHeaderModel = RevealHeaderModel & { backLabel: string | null };
+
+/** An open run's header: its title and status, with Back to the run list. */
+function runHeader(
+  title: string,
+  status: RevealHeaderModel["status"]
+): RunsHeaderModel {
+  return { title, status, showsBack: true, backLabel: "Runs" };
+}
+
+/**
+ * The Runs header model. The run list is titled Runs with no Back. A run is
+ * titled by `runTitle`, its Entity and start time, and carries its status and
+ * Back, which a phone sheet names "Runs". A node or Group target is titled by
+ * its name, with Back named for the run. A node carries the shown execution's
+ * status, or "Not run" for a node with no execution, and a Group carries its
+ * run status.
  */
 function runsHeaderModel(input: {
-  workflowName: string;
   openRun: OpenRunIdentity | null;
   target: RunsHeaderTarget;
   catalog: ExtensionCatalog;
-  openRunList: () => void;
-}): RevealHeaderModel {
-  const { workflowName, openRun, target, catalog } = input;
-  const list: RevealHeaderModel = {
+}): RunsHeaderModel {
+  const { openRun, target, catalog } = input;
+  const list: RunsHeaderModel = {
     title: "Runs",
-    path: [workflowName || "Untitled workflow", "Runs"],
     status: null,
     showsBack: false,
+    backLabel: null,
   };
-  const runHeader = (
-    title: string,
-    status: RevealHeaderModel["status"]
-  ): RevealHeaderModel => ({
-    ...list,
-    title,
-    path: [...list.path, title],
-    status,
-    showsBack: true,
-    pathLink: { index: list.path.length - 1, onSelect: input.openRunList },
-  });
   if (openRun === null) {
     return list;
   }
@@ -130,7 +130,7 @@ function runsHeaderModel(input: {
   return {
     ...run,
     title: target.title,
-    path: [...run.path, target.title],
+    backLabel: run.title,
     status:
       target.kind === "group"
         ? {
@@ -150,11 +150,9 @@ function runsHeaderModel(input: {
 function useRunsHeaderModel(
   subject: RevealSubject,
   level: RevealLevel
-): RevealHeaderModel {
-  const workflowName = useAtomValue(currentWorkflowNameAtom);
+): RunsHeaderModel {
   const catalog = useExtensionCatalog();
   const openRun = useOpenRunIdentity();
-  const openRunList = useOpenRunList();
   const shownRun = openRun?.kind === "run" ? openRun : null;
   const { runsTarget } = subject;
   const evidence = useRunNodeEvidence(
@@ -184,13 +182,7 @@ function useRunsHeaderModel(
             status: groupSummary.status,
           }
         : { kind: "run" };
-  return runsHeaderModel({
-    workflowName,
-    openRun,
-    target,
-    catalog,
-    openRunList,
-  });
+  return runsHeaderModel({ openRun, target, catalog });
 }
 
 /**
@@ -212,18 +204,17 @@ export function useOpenRunList(): () => void {
 
 /**
  * The Runs header on a mobile sheet, from the same model as `RunsHeader`. Back
- * is named for the level before the sheet's own in the model's path, and a
- * model with no Back offers Close.
+ * is named for the level before the sheet's own, and a model with no Back
+ * offers Close.
  */
 export function RunsMobileHeader({ state, controls }: MobileKindHeaderProps) {
   const model = useRunsHeaderModel(
     state.subject,
     state.level === "inspector" ? "focus" : "browse"
   );
-  const backLabel = model.showsBack ? (model.path.at(-2) ?? "Back") : null;
   return (
     <MobileSheetHeader
-      backLabel={backLabel}
+      backLabel={model.backLabel}
       controls={controls}
       inspectorLabel={MOBILE_EVIDENCE_LABEL}
       status={model.status}
@@ -232,7 +223,7 @@ export function RunsMobileHeader({ state, controls }: MobileKindHeaderProps) {
   );
 }
 
-/** The Runs header in the details column, built from `useRunsHeaderModel`. */
+/** The Runs header in the Inspector, built from `useRunsHeaderModel`. */
 export function RunsHeader({
   subject,
   level,

@@ -21,7 +21,6 @@ import type {
   InspectedObject,
   RevealLevel,
 } from "#src/lib/workflow-navigation-state";
-import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import { activeRevealPresentationAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   closeMobileSheetAtom,
@@ -96,7 +95,6 @@ function useSheetHeading(
 ): Pick<RevealHeaderModel, "title" | "status"> {
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
-  const workflowName = useAtomValue(currentWorkflowNameAtom);
   const catalog = useExtensionCatalog();
   const presentation = useAtomValue(activeRevealPresentationAtom);
   const panelTitle = useNodeConfigTitle();
@@ -106,7 +104,6 @@ function useSheetHeading(
   const model = kind.header.model(state.subject, {
     nodes,
     issues,
-    workflowName,
     catalog,
     presentation,
   });
