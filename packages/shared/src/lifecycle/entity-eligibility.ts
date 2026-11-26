@@ -21,6 +21,7 @@ import {
 } from "#src/conditions/condition-field-type";
 import {
   type EntityMetadata,
+  type EventEntityBindingMetadata,
   type ExtensionCatalog,
   findEntity,
   findEvent,
@@ -64,6 +65,55 @@ function refuse(error: string): LifecycleRulesCheck {
 
 function lifecycleEventNames(rules: LifecycleRules): string[] {
   return [...rules.startEvents, ...rules.cancelEvents];
+}
+
+/**
+ * The bindings the Event `eventName` declares that identify an Entity of
+ * `entityType`, in the order the Event declares them. Empty for an Event the
+ * catalog no longer declares.
+ */
+export function entityBindingChoices(input: {
+  catalog: ExtensionCatalog;
+  eventName: string;
+  entityType: string;
+}): readonly EventEntityBindingMetadata[] {
+  return (
+    findEvent(input.catalog, input.eventName)?.entityBindings ?? []
+  ).filter((binding) => binding.entityType === input.entityType);
+}
+
+/**
+ * `rules` with one binding of the tracked Entity for each Start and Cancel
+ * Event that can provide one: the binding already chosen while the Event still
+ * declares it, and otherwise the Event's first compatible binding. A binding
+ * for an Event the rules no longer name is dropped, and an Event with no
+ * compatible binding keeps none, which `checkEntityEligibility` refuses.
+ * Rules that track no Entity are returned as they are.
+ */
+export function reconcileEntityBindings(
+  rules: LifecycleRules,
+  catalog: ExtensionCatalog
+): LifecycleRules {
+  const tracked = rules.trackedEntity;
+  if (!tracked) {
+    return rules;
+  }
+  const bindings = Object.fromEntries(
+    lifecycleEventNames(rules).flatMap((eventName) => {
+      const choices = entityBindingChoices({
+        catalog,
+        eventName,
+        entityType: tracked.type,
+      });
+      const selected = choices.some(
+        (choice) => choice.name === tracked.bindings[eventName]
+      )
+        ? tracked.bindings[eventName]
+        : choices[0]?.name;
+      return selected ? [[eventName, selected]] : [];
+    })
+  );
+  return { ...rules, trackedEntity: { type: tracked.type, bindings } };
 }
 
 function unreadableEligibilityRule(

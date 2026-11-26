@@ -7,7 +7,9 @@ import {
 import type { ExtensionCatalog } from "#src/extensions/catalog";
 import {
   checkEntityEligibility,
+  entityBindingChoices,
   entityEligibilitySchema,
+  reconcileEntityBindings,
 } from "#src/lifecycle/entity-eligibility";
 import type { LifecycleRules } from "#src/lifecycle/lifecycle-rules";
 import { rejectUnknownKeys } from "#src/types/schema";
@@ -149,6 +151,71 @@ describe("entityEligibilitySchema", () => {
     expect(
       decode({ condition: condition(), checkpoints: ["after-node"] })._tag
     ).toBe("Failure");
+  });
+});
+
+describe("entityBindingChoices", () => {
+  it("lists the bindings an Event declares for one Entity type", () => {
+    expect(
+      entityBindingChoices({
+        catalog,
+        eventName: "appointment.scheduled",
+        entityType: "patient",
+      }).map((binding) => binding.name)
+    ).toEqual(["patient"]);
+  });
+
+  it("lists nothing for an Event the catalog no longer declares", () => {
+    expect(
+      entityBindingChoices({
+        catalog,
+        eventName: "appointment.gone",
+        entityType: "appointment",
+      })
+    ).toEqual([]);
+  });
+});
+
+describe("reconcileEntityBindings", () => {
+  it("returns rules that track no Entity as they are", () => {
+    const untracked = rules({ trackedEntity: undefined });
+    expect(reconcileEntityBindings(untracked, catalog)).toBe(untracked);
+  });
+
+  it("keeps each chosen binding the Event still declares", () => {
+    expect(reconcileEntityBindings(rules(), catalog).trackedEntity).toEqual(
+      rules().trackedEntity
+    );
+  });
+
+  it("chooses the first compatible binding for an Event that has none", () => {
+    const next = reconcileEntityBindings(
+      rules({
+        trackedEntity: {
+          type: "appointment",
+          bindings: { "appointment.scheduled": "missing" },
+        },
+      }),
+      catalog
+    );
+    expect(next.trackedEntity?.bindings).toEqual({
+      "appointment.scheduled": "appointment",
+      "appointment.rescheduled": "booking",
+      "appointment.canceled": "appointment",
+    });
+  });
+
+  it("drops the binding of an Event the rules no longer name, and binds none where an Event offers none", () => {
+    const next = reconcileEntityBindings(
+      rules({
+        startEvents: ["appointment.scheduled", "notification.sent"],
+        cancelEvents: [],
+      }),
+      catalog
+    );
+    expect(next.trackedEntity?.bindings).toEqual({
+      "appointment.scheduled": "appointment",
+    });
   });
 });
 
