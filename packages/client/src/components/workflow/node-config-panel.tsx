@@ -381,7 +381,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       );
     }
 
-    return <NodePropertiesForm frame={frame} nodeId={selectedNode.id} />;
+    return <NodePropertiesForm nodeId={selectedNode.id} />;
   };
 
   return (

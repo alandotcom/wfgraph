@@ -3,7 +3,6 @@ import { sortBy } from "es-toolkit/array";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { NodeDetailsFields } from "#src/components/workflow/node-properties-form";
-import { NodeControls } from "#src/components/workflow/step-controls";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
@@ -146,10 +145,17 @@ function GroupSummarySections({
   groupId,
   description,
   focusField,
+  issuesTitled,
 }: {
   groupId: string;
   description: string | undefined;
   focusField: RevealBodyProps["focusField"];
+  /**
+   * Whether the issues sit under a "Validation" heading, as the phone's
+   * summary sheet shows them. The desktop form lists them under the summary
+   * with no heading, and only when there are any.
+   */
+  issuesTitled: boolean;
 }) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
@@ -170,6 +176,20 @@ function GroupSummarySections({
   const memberIssueCount = issues.filter((issue) =>
     memberIds.has(issue.nodeId)
   ).length;
+  const issueList = (
+    <>
+      {ownIssues.length > 0 || memberIssueCount === 0 ? (
+        <NodeIssueList issues={ownIssues} onSelect={() => focusField()} />
+      ) : null}
+      {memberIssueCount > 0 ? (
+        <p className="text-muted-foreground text-xs">
+          {memberIssueCount === 1
+            ? "1 issue is on a step in this Group. Choose the step to see it."
+            : `${memberIssueCount} issues are on steps in this Group. Choose a step to see them.`}
+        </p>
+      ) : null}
+    </>
+  );
 
   return (
     <>
@@ -215,27 +235,21 @@ function GroupSummarySections({
         />
       </Section>
 
-      <Section title="Validation">
-        {ownIssues.length > 0 || memberIssueCount === 0 ? (
-          <NodeIssueList issues={ownIssues} onSelect={() => focusField()} />
-        ) : null}
-        {memberIssueCount > 0 ? (
-          <p className="text-muted-foreground text-xs">
-            {memberIssueCount === 1
-              ? "1 issue is on a step in this Group. Choose the step to see it."
-              : `${memberIssueCount} issues are on steps in this Group. Choose a step to see them.`}
-          </p>
-        ) : null}
-      </Section>
+      {issuesTitled ? (
+        <Section title="Validation">{issueList}</Section>
+      ) : ownIssues.length > 0 || memberIssueCount > 0 ? (
+        <div className="space-y-1 px-4 pb-3">{issueList}</div>
+      ) : null}
     </>
   );
 }
 
 /**
- * The inspector of a Group: its label and description, editable in place,
- * then its summary, and Ungroup and Delete Group and steps.
+ * The inspector of a Group: its summary, its steps and boundary, any issues,
+ * then its Label and Notes after a divider. Ungroup and Delete Group and steps
+ * are commands of the details header's menu and the context menu.
  */
-export function GroupEditor({ subject, frame, focusField }: RevealBodyProps) {
+export function GroupEditor({ subject, focusField }: RevealBodyProps) {
   const nodes = useAtomValue(nodesAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const groupId = subject.nodeId;
@@ -245,18 +259,18 @@ export function GroupEditor({ subject, frame, focusField }: RevealBodyProps) {
   }
   return (
     <div className="pb-4">
-      <Section title="Details">
-        <NodeDetailsFields
-          disabled={isGenerating || !can(WfGraphOperations.workflowUpdate.id)}
-          node={node}
-        />
-      </Section>
       <GroupSummarySections
         description={undefined}
         focusField={focusField}
         groupId={groupId}
+        issuesTitled={false}
       />
-      <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
+      <div className="space-y-4 border-t px-4 pt-4">
+        <NodeDetailsFields
+          disabled={isGenerating || !can(WfGraphOperations.workflowUpdate.id)}
+          node={node}
+        />
+      </div>
     </div>
   );
 }
@@ -280,6 +294,7 @@ export function GroupSummarySheet({ subject, focusField }: RevealBodyProps) {
         }
         focusField={focusField}
         groupId={groupId}
+        issuesTitled
       />
     </div>
   );

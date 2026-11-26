@@ -125,33 +125,15 @@ function WaitEventsSummary({ node }: { node: WorkflowNode }) {
 
 /**
  * The inspector of an ordinary step: its complete form, with each issue shown
- * beneath the field it names, and every issue listed again under Validation,
- * where choosing one puts focus in its field. A step with no action chosen
- * shows the action picker.
+ * beneath the field it names and any issue that names no field after the
+ * form. A step with no action chosen shows the action picker.
  */
-export function StepEditor({ subject, frame, focusField }: RevealBodyProps) {
-  const issues = useAtomValue(workflowIssuesAtom);
+export function StepEditor({ subject }: RevealBodyProps) {
   const { nodeId } = subject;
   if (nodeId === null) {
     return null;
   }
-  return (
-    <NodePropertiesForm frame={frame} nodeId={nodeId}>
-      <div className="space-y-2">
-        <h3 className="font-medium text-sm">Validation</h3>
-        <NodeIssueList
-          issues={issues.filter((issue) => issue.nodeId === nodeId)}
-          onSelect={(fieldKey) =>
-            focusField(
-              fieldKey === undefined
-                ? undefined
-                : revealFocusTarget("step", fieldKey)
-            )
-          }
-        />
-      </div>
-    </NodePropertiesForm>
-  );
+  return <NodePropertiesForm nodeId={nodeId} />;
 }
 
 /**
@@ -184,7 +166,7 @@ export function StepSummarySheet({
   }
   const actionType = readConfigString(config, ACTION_TYPE_CONFIG_KEY);
   if (!actionType) {
-    return <NodePropertiesForm frame={frame} nodeId={nodeId} />;
+    return <NodePropertiesForm nodeId={nodeId} />;
   }
 
   const action = findAction(catalog, actionType);
