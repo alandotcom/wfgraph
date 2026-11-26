@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   withMobileAddressSheet,
-  withMobileInspectorOverAddress,
+  withMobileFullSheetOverAddress,
   withMobileSequenceFrom,
   withMobileSheet,
   withMobileSheetScroll,
@@ -50,19 +50,19 @@ describe("mobile Reveal sheets", () => {
     ).toEqual([]);
   });
 
-  it("opens the inspector over the summary", () => {
+  it("opens the full sheet over the summary", () => {
     const summary = withInspectedSelection(EMPTY, nodeSelection("send"));
     const inspector = withMobileSheet(summary, {
-      level: "inspector",
+      level: "full",
       inspected: node("send"),
     });
     expect(inspector.mobile.sheets.map((sheet) => sheet.level)).toEqual([
       "summary",
-      "inspector",
+      "full",
     ]);
     expect(
       withMobileSheet(inspector, {
-        level: "inspector",
+        level: "full",
         inspected: node("send"),
       })
     ).toBe(inspector);
@@ -70,20 +70,20 @@ describe("mobile Reveal sheets", () => {
 
   it("puts a summary beneath an inspector opened with no sheet open", () => {
     const inspector = withMobileSheet(EMPTY, {
-      level: "inspector",
+      level: "full",
       inspected: node("lifecycle"),
     });
     expect(inspector.selection).toEqual(nodeSelection("lifecycle"));
     expect(inspector.mobile.sheets.map((sheet) => sheet.level)).toEqual([
       "summary",
-      "inspector",
+      "full",
     ]);
   });
 
   it("goes Back one sheet at a time and selects what the sheet beneath shows", () => {
     const split = withInspectedSelection(EMPTY, nodeSelection("split"));
     const lifecycle = withMobileSheet(split, {
-      level: "inspector",
+      level: "full",
       inspected: node("lifecycle"),
     });
     expect(lifecycle.selection).toEqual(nodeSelection("lifecycle"));
@@ -107,12 +107,12 @@ describe("mobile Reveal sheets", () => {
       top: 240,
     });
     const inspector = withMobileSheet(scrolled, {
-      level: "inspector",
+      level: "full",
       inspected: node("send"),
     });
     const inspectorScrolled = withMobileSheetScroll(inspector, {
       depth: 2,
-      level: "inspector",
+      level: "full",
       inspected: node("send"),
       top: 90,
     });
@@ -129,7 +129,7 @@ describe("mobile Reveal sheets", () => {
     expect(
       withMobileSheetScroll(back, {
         depth: 2,
-        level: "inspector",
+        level: "full",
         inspected: node("send"),
         top: 12,
       })
@@ -144,7 +144,7 @@ describe("mobile Reveal sheets", () => {
       inspected: node("gone"),
     });
     const child = withMobileSheet(gone, {
-      level: "inspector",
+      level: "full",
       inspected: node("child"),
     });
     const kept = inspectionInGraph(child, graph);
@@ -188,7 +188,7 @@ describe("mobile Reveal sheets", () => {
       inspected: null,
       top: 70,
     });
-    const evidence = withMobileInspectorOverAddress(scrolled, node("send"));
+    const evidence = withMobileFullSheetOverAddress(scrolled, node("send"));
     expect(evidence.selection).toBe(scrolled.selection);
     expect(
       evidence.mobile.sheets.map((sheet) => [
@@ -198,19 +198,19 @@ describe("mobile Reveal sheets", () => {
       ])
     ).toEqual([
       ["summary", null, 70],
-      ["inspector", "send", 0],
+      ["full", "send", 0],
     ]);
-    expect(withMobileInspectorOverAddress(evidence, node("send"))).toBe(
+    expect(withMobileFullSheetOverAddress(evidence, node("send"))).toBe(
       evidence
     );
 
-    const other = withMobileInspectorOverAddress(evidence, node("wait"));
+    const other = withMobileFullSheetOverAddress(evidence, node("wait"));
     expect(other.mobile.sheets.map((sheet) => sheet.inspected?.id)).toEqual([
       undefined,
       "wait",
     ]);
 
-    const fromNothing = withMobileInspectorOverAddress(EMPTY, node("send"));
+    const fromNothing = withMobileFullSheetOverAddress(EMPTY, node("send"));
     expect(
       fromNothing.mobile.sheets.map((sheet) => sheet.inspected?.id ?? null)
     ).toEqual([null, "send"]);
@@ -218,7 +218,7 @@ describe("mobile Reveal sheets", () => {
 
   it("keeps the selection on Back to an address sheet and keeps address sheets in any graph", () => {
     const selected = {
-      ...withMobileInspectorOverAddress(
+      ...withMobileFullSheetOverAddress(
         withMobileAddressSheet(EMPTY),
         node("gone")
       ),
@@ -246,7 +246,7 @@ describe("mobile Reveal sheets", () => {
     expect(withMobileSequenceFrom(EMPTY, [])).toBe(EMPTY);
   });
 
-  it("pushes an inspector over an address sheet that is not an inspector", () => {
+  it("pushes a full sheet over an address sheet that is not one", () => {
     const listed = {
       ...EMPTY,
       mobile: {
@@ -257,7 +257,7 @@ describe("mobile Reveal sheets", () => {
         ],
       },
     };
-    const pushed = withMobileInspectorOverAddress(listed, node("send"));
+    const pushed = withMobileFullSheetOverAddress(listed, node("send"));
     expect(
       pushed.mobile.sheets.map((sheet) => [
         sheet.level,
@@ -267,7 +267,7 @@ describe("mobile Reveal sheets", () => {
     ).toEqual([
       ["summary", 0, null],
       ["summary", 12, null],
-      ["inspector", 0, "send"],
+      ["full", 0, "send"],
     ]);
   });
 });

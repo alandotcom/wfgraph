@@ -12,7 +12,7 @@ import {
 } from "#src/lib/workflow-navigation-state";
 import {
   openMobileAddressSheetAtom,
-  openMobileInspectorOverAddressAtom,
+  openMobileFullSheetOverAddressAtom,
   openMobileSheetAtom,
 } from "#src/lib/mobile-sheet-store";
 import {
@@ -144,7 +144,7 @@ export function useRevealNavigation(): RevealNavigation {
       const inspectRunNode: RevealNavigation["inspectRunNode"] = (input) => {
         store.set(inspectRunNodeAtom, { ...input, opensFocus: false });
         if (input.opensEvidence) {
-          store.set(openMobileInspectorOverAddressAtom, {
+          store.set(openMobileFullSheetOverAddressAtom, {
             address: input.address,
             inspected: node(input.nodeId),
           });
@@ -156,13 +156,13 @@ export function useRevealNavigation(): RevealNavigation {
         openNode: ({ address, nodeId, level }) =>
           store.set(openMobileSheetAtom, {
             address,
-            level: level === "focus" ? "inspector" : "summary",
+            level: level === "focus" ? "full" : "summary",
             inspected: node(nodeId),
           }),
         openSection: ({ address, nodeId, targetId }) => {
           store.set(openMobileSheetAtom, {
             address,
-            level: "inspector",
+            level: "full",
             inspected: node(nodeId),
           });
           store.set(revealFieldRequestAtom, { nodeId, targetId });

@@ -129,7 +129,7 @@ export const dismissInspectorAtom = atom(null, (get, set) => {
 /**
  * What the mobile Reveal sequence shows for the active address: its last sheet
  * and the sheet beneath it, and the level on screen, which is the summary for
- * an object's inspector when the subject offers no inspector sheet. Null with no sheet
+ * an object's full sheet when the subject offers none. Null with no sheet
  * open, and while the last sheet's object is no longer what the subject
  * inspects. Form factor is the reader's to check.
  */
@@ -158,9 +158,9 @@ export const mobileRevealAtom = atom((get): MobileRevealState | null => {
     return null;
   }
   const level: MobileRevealLevel =
-    sheet.level === "inspector" &&
-    (sheet.inspected === null || subject.offersInspectorSheet)
-      ? "inspector"
+    sheet.level === "full" &&
+    (sheet.inspected === null || subject.offersFullSheet)
+      ? "full"
       : "summary";
   return {
     address,

@@ -51,11 +51,11 @@ export type RevealSubject = {
    */
   levels: readonly RevealLevel[];
   /**
-   * Whether the phone sequence offers an inspector sheet that covers the
+   * Whether the phone sequence offers a full sheet that covers the
    * canvas over the subject's summary sheet: a Draft object's full-screen
    * editor, or a run node's evidence.
    */
-  offersInspectorSheet: boolean;
+  offersFullSheet: boolean;
   /**
    * What a Runs subject inspects: a node's evidence or a Group's run summary.
    * Null for the run list, the run overview, and every other kind.
@@ -126,7 +126,7 @@ export function matchStepSubject(
     nodeId: onlyNode.id,
     placement: { kind: "nodes", nodeIds: [onlyNode.id] },
     levels: ["browse"],
-    offersInspectorSheet: typeof onlyNode.data.config?.actionType === "string",
+    offersFullSheet: typeof onlyNode.data.config?.actionType === "string",
     runsTarget: null,
   };
 }
@@ -153,7 +153,7 @@ export function matchConditionSubject(
     nodeId: onlyNode.id,
     placement: { kind: "node-outlets", nodeId: onlyNode.id },
     levels: ["browse"],
-    offersInspectorSheet: true,
+    offersFullSheet: true,
     runsTarget: null,
   };
 }
@@ -180,7 +180,7 @@ export function matchGroupSubject(
     nodeId: onlyNode.id,
     placement: { kind: "nodes", nodeIds: [onlyNode.id] },
     levels: ["browse"],
-    offersInspectorSheet: true,
+    offersFullSheet: true,
     runsTarget: null,
   };
 }
@@ -208,7 +208,7 @@ export function matchEventSplitSubject(
     nodeId: onlyNode.id,
     placement: { kind: "node-outlets", nodeId: onlyNode.id },
     levels: ["browse"],
-    offersInspectorSheet: false,
+    offersFullSheet: false,
     runsTarget: null,
   };
 }
@@ -236,7 +236,7 @@ export function matchLifecycleSubject(
     nodeId: onlyNode.id,
     placement: { kind: "nodes", nodeIds: [onlyNode.id] },
     levels: ["browse"],
-    offersInspectorSheet: true,
+    offersFullSheet: true,
     runsTarget: null,
   };
 }
@@ -270,7 +270,7 @@ export function matchRunsSubject(input: RunsMatchInput): RevealSubject | null {
     kind: "runs" as const,
     workspace: input.workspace,
     levels,
-    offersInspectorSheet: target?.kind === "node",
+    offersFullSheet: target?.kind === "node",
     runsTarget: target,
   };
   if (onlyNodeId !== null) {
@@ -321,7 +321,7 @@ export function matchPanelSubject(
       ]),
     },
     levels: ["browse"],
-    offersInspectorSheet: false,
+    offersFullSheet: false,
     runsTarget: null,
   };
 }

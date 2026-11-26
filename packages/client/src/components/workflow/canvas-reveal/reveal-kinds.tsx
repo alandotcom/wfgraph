@@ -177,9 +177,9 @@ export type RevealKind = {
    * renders the sheet header, usually `MobileSheetHeader`, with the shell's
    * controls; without it the shell builds one from the kind's header model.
    * `Summary` is the summary sheet's body, `Browse` by default, and
-   * `Inspector` is the inspector sheet's body, `Focus` by default.
-   * `inspectorLabel` names the control in the shell's header that opens the
-   * inspector sheet, which a kind without it does not offer. `unwind` answers
+   * `Full` is the full sheet's body, `Focus` by default.
+   * `fullSheetLabel` names the control in the shell's header that opens the
+   * full sheet, which a kind without it does not offer. `unwind` answers
    * Back and Escape on a phone, where `unwindLevel` removes the top sheet; the
    * default removes the top sheet. After Back, `backFocusTarget` names the
    * element in the sheet that takes focus when the body moved none.
@@ -188,8 +188,8 @@ export type RevealKind = {
   mobile?: {
     Header?: ComponentType<MobileKindHeaderProps>;
     Summary?: ComponentType<RevealBodyProps>;
-    Inspector?: ComponentType<RevealBodyProps>;
-    inspectorLabel?: string;
+    Full?: ComponentType<RevealBodyProps>;
+    fullSheetLabel?: string;
     unwind?: RevealUnwind;
     backFocusTarget?: (sheet: HTMLElement) => HTMLElement | null;
     shellOwnsScroll?: boolean;
@@ -355,8 +355,8 @@ const STEP_KIND: RevealKind = {
   unwind: unwindToInspectedOrigin,
   mobile: {
     Summary: StepSummarySheet,
-    Inspector: StepEditor,
-    inspectorLabel: "Edit step",
+    Full: StepEditor,
+    fullSheetLabel: "Edit step",
   },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
@@ -376,8 +376,8 @@ const CONDITION_KIND: RevealKind = {
   Focus: null,
   mobile: {
     Summary: ConditionSummarySheet,
-    Inspector: ConditionEditor,
-    inspectorLabel: "Edit rules",
+    Full: ConditionEditor,
+    fullSheetLabel: "Edit rules",
   },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
@@ -397,8 +397,8 @@ const GROUP_KIND: RevealKind = {
   Focus: null,
   mobile: {
     Summary: GroupSummarySheet,
-    Inspector: GroupEditor,
-    inspectorLabel: "Edit group",
+    Full: GroupEditor,
+    fullSheetLabel: "Edit group",
   },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
@@ -419,8 +419,8 @@ const LIFECYCLE_KIND: RevealKind = {
   unwind: unwindToInspectedOrigin,
   mobile: {
     Summary: LifecycleSummarySheet,
-    Inspector: LifecycleEditor,
-    inspectorLabel: "Edit start",
+    Full: LifecycleEditor,
+    fullSheetLabel: "Edit start",
   },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
@@ -449,7 +449,7 @@ const EVENT_SPLIT_KIND: RevealKind = {
  * the run overview keeps its state while Focus shows. Its header names the open
  * run and the inspected node; Back leaves Focus for the run, and the run for
  * the list. On mobile the run list and the run each show as their address's
- * sheet, and the evidence as the inspector over the run's sheet, with the same
+ * sheet, and the evidence as the full sheet over the run's sheet, with the same
  * Back.
  */
 const RUNS_KIND: RevealKind = {

@@ -14,10 +14,10 @@ import { sameObject, withSelection } from "#src/lib/canvas-selection";
 
 /**
  * The named levels of the mobile Reveal sequence. `summary` is a sheet over the
- * bottom of the canvas, which stays visible above it, and `inspector` is the
+ * bottom of the canvas, which stays visible above it, and `full` is the
  * full-screen editor that covers the canvas.
  */
-export type MobileRevealLevel = "summary" | "inspector";
+export type MobileRevealLevel = "summary" | "full";
 
 /**
  * One sheet of the mobile Reveal sequence. `inspected` is the object the sheet
@@ -143,7 +143,7 @@ export function withMobileSummaryOf(
 /**
  * Open one mobile sheet over the sheets already open, and select the object it
  * shows alone. When the last sheet already is that level for that object, only
- * the selection is written. An inspector opened with no sheet open gets
+ * the selection is written. A full sheet opened with no sheet open gets
  * its object's summary beneath it, so Back reaches that summary before the
  * canvas.
  */
@@ -164,7 +164,7 @@ export function withMobileSheet(
     return selected;
   }
   const below: readonly MobileSheet[] =
-    top === null && input.level === "inspector"
+    top === null && input.level === "full"
       ? [{ level: "summary", inspected: input.inspected, scroll: 0 }]
       : selected.mobile.sheets;
   return withMobileSheets(selected, [
@@ -233,24 +233,24 @@ export function withMobileSequenceFrom(
 }
 
 /**
- * Show the inspector of `inspected` over the current address. With no sheet
- * open the sequence becomes the address sheet and the inspector. Over an
- * inspector of another object the object is swapped in place, starting its
- * scroll over. Over any other sheet the inspector is pushed. The
+ * Show the full sheet of `inspected` over the current address. With no sheet
+ * open the sequence becomes the address sheet and the full sheet. Over a
+ * full sheet of another object the object is swapped in place, starting its
+ * scroll over. Over any other sheet the full sheet is pushed. The
  * selection is left as it is, for a caller
  * that writes it in the same navigation update.
  */
-export function withMobileInspectorOverAddress(
+export function withMobileFullSheetOverAddress(
   workspace: WorkspaceNavigation,
   inspected: InspectedObject
 ): WorkspaceNavigation {
   const { sheets } = workspace.mobile;
   const top = sheets.at(-1);
-  const inspector: MobileSheet = { level: "inspector", inspected, scroll: 0 };
+  const inspector: MobileSheet = { level: "full", inspected, scroll: 0 };
   if (top === undefined) {
     return withMobileSheets(workspace, [ADDRESS_SHEET, inspector]);
   }
-  if (top.level !== "inspector" || top.inspected === null) {
+  if (top.level !== "full" || top.inspected === null) {
     return withMobileSheets(workspace, [...sheets, inspector]);
   }
   if (sameObject(top.inspected, inspected)) {

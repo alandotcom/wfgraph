@@ -307,7 +307,7 @@ and the number-only form is there for a person who zooms out. A camera remembere
 view changes to a view with no remembered camera, the canvas places the graph
 the same way, never zooming in past the zoom it had. A run that failed, is
 waiting, or was canceled then moves the least distance that puts the step where
-it stopped in the usable canvas. Loading changes inspector status without fading,
+it stopped in the usable canvas. Loading changes the Inspector's status without fading,
 re-fitting, or replacing the last valid canvas; resolved content replaces it
 only when the next presentation is ready.
 
@@ -723,7 +723,7 @@ stays where the sheet body put it, such as a run row or the canvas node that
 opened the evidence; otherwise it goes to the element the workspace names for
 that sheet, then to the control that opened the removed sheet, and then to the
 title of the sheet on screen. Closing the last sheet returns focus to the canvas
-node. The canvas and the outline under the inspector leave the tab
+node. The canvas and the outline under the full-screen editor leave the tab
 order. Every control inside the sequence, and every option of a select, combobox
 or menu popup while the sequence shows, is at least 44px tall, text fields read
 at 1rem, and the sheets clear the left and right safe-area insets. The sheets
@@ -738,14 +738,14 @@ authoring. The configuration sheet opens below `md` only for a Draft with
 nothing selected, and moving to another workspace closes it.
 
 Below `md`, **Runs** uses the same sequence of sheets. A sheet has one of two
-shapes: a summary sheet over the bottom of the canvas, or an inspector that
+shapes: a summary sheet over the bottom of the canvas, or a full sheet that
 covers it. A Draft sheet is about one object, a Runs sheet is about the
 address itself or about one object. Entering Runs, or **Configuration** in Runs,
 opens the run list or the open run as a summary sheet. A run row opens that run's summary sheet, which holds its
 status, **Cancel**, active waits with **Resume now**, exit details, the failure
 summary, and activity, and adds a history entry. A row of the run's outline,
 a step pressed on the run's canvas, or **Show evidence** opens that
-step's evidence as the inspector over the run's sheet, and another step swaps
+step's evidence as the full sheet over the run's sheet, and another step swaps
 the evidence in place. A Group card shows its run summary in the run's sheet.
 Back is named for the level it returns to: the run from the evidence or a Group
 summary, and **Runs** from a run, which replaces the history entry with the run

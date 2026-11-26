@@ -88,12 +88,12 @@ describe("matchStepSubject", () => {
       kind: "step",
       nodeId: "send",
       levels: ["browse"],
-      offersInspectorSheet: true,
+      offersFullSheet: true,
     });
     expect(matchStepSubject(input("draft", ["blank"]))).toMatchObject({
       kind: "step",
       levels: ["browse"],
-      offersInspectorSheet: false,
+      offersFullSheet: false,
     });
   });
 
@@ -113,7 +113,7 @@ describe("matchConditionSubject", () => {
       nodeId: "condition",
       placement: { kind: "node-outlets", nodeId: "condition" },
       levels: ["browse"],
-      offersInspectorSheet: true,
+      offersFullSheet: true,
       runsTarget: null,
     });
   });
@@ -137,7 +137,7 @@ describe("matchGroupSubject", () => {
       nodeId: "group",
       placement: { kind: "nodes", nodeIds: ["group"] },
       levels: ["browse"],
-      offersInspectorSheet: true,
+      offersFullSheet: true,
       runsTarget: null,
     });
   });
@@ -158,7 +158,7 @@ describe("matchLifecycleSubject", () => {
       nodeId: "lifecycle",
       placement: { kind: "nodes", nodeIds: ["lifecycle"] },
       levels: ["browse"],
-      offersInspectorSheet: true,
+      offersFullSheet: true,
       runsTarget: null,
     });
   });
@@ -181,7 +181,7 @@ describe("matchEventSplitSubject", () => {
       nodeId: "split",
       placement: { kind: "node-outlets", nodeId: "split" },
       levels: ["browse"],
-      offersInspectorSheet: false,
+      offersFullSheet: false,
       runsTarget: null,
     });
   });

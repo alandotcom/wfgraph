@@ -149,8 +149,8 @@ describe("mobile Runs sequence", () => {
     await waitFor(() => expect(document.activeElement).toBe(sheetTitle()));
 
     fireEvent.click(await outlineRow("Send reminder"));
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
-    expect(levels()).toEqual(["summary:address", "inspector:send"]);
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
+    expect(levels()).toEqual(["summary:address", "full:send"]);
     expect(sheetTitle()?.textContent).toBe("Send reminder");
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
     expect(canvasCovered()).toBe(true);
@@ -201,8 +201,8 @@ describe("mobile Runs sequence", () => {
     });
 
     fireEvent.click(await canvasNode("Send reminder"));
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
-    expect(levels()).toEqual(["summary:address", "inspector:send"]);
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
+    expect(levels()).toEqual(["summary:address", "full:send"]);
 
     press(`Back to ${runHeading("exec_a")}`);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("summary"));
@@ -213,7 +213,7 @@ describe("mobile Runs sequence", () => {
     // With the node still selected, the run's sheet offers its evidence again.
     expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"));
     press("Show evidence");
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
   });
 
   it("returns focus to the canvas node when Back leaves evidence a canvas press opened", async () => {
@@ -228,7 +228,7 @@ describe("mobile Runs sequence", () => {
     );
     const node = await canvasNode("Send reminder");
     fireEvent.click(node);
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
 
     press(`Back to ${runHeading("exec_a")}`);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("summary"));
@@ -307,7 +307,7 @@ describe("mobile Runs sequence", () => {
       expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
     );
     fireEvent.click(await canvasNode("Send reminder"));
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
 
     act(() => escape());
     await waitFor(() =>
@@ -329,12 +329,12 @@ describe("mobile Runs sequence", () => {
       expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
     );
     fireEvent.click(await canvasNode("Send reminder"));
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
 
     press(`Back to ${runHeading("exec_a")}`);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("summary"));
     press("Show evidence");
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
 
     // The switcher sits outside the covered canvas, as the toolbar does.
     press("Show Draft");
@@ -348,8 +348,8 @@ describe("mobile Runs sequence", () => {
         executionId: "exec_a",
       })
     );
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
-    expect(levels()).toEqual(["summary:address", "inspector:send"]);
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
+    expect(levels()).toEqual(["summary:address", "full:send"]);
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
     press(`Back to ${runHeading("exec_a")}`);
     await waitFor(() =>
@@ -392,7 +392,7 @@ describe("mobile Runs under polling and late responses", () => {
       expect(sheetTitle()?.textContent).toBe(runHeading("exec_r"))
     );
     fireEvent.click(await canvasNode("Send reminder"));
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
 
     served.logsByExecutionId = {
       exec_r: [
@@ -411,7 +411,7 @@ describe("mobile Runs under polling and late responses", () => {
     });
     await afterPaint();
 
-    expect(levels()).toEqual(["summary:address", "inspector:send"]);
+    expect(levels()).toEqual(["summary:address", "full:send"]);
     expect(sheetTitle()?.textContent).toBe("Send reminder");
     expect(store.get(selectedNodeAtom)).toBe("send");
     expect(router.state.location.search).toEqual({
@@ -631,7 +631,7 @@ describe("mobile Runs accessibility", () => {
       within(region()).queryAllByRole("button", { name: topology })
     ).toEqual([]);
     fireEvent.click(await canvasNode("Send reminder"));
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
+    await waitFor(() => expect(sheet()?.dataset.level).toBe("full"));
     expect(
       within(region()).queryAllByRole("button", { name: topology })
     ).toEqual([]);

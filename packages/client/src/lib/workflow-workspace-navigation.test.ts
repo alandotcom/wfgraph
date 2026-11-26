@@ -34,7 +34,7 @@ import {
 import {
   closeMobileSheetAtom,
   openMobileAddressSheetAtom,
-  openMobileInspectorOverAddressAtom,
+  openMobileFullSheetOverAddressAtom,
   openMobileSheetAtom,
 } from "#src/lib/mobile-sheet-store";
 import {
@@ -376,7 +376,7 @@ describe("mobile Reveal sheets", () => {
 
     showWorkspaceRoute(store, { view: "runs", executionId: "exec_1" });
     expect(inspectedIds()).toEqual([undefined]);
-    store.set(openMobileInspectorOverAddressAtom, {
+    store.set(openMobileFullSheetOverAddressAtom, {
       address: store.get(activeWorkspaceAddressAtom),
       inspected: { kind: "node", id: "send" },
     });
@@ -404,12 +404,12 @@ describe("mobile Reveal sheets", () => {
     });
     store.set(openMobileSheetAtom, {
       address: overview,
-      level: "inspector",
+      level: "full",
       inspected: { kind: "node", id: "draft_step" },
     });
     expect(
       store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
-    ).toEqual(["summary", "inspector"]);
+    ).toEqual(["summary", "full"]);
 
     showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
     expect(store.get(activeMobileSheetsAtom)).toEqual([]);
@@ -417,7 +417,7 @@ describe("mobile Reveal sheets", () => {
     showWorkspaceRoute(store, {});
     expect(
       store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
-    ).toEqual(["summary", "inspector"]);
+    ).toEqual(["summary", "full"]);
 
     store.set(closeMobileSheetAtom, overview);
     expect(
