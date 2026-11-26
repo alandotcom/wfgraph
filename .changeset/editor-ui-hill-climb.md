@@ -16,6 +16,8 @@ The editor is easier to read and to operate.
 - A run of the draft that is waiting on a timed Wait offers Continue now, which ends that Wait as if its time had come so the run goes on. A run of a published version never offers it.
 - Status text clears 4.5:1 contrast, focus rings are full strength, and overlays share one scrim that darkens in both themes.
 
+A refused Publish or Run draft calls a Start or Cancel filter what the Start's form calls it, “Only start when” or “Only stop when”, and gives an Event's label where it used to print the Event's type key, so an unfinished rule in a filter shared by several Events reads "“Only start when” has a rule that is not finished. Finish the rule, or remove it." An unfinished rule says what it is missing, such as "A value is required."
+
 Fixes: duplicating a workflow that contains a Group no longer fails, a Wait Duration that cannot be read is a blocking issue, and deleting a Connection no longer rebinds its steps to another Connection.
 
 The build agent uses the step numbers the editor prints and reads what a test run does at each step from the workflow's own settings. `read_workflow` and `read_nodes` give each step its `stepNumber` and give an action step its `testRun`, the note under a message names each attached step by number and label, and a host runner's `turn.selectedNodes` carries `stepNumber`. `validate_workflow`, in the chat and over MCP, also answers `steps`: each numbered step's `id`, `stepNumber` and `label` in run order. When the model writes a tool call whose arguments are not valid JSON, the agent tells it so and runs that model step once more, in the built-in runner and in `streamAgentTurn`; a second such call in the same turn ends the turn with an error.
