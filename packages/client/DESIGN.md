@@ -337,7 +337,11 @@ inside a selection of two or more steps keeps the selection, and the menu
 names the count and offers only what applies to every selected step: **Group 2
 steps**, **Duplicate 2 steps**, **Copy**, **Disable 2 steps** or **Enable 2
 steps** when all are steps, and **Delete 2 steps**, the last three absent when
-the selection holds the Lifecycle node.
+the selection holds the Lifecycle node. A selected Group is counted apart from
+the steps, as in **Duplicate 2 steps and 1 Group**, and since deleting a
+selection ungroups each selected Group and keeps its other members, that row
+reads **Delete 2 steps and ungroup 1 Group**, or **Ungroup 2 Groups** with no
+step selected.
 `[` hides and shows the outline from anywhere outside a text field, and the
 command palette offers the same command. In Runs with no run open the outline
 is the run list, which always shows, because it is the only way to open a run.
