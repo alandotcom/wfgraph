@@ -28,6 +28,8 @@ export function currentPlatform(): string {
 }
 
 export type EditorShortcutLabels = {
+  /** Hides the build agent's box on the canvas, or shows it again. */
+  agent: string;
   copy: string;
   duplicate: string;
   findStep: string;
@@ -44,6 +46,7 @@ export type EditorShortcutLabels = {
 export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
   return onApple
     ? {
+        agent: "⌘J",
         copy: "⌘C",
         duplicate: "⌘D",
         findStep: "⌘F",
@@ -56,6 +59,7 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
         palette: "⌘K",
       }
     : {
+        agent: "Ctrl+J",
         copy: "Ctrl+C",
         duplicate: "Ctrl+D",
         findStep: "Ctrl+F",
@@ -131,6 +135,7 @@ export function shortcutReference(
         { label: "Undo", keys: [keys.undo] },
         { label: "Redo", keys: [keys.redo] },
         { label: "Hide or show the outline", keys: [OUTLINE_SHORTCUT_KEY] },
+        { label: "Hide or show the agent", keys: [keys.agent] },
         { label: "Send a message to the agent", keys: [enter] },
       ],
     },

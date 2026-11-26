@@ -7,9 +7,15 @@
  * is offered as a chip they may attach to the message; nothing is attached
  * unless they attach it.
  *
- * The runtime stays mounted while the conversation is closed and while the
- * review sheet hides the line, so a turn in progress keeps going. The thread is
- * kept in this browser per workflow until "New conversation" clears it.
+ * On the canvas the person can hide the whole box with the control on the
+ * line's top edge, Cmd+J (Ctrl+J) or the palette, leaving a small Show agent
+ * control at the foot of the canvas that carries the same working or replied
+ * dot the line does. A reply does not bring the box back by itself.
+ *
+ * The runtime stays mounted while the conversation is closed, while the box is
+ * hidden and while the review sheet hides the line, so a turn in progress
+ * keeps going. The thread is kept in this browser per workflow until "New
+ * conversation" clears it.
  *
  * Absent entirely when the host configured no model, or for a person who may
  * not use the agent: a disabled control the user cannot enable is worse than
@@ -25,12 +31,14 @@ import {
 import {
   ArrowLeft,
   ArrowUpIcon,
+  ChevronDown,
   Plus,
+  Sparkles,
   SquareIcon,
   SquarePenIcon,
   X,
 } from "lucide-react";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { type KeyboardEvent, type RefObject, useRef, useState } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -46,16 +54,28 @@ import {
 import { forgetAgentThread } from "#src/components/agent/thread-storage";
 import { useAgentRuntime } from "#src/components/agent/use-agent-runtime";
 import { Button } from "#src/components/ui/button";
-import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
+import { ControlTooltip } from "#src/components/ui/control-tooltip";
+import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { canUseBuildAgent } from "#src/lib/authorization";
+import {
+  editorChordAllowed,
+  isAgentToggleChord,
+} from "#src/lib/editor-shortcuts";
 import { isAgentEnabled } from "#src/lib/extensions";
+import {
+  currentPlatform,
+  editorShortcutLabels,
+  isApplePlatform,
+} from "#src/lib/shortcut-label";
 import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   agentComposerFocusRequestAtom,
   agentConversationOpenAtom,
+  agentHiddenAtom,
   isGeneratingAtom,
+  toggleAgentHiddenAtom,
 } from "#src/lib/workflow-ui-store";
 
 type AgentRuntime = ReturnType<typeof useAgentRuntime>;
@@ -73,8 +93,17 @@ export type WorkflowAgentVariant = "canvas" | "phone";
 /** The grow and shrink between the pill and the full line, in the 150 to 250ms band. */
 const PROMPT_TRANSITION = "duration-200 ease-out motion-reduce:transition-none";
 
+/** What the agent is doing that the person has not seen, if anything. */
+type AgentMark = "working" | "replied" | null;
+
 /** The rules and the layout one variant of the agent follows. */
 interface VariantLayout {
+  /**
+   * Whether the person can hide the whole box, leaving the Show agent control.
+   * A phone's line sits in the page's flow below the main view, where hiding
+   * it would free no canvas.
+   */
+  hideable: boolean;
   /**
    * Whether the prompt rests as a one-line pill while nothing holds it open:
    * no focus inside the agent, no text, and no open conversation.
@@ -106,6 +135,7 @@ const VARIANT_LAYOUTS: Record<WorkflowAgentVariant, VariantLayout> = {
   // The line and the conversation float over the bottom centre of the canvas,
   // and an empty thread has nothing to show, so focus only grows the pill.
   canvas: {
+    hideable: true,
     restsAsPill: true,
     focusOpensEmptyThread: false,
     escapeReturnsToCanvas: true,
@@ -126,6 +156,7 @@ const VARIANT_LAYOUTS: Record<WorkflowAgentVariant, VariantLayout> = {
   // The line sits at full height below the main view in the page's flow, and
   // the open conversation covers the whole screen under a Back control.
   phone: {
+    hideable: false,
     restsAsPill: false,
     focusOpensEmptyThread: true,
     escapeReturnsToCanvas: false,
@@ -241,7 +272,7 @@ function PromptLine({
   pill: boolean;
   attached: AttachedStep | null;
   offered: AttachedStep | null;
-  mark: "working" | "replied" | null;
+  mark: AgentMark;
   onAttach: (step: AttachedStep) => void;
   onDetach: () => void;
   onSend: () => void;
@@ -399,6 +430,85 @@ function PromptLine({
   );
 }
 
+/** The agent chord for this keyboard: its keycap and its `aria-keyshortcuts`. */
+function agentChord(): { label: string; aria: string } {
+  const onApple = isApplePlatform(currentPlatform());
+  return {
+    label: editorShortcutLabels(onApple).agent,
+    aria: onApple ? "Meta+J" : "Control+J",
+  };
+}
+
+/**
+ * The 20px round control on the prompt line's top edge, near its right end,
+ * that hides the box. It shows while the pointer is over the line or focus is
+ * inside it. Tab reaches it after Send, and focusing it shows it too.
+ */
+function HideAgentControl({ onHide }: { onHide: () => void }) {
+  const chord = agentChord();
+  return (
+    <ControlTooltip label="Hide agent" shortcut={chord.label} side="top">
+      <button
+        aria-keyshortcuts={chord.aria}
+        aria-label="Hide agent"
+        className="pointer-events-none absolute -top-2.5 right-3 flex size-5 items-center justify-center rounded-full border bg-card text-muted-foreground opacity-0 shadow-sm outline-none transition-opacity duration-150 ease-out hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-focus-within/composer:pointer-events-auto group-focus-within/composer:opacity-100 group-hover/composer:pointer-events-auto group-hover/composer:opacity-100 motion-reduce:transition-none"
+        data-slot="agent-hide"
+        onClick={onHide}
+        type="button"
+      >
+        <ChevronDown className="size-3" />
+      </button>
+    </ControlTooltip>
+  );
+}
+
+/**
+ * What stays at the foot of the canvas while the box is hidden: one quiet
+ * round button that shows it again. A dot on its corner says the agent is
+ * working or has replied since the box was hidden. `buttonRef` receives the
+ * button as it mounts, which is how focus lands here when the box hid with
+ * focus inside it.
+ */
+function ShowAgentControl({
+  mark,
+  onShow,
+  buttonRef,
+}: {
+  mark: AgentMark;
+  onShow: () => void;
+  buttonRef: (element: HTMLButtonElement | null) => void;
+}) {
+  const chord = agentChord();
+  const label =
+    mark === "working"
+      ? "Show agent. The agent is working"
+      : mark === "replied"
+        ? "Show agent. The agent replied"
+        : "Show agent";
+  return (
+    <ControlTooltip label={label} shortcut={chord.label} side="top">
+      <Button
+        aria-keyshortcuts={chord.aria}
+        aria-label={label}
+        className="relative rounded-full bg-card text-muted-foreground shadow-sm hover:text-foreground"
+        onClick={onShow}
+        ref={buttonRef}
+        size="icon-lg"
+        type="button"
+        variant="outline"
+      >
+        <Sparkles />
+        {mark ? (
+          <span
+            className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-primary ring-2 ring-card"
+            data-slot="agent-mark"
+          />
+        ) : null}
+      </Button>
+    </ControlTooltip>
+  );
+}
+
 function AgentSurface({
   variant,
   runtime,
@@ -413,6 +523,8 @@ function AgentSurface({
     agentComposerFocusRequestAtom
   );
   const reviewShown = useAtomValue(isReviewSheetShownAtom);
+  const hiddenPreference = useAtomValue(agentHiddenAtom);
+  const toggleHidden = useSetAtom(toggleAgentHiddenAtom);
   const running = useAuiState((state) => state.thread.isRunning);
   const threadEmpty = useAuiState(
     (state) => state.thread.messages.length === 0
@@ -421,6 +533,7 @@ function AgentSurface({
     isBlank(state.thread.composer.text)
   );
   const layout = VARIANT_LAYOUTS[variant];
+  const hidden = layout.hideable && hiddenPreference;
   const offered = useOfferedStep();
   const [attached, setAttached] = useState<AttachedStep | null>(null);
   const [unseen, setUnseen] = useState(false);
@@ -428,6 +541,10 @@ function AgentSurface({
   // buttons, or the open conversation.
   const [focused, setFocused] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  const surface = useRef<HTMLDivElement>(null);
+  // Set when the box hides with focus inside it, and cleared by the Show
+  // agent control as it takes that focus.
+  const focusShowControl = useRef(false);
   const wasRunning = useRef(running);
   const wasOpenRef = useRef(open);
   // True only inside `focusLineKeepingClosed`. The browser runs the line's
@@ -480,6 +597,44 @@ function AgentSurface({
     setOpen(false);
     focusLineKeepingClosed();
   };
+
+  // Hiding collapses the conversation and keeps it. Showing again asks for
+  // the cursor in the line, which opens a conversation that holds messages,
+  // the way focusing the line always does.
+  const toggleBox = () => {
+    if (!hidden) {
+      focusShowControl.current =
+        surface.current?.contains(document.activeElement) ?? false;
+    }
+    toggleHidden();
+  };
+
+  // Show agent takes the focus the box held as it hid, and only that once.
+  const takeShowControlFocus = (element: HTMLButtonElement | null) => {
+    if (element !== null && focusShowControl.current) {
+      focusShowControl.current = false;
+      element.focus({ preventScroll: true });
+    }
+  };
+
+  // Cmd+J or Ctrl+J hides and shows the box from anywhere in the editor,
+  // the agent's own field included, but not past an open dialog or menu.
+  useDomEvent(
+    document,
+    "keydown",
+    (event) => {
+      if (
+        !isAgentToggleChord(event) ||
+        event.defaultPrevented ||
+        !editorChordAllowed(event, { inTextFields: true })
+      ) {
+        return;
+      }
+      event.preventDefault();
+      toggleBox();
+    },
+    { enabled: layout.hideable && !reviewShown }
+  );
 
   const pill = layout.restsAsPill && !focused && promptBlank && !open;
 
@@ -543,11 +698,13 @@ function AgentSurface({
     }
   };
 
+  const mark: AgentMark = running ? "working" : unseen ? "replied" : null;
+
   const line = (
     <PromptLine
       attached={attached}
       input={input}
-      mark={open ? null : running ? "working" : unseen ? "replied" : null}
+      mark={open ? null : mark}
       offered={offered}
       // The pressed chip leaves the page with its row, so focus goes back to
       // the line, which keeps it grown and lets the person keep typing.
@@ -572,23 +729,24 @@ function AgentSurface({
       pill={pill}
     />
   );
-  const conversation = open ? (
-    <section
-      aria-label="Agent conversation"
-      className={cn(
-        "pointer-events-auto flex min-h-0 flex-col overflow-hidden bg-popover text-popover-foreground",
-        layout.conversationClass
-      )}
-      data-slot="agent-conversation"
-    >
-      <ConversationHeader
-        closeControl={layout.closeControl}
-        onClose={close}
-        onNewConversation={newConversation}
-      />
-      <AgentThread />
-    </section>
-  ) : null;
+  const conversation =
+    open && !hidden ? (
+      <section
+        aria-label="Agent conversation"
+        className={cn(
+          "pointer-events-auto flex min-h-0 flex-col overflow-hidden bg-popover text-popover-foreground",
+          layout.conversationClass
+        )}
+        data-slot="agent-conversation"
+      >
+        <ConversationHeader
+          closeControl={layout.closeControl}
+          onClose={close}
+          onNewConversation={newConversation}
+        />
+        <AgentThread />
+      </section>
+    ) : null;
 
   return (
     <div
@@ -608,14 +766,31 @@ function AgentSurface({
       }}
       onFocus={() => setFocused(true)}
       onKeyDown={onKeyDown}
+      ref={surface}
     >
-      {conversation}
-      <div
-        className={cn("pointer-events-auto", layout.composerClass(pill))}
-        data-slot="agent-composer"
-      >
-        {line}
-      </div>
+      {hidden ? (
+        <div className="pointer-events-auto" data-slot="agent-show-control">
+          <ShowAgentControl
+            mark={mark}
+            buttonRef={takeShowControlFocus}
+            onShow={toggleBox}
+          />
+        </div>
+      ) : (
+        <>
+          {conversation}
+          <div
+            className={cn(
+              "group/composer pointer-events-auto relative",
+              layout.composerClass(pill)
+            )}
+            data-slot="agent-composer"
+          >
+            {line}
+            {layout.hideable ? <HideAgentControl onHide={toggleBox} /> : null}
+          </div>
+        </>
+      )}
     </div>
   );
 }

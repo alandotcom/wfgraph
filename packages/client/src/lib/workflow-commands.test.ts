@@ -38,6 +38,7 @@ function commandInput(
       ...overrides,
     },
     shortcuts: {
+      agent: "Cmd+J",
       copy: "Cmd+C",
       duplicate: "Cmd+D",
       findStep: "Cmd+F",

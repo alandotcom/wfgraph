@@ -35,6 +35,7 @@ import {
 import {
   activeAgentTurnIdAtom,
   agentConversationOpenAtom,
+  agentHiddenAtom,
   focusAgentComposerAtom,
 } from "#src/lib/workflow-ui-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
@@ -92,7 +93,7 @@ function renderAgent(variant: "canvas" | "phone" = "canvas") {
     edges: [],
   });
   showWorkspaceRoute(store, {});
-  render(
+  const { unmount } = render(
     <JotaiProvider store={store}>
       <ExtensionCatalogProvider value={emptyExtensionCatalog}>
         <WorkflowAgentView variant={variant} workflowId="workflow_1" />
@@ -108,7 +109,20 @@ function renderAgent(variant: "canvas" | "phone" = "canvas") {
     document
       .querySelector('[data-slot="agent-prompt-line"]')
       ?.getAttribute("data-state");
-  return { store, field, conversation, type, lineState };
+  return { store, field, conversation, type, lineState, unmount };
+}
+
+/** The input the line holds, or null while the box is hidden. */
+function queryField() {
+  return screen.queryByPlaceholderText(AGENT_COMPOSER_PLACEHOLDER);
+}
+
+/** Cmd+J, pressed wherever focus is. */
+function pressAgentChord() {
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key: "j",
+    metaKey: true,
+  });
 }
 
 /**
@@ -411,6 +425,86 @@ describe("WorkflowAgentView", () => {
       });
     });
     expect(agent?.className).toContain("hidden");
+  });
+
+  it("hides from its corner control and shows again from the control left in its place", async () => {
+    const { field } = renderAgent();
+    act(() => {
+      field().focus();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Hide agent" }));
+
+    expect(queryField()).toBeNull();
+    expect(document.querySelector('[data-slot="agent-composer"]')).toBeNull();
+    const show = screen.getByRole("button", { name: "Show agent" });
+    // Focus was inside the box, so it stays on the control that replaced it.
+    expect(document.activeElement).toBe(show);
+
+    fireEvent.click(show);
+    await waitFor(() => expect(document.activeElement).toBe(field()));
+    expect(screen.queryByRole("button", { name: "Show agent" })).toBeNull();
+  });
+
+  it("hides and shows on Cmd+J, putting the cursor in the line as it comes back", async () => {
+    const { field, store } = renderAgent();
+    pressAgentChord();
+    expect(queryField()).toBeNull();
+    expect(store.get(agentHiddenAtom)).toBe(true);
+
+    pressAgentChord();
+    await waitFor(() => expect(document.activeElement).toBe(field()));
+    expect(store.get(agentHiddenAtom)).toBe(false);
+
+    // The chord works from the agent's own field too.
+    pressAgentChord();
+    expect(queryField()).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Show agent" })
+    );
+  });
+
+  it("keeps the box hidden across a remount, as a preference this browser stores", () => {
+    const first = renderAgent();
+    pressAgentChord();
+    expect(localStorage.getItem("wfgraph:agent-hidden")).toBe("true");
+    first.unmount();
+
+    renderAgent();
+    expect(queryField()).toBeNull();
+    expect(screen.getByRole("button", { name: "Show agent" })).toBeTruthy();
+  });
+
+  it("marks the Show agent control while a turn runs with the box hidden", async () => {
+    const { field, type } = renderAgent();
+    type("What does this workflow do?");
+    fireEvent.keyDown(field(), { key: "Enter" });
+    await waitFor(() => expect(sentBodies).toHaveLength(1));
+
+    pressAgentChord();
+    expect(
+      await screen.findByRole("button", {
+        name: "Show agent. The agent is working",
+      })
+    ).toBeTruthy();
+  });
+
+  it("shows a hidden box again when an entry point asks for the line", async () => {
+    const { store, field } = renderAgent();
+    pressAgentChord();
+    act(() => {
+      store.set(focusAgentComposerAtom, "Why did the last run fail?");
+    });
+    await waitFor(() => expect(document.activeElement).toBe(field()));
+    expect((field() as HTMLTextAreaElement).value).toBe(
+      "Why did the last run fail?"
+    );
+  });
+
+  it("keeps a phone's line, which has no hide control and ignores Cmd+J", () => {
+    renderAgent("phone");
+    expect(screen.queryByRole("button", { name: "Hide agent" })).toBeNull();
+    pressAgentChord();
+    expect(queryField()).not.toBeNull();
   });
 
   it("clears the thread and its stored copy on New conversation", async () => {

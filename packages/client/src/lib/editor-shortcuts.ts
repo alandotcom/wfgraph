@@ -55,6 +55,25 @@ export function isSubmitChord(event: {
 }
 
 /**
+ * Whether `event` is Cmd+J or Ctrl+J with no other modifier, the chord that
+ * hides the build agent's box on the canvas and shows it again.
+ */
+export function isAgentToggleChord(event: {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): boolean {
+  return (
+    event.key.toLowerCase() === "j" &&
+    (event.metaKey || event.ctrlKey) &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
+/**
  * Whether an editor chord may act on this key event. `inTextFields` is true for
  * a chord with no meaning inside a text field, such as opening the palette or
  * saving; every other chord leaves a focused text field alone.

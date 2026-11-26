@@ -25,6 +25,7 @@ describe("isApplePlatform", () => {
 describe("editorShortcutLabels", () => {
   it("spells each chord for the keyboard it will be read on", () => {
     expect(editorShortcutLabels(true)).toEqual({
+      agent: "⌘J",
       copy: "⌘C",
       duplicate: "⌘D",
       findStep: "⌘F",
@@ -37,6 +38,7 @@ describe("editorShortcutLabels", () => {
       palette: "⌘K",
     });
     expect(editorShortcutLabels(false)).toEqual({
+      agent: "Ctrl+J",
       copy: "Ctrl+C",
       duplicate: "Ctrl+D",
       findStep: "Ctrl+F",
