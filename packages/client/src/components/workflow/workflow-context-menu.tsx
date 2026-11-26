@@ -1,64 +1,26 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
-import {
-  ClipboardPaste,
-  Copy,
-  CopyPlus,
-  Eye,
-  EyeOff,
-  Group,
-  Link2Off,
-  Plus,
-  SlidersHorizontal,
-  Trash2,
-  Maximize2,
-  Minimize2,
-  Ungroup,
-} from "lucide-react";
+import { useAtomValue, useSetAtom } from "jotai";
+import { ClipboardPaste, Link2Off, Plus } from "lucide-react";
 import { useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
-import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { menuClassNames } from "#src/components/ui/dropdown-menu";
 import { Kbd } from "#src/components/ui/kbd";
 import { useDomEvent } from "#src/hooks/effects";
-import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
-import { editFocusTarget } from "./canvas-reveal/reveal-edit-target";
-import { requestRevealEditFocusAtom } from "./canvas-reveal/reveal-requests";
-import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 import {
-  copySelectionAtom,
   deleteEdgeAtom,
-  deleteGroupWithMembersAtom,
-  deleteNodeAtom,
-  duplicateSelectionAtom,
-  edgesAtom,
-  groupSelectionAtom,
   hasCopiedSelectionAtom,
-  nodesAtom,
   pasteCopiedSelectionAtom,
-  selectOnlyNodeAtom,
-  ungroupNodeAtom,
-  updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
-import { canUngroup } from "#src/lib/node-group";
-import {
-  collapsedGroupIdsAtom,
-  toggleGroupCollapsedAtom,
-} from "#src/lib/collapsed-groups";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
-import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
-import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
-import { deleteGroupWithStepsConfirmation } from "./group-delete-confirmation";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
-import { stepOutlets } from "#src/components/workflow/connection-handle";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { useInsertStepOnEdge } from "#src/components/workflow/use-add-step";
 import {
-  useAddStepAfter,
-  useInsertStepOnEdge,
-} from "#src/components/workflow/use-add-step";
+  type StepMenuItem,
+  startsGroup,
+  useStepMenuItems,
+} from "./step-menu-items";
 
 export type ContextMenuType = "node" | "edge" | "pane" | null;
 
@@ -100,100 +62,18 @@ export function WorkflowContextMenu({
   menuState,
   onClose,
 }: WorkflowContextMenuProps) {
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
-  const deleteNode = useSetAtom(deleteNodeAtom);
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
-  const copySelection = useSetAtom(copySelectionAtom);
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
-  const duplicateSelection = useSetAtom(duplicateSelectionAtom);
-  const groupSelected = useSetAtom(groupSelectionAtom);
-  const ungroupSelected = useSetAtom(ungroupNodeAtom);
-  const toggleGroupCollapsed = useSetAtom(toggleGroupCollapsedAtom);
-  const collapsedGroupIds = useAtomValue(collapsedGroupIdsAtom);
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
-  const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
-  const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
-  const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
-  const updateNodeData = useSetAtom(updateNodeDataAtom);
-  const { open: openOverlay } = useOverlay();
-  const navigation = useRevealNavigation();
-  const catalog = useExtensionCatalog();
-  const addStepAfter = useAddStepAfter();
   const insertStepOnEdge = useInsertStepOnEdge();
-  const store = useStore();
   const menuRef = useRef<HTMLDivElement>(null);
-  const clicked = menuState?.nodeId
-    ? nodes.find((node) => node.id === menuState.nodeId)
-    : undefined;
-  const isDisabled = clicked?.data.enabled === false;
-  // A step switches on and off by itself, inside a Group or outside one. A
-  // frame is organization only and has no enabled state of its own.
-  const canToggleEnabled = clicked?.data.type === "action";
-  const clickedIsGroup = isGroupNode(clicked);
-  const clickedCollapsed =
-    clicked !== undefined && collapsedGroupIds.has(clicked.id);
-
-  // Deleting a step is one undo step, as it is from the Backspace key, so it
-  // happens at once with no confirmation.
-  const handleDeleteNode = useCallback(() => {
-    if (canEdit && menuState?.nodeId) {
-      const nodeId = menuState.nodeId;
-      onClose();
-      deleteNode(nodeId);
-    }
-  }, [canEdit, menuState, deleteNode, onClose]);
-
-  // Edit opens the inspector with keyboard focus in the object's label, or in
-  // the action picker of a step with no action yet.
-  const handleEditNode = useCallback(() => {
-    if (menuState?.nodeId) {
-      const nodeId = menuState.nodeId;
-      const node = nodes.find((item) => item.id === nodeId);
-      onClose();
-      selectOnlyNode(nodeId);
-      navigation.openNode({
-        address: store.get(activeWorkspaceAddressAtom),
-        nodeId,
-      });
-      requestEditFocus({
-        nodeId,
-        targetId: node ? editFocusTarget(node) : null,
-      });
-    }
-  }, [
-    menuState,
-    nodes,
-    onClose,
-    selectOnlyNode,
-    navigation,
-    store,
-    requestEditFocus,
-  ]);
-
-  const handleDeleteGroupWithSteps = useCallback(() => {
-    if (canEdit && menuState?.nodeId) {
-      const groupId = menuState.nodeId;
-      onClose();
-      openOverlay(
-        ConfirmOverlay,
-        deleteGroupWithStepsConfirmation(() => {
-          if (canEdit) {
-            deleteGroupWithMembers(groupId);
-          }
-        })
-      );
-    }
-  }, [canEdit, menuState, deleteGroupWithMembers, onClose, openOverlay]);
-
-  const handleToggleEnabled = useCallback(() => {
-    if (!(canEdit && clicked)) {
-      return;
-    }
-    updateNodeData({ id: clicked.id, data: { enabled: isDisabled } });
-    onClose();
-  }, [canEdit, clicked, isDisabled, onClose, updateNodeData]);
+  const nodeItems = useStepMenuItems({
+    nodeId: menuState?.type === "node" ? menuState.nodeId : undefined,
+    selectedIds: menuState?.selectedIds ?? new Set<string>(),
+    canEdit,
+    canInsert,
+  });
 
   // Deleting a connection is one undo step, as deleting a step is, so it
   // happens at once with no confirmation.
@@ -220,54 +100,6 @@ export function WorkflowContextMenu({
     }
     onClose();
   }, [canInsert, menuState, openPalette, onClose]);
-
-  const handleCopyNode = useCallback(() => {
-    if (menuState?.nodeId) {
-      copySelection(menuState.nodeId);
-    }
-    onClose();
-  }, [menuState, copySelection, onClose]);
-
-  const handleDuplicateNode = useCallback(() => {
-    if (canInsert && menuState?.nodeId) {
-      showGraphEditRefusal(duplicateSelection(menuState.nodeId));
-    }
-    onClose();
-  }, [canInsert, menuState, duplicateSelection, onClose]);
-
-  const handleGroup = useCallback(() => {
-    if (!canEdit || menuState?.type !== "node") {
-      onClose();
-      return;
-    }
-    groupSelected({ selectedIds: menuState.selectedIds ?? new Set() });
-    onClose();
-  }, [canEdit, menuState, groupSelected, onClose]);
-
-  // Collapsing is the viewer's own view, so it needs no edit grant.
-  const handleToggleCollapsed = useCallback(() => {
-    if (menuState?.nodeId) {
-      toggleGroupCollapsed(menuState.nodeId);
-    }
-    onClose();
-  }, [menuState, toggleGroupCollapsed, onClose]);
-
-  const handleUngroup = useCallback(() => {
-    if (canEdit && menuState?.nodeId) {
-      ungroupSelected(menuState.nodeId);
-    }
-    onClose();
-  }, [canEdit, menuState, ungroupSelected, onClose]);
-
-  const handleAddStepAfter = useCallback(
-    (source: { nodeId: string; handle: string | null }) => {
-      if (canInsert) {
-        addStepAfter({ source });
-      }
-      onClose();
-    },
-    [addStepAfter, canInsert, onClose]
-  );
 
   const handleInsertStep = useCallback(() => {
     if (canInsert && menuState?.edgeId) {
@@ -330,27 +162,10 @@ export function WorkflowContextMenu({
     return null;
   }
 
-  const isLifecycleNode = clicked?.data.type === "lifecycle";
-  const groupingIds = menuState.selectedIds ?? new Set<string>();
-  const grouping = analyzeGroupableSelection({
-    nodes,
-    edges,
-    selectedIds: groupingIds,
-  });
-  const canGroup = grouping.ok;
-  const showUngroup = canUngroup(clicked);
-  // One row per outlet, so a Condition or an Event Split says which branch the
-  // step goes on. A collapsed Group card uses its existing continuation ports
-  // or terminal non-Condition members, leaving unused branches unwired.
-  const outlets =
-    clicked && menuState.type === "node"
-      ? stepOutlets({ node: clicked, nodes, edges, catalog })
-      : [];
   // Below the cursor when the menu fits there, above it otherwise.
   const opensUpward =
     menuState.position.y + MENU_HEIGHT_PX + VIEWPORT_MARGIN_PX >
     window.innerHeight;
-  const nodeLabel = clicked?.data.label || "Step";
 
   // Mounted on the body rather than in place: the canvas sits inside a
   // `fixed inset-0 z-0` layer, so a z-index written here is measured against
@@ -376,97 +191,15 @@ export function WorkflowContextMenu({
         transformOrigin: opensUpward ? "bottom left" : "top left",
       }}
     >
-      {menuState.type === "node" && (
-        <>
-          <MenuItem
-            icon={<SlidersHorizontal />}
-            label={`Edit ${nodeLabel}`}
-            onClick={handleEditNode}
+      {menuState.type === "node" &&
+        nodeItems.map((item, index) => (
+          <StepMenuRow
+            item={item}
+            key={item.id}
+            onClose={onClose}
+            separated={startsGroup(nodeItems, index)}
           />
-          {canToggleEnabled ? (
-            <MenuItem
-              icon={isDisabled ? <Eye /> : <EyeOff />}
-              label={`${isDisabled ? "Enable" : "Disable"} ${nodeLabel}`}
-              onClick={handleToggleEnabled}
-            />
-          ) : null}
-          {outlets.length > 0 ? <MenuSeparator /> : null}
-          {outlets.map((outlet) => (
-            <MenuItem
-              disabled={!canInsert}
-              icon={<Plus />}
-              key={outlet.handle ?? "only"}
-              label={
-                outlet.label === null
-                  ? "Add step after"
-                  : `Add step after ${outlet.label}`
-              }
-              onClick={() =>
-                handleAddStepAfter({
-                  nodeId: clicked?.id ?? "",
-                  handle: outlet.handle,
-                })
-              }
-            />
-          ))}
-          <MenuSeparator />
-          <MenuItem
-            disabled={isLifecycleNode}
-            icon={<Copy />}
-            label="Copy"
-            onClick={handleCopyNode}
-            shortcut={shortcutLabel("C")}
-          />
-          <MenuItem
-            disabled={isLifecycleNode || !canInsert}
-            icon={<CopyPlus />}
-            label="Duplicate"
-            onClick={handleDuplicateNode}
-            shortcut={shortcutLabel("D")}
-          />
-          <MenuItem
-            disabled={!canGroup}
-            hint={!canGroup && !grouping.ok ? grouping.error : undefined}
-            icon={<Group />}
-            label="Group"
-            onClick={handleGroup}
-            shortcut={shortcutLabel("G")}
-          />
-          {showUngroup ? (
-            <MenuItem
-              icon={<Ungroup />}
-              label="Ungroup"
-              onClick={handleUngroup}
-            />
-          ) : null}
-          {clickedIsGroup ? (
-            <MenuItem
-              icon={clickedCollapsed ? <Maximize2 /> : <Minimize2 />}
-              label={clickedCollapsed ? "Expand group" : "Collapse group"}
-              onClick={handleToggleCollapsed}
-            />
-          ) : null}
-          <MenuSeparator />
-          {/* Ungroup is how a frame alone is removed, so a frame's destructive
-              row is the explicit, confirmed delete of the Group's steps. */}
-          {clickedIsGroup ? (
-            <MenuItem
-              icon={<Trash2 />}
-              label="Delete Group and steps"
-              onClick={handleDeleteGroupWithSteps}
-              variant="destructive"
-            />
-          ) : (
-            <MenuItem
-              disabled={isLifecycleNode}
-              icon={<Trash2 />}
-              label={`Delete ${nodeLabel}`}
-              onClick={handleDeleteNode}
-              variant="destructive"
-            />
-          )}
-        </>
-      )}
+        ))}
 
       {menuState.type === "edge" && (
         <>
@@ -523,6 +256,35 @@ function shortcutLabel(key: string): string {
     typeof navigator !== "undefined" &&
     /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
   return apple ? `⌘${key}` : `Ctrl+${key}`;
+}
+
+/** One row of a step's commands, with the rule above it that starts its group. */
+function StepMenuRow({
+  item,
+  separated,
+  onClose,
+}: {
+  item: StepMenuItem;
+  separated: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      {separated ? <MenuSeparator /> : null}
+      <MenuItem
+        disabled={item.disabled}
+        hint={item.disabled ? item.hint : undefined}
+        icon={item.icon}
+        label={item.label}
+        onClick={() => {
+          onClose();
+          item.run();
+        }}
+        shortcut={item.shortcut}
+        variant={item.destructive ? "destructive" : "default"}
+      />
+    </>
+  );
 }
 
 /** The rule between groups of rows, the one the toolbar's menus draw. */
