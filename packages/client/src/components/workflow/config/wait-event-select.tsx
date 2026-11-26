@@ -1,6 +1,6 @@
 import { omit } from "es-toolkit/object";
 import { useAtomValue } from "jotai";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useCallback, useId, useMemo } from "react";
 import { Button } from "#src/components/ui/button";
 import { WarningCallout } from "#src/components/ui/callout";
@@ -289,20 +289,19 @@ function WaitSubscriptionRow({
           value={subscription.match}
         />
       ) : (
-        <div className="space-y-1">
-          <p className="text-muted-foreground text-xs">
-            No match is set. Every arrival of this Event resumes the run.
-          </p>
-          <Button
-            disabled={disabled || fields.length === 0}
-            onClick={seedMatch}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Add a match
-          </Button>
-        </div>
+        // With no match every arrival resumes the run, which the Wait mode's
+        // help says, so the one control here is the one that adds a match.
+        <Button
+          className="-ml-2 text-muted-foreground"
+          disabled={disabled || fields.length === 0}
+          onClick={seedMatch}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <Plus data-icon="inline-start" />
+          Add a match
+        </Button>
       )}
     </div>
   );

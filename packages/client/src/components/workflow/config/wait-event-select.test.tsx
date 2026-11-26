@@ -287,7 +287,7 @@ describe("WaitEventSelect match editor", () => {
     });
 
     expect(
-      view.queryByText(/Any billing\/payment.settled resumes this run/)
+      view.queryByText(/Every arrival of this Event resumes the run/)
     ).toBeNull();
     expect(view.getByRole("button", { name: "Add a match" })).toBeTruthy();
   });
