@@ -20,33 +20,12 @@ import {
   viewportFromWorldCamera,
   worldCameraFromViewport,
 } from "#src/components/workflow/workflow-viewport";
-import { measureObstacles, usableCanvasRect } from "./reveal-geometry";
+import {
+  measureCoveredRightWidth,
+  measureObstacles,
+  usableCanvasRect,
+} from "./reveal-geometry";
 import { revealPlacementRequestAtom } from "./reveal-requests";
-
-/**
- * The pixels covered at the right of the canvas element: by the review sheet,
- * which overlays the canvas from the editor's right edge, or by the Inspector
- * card, whichever covers more, and 0 while neither shows. The Inspector card
- * states its width with its inset, because it may still be sliding in when the
- * camera measures.
- */
-function coveredRightWidth(canvas: HTMLElement): number {
-  const sheet = document.querySelector('[data-slot="review-sheet"]');
-  const sheetOverlap =
-    sheet === null
-      ? 0
-      : Math.max(
-          0,
-          canvas.getBoundingClientRect().right -
-            sheet.getBoundingClientRect().left
-        );
-  const inspector = Number(
-    document
-      .querySelector<HTMLElement>('[data-slot="inspector-card"]')
-      ?.getAttribute("data-covers-width") ?? 0
-  );
-  return Math.max(sheetOverlap, Number.isFinite(inspector) ? inspector : 0);
-}
 
 /**
  * Answers each placement request once: the command palette, an issue, an
@@ -122,7 +101,7 @@ export function useRevealCamera(input: {
         inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
       const usable = usableCanvasRect({
         canvas: size,
-        rightOccupiedWidth: coveredRightWidth(element),
+        rightOccupiedWidth: measureCoveredRightWidth(element),
         obstacles: measureObstacles(element),
       });
       if (usable === null) {

@@ -6,6 +6,7 @@ import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { canvasRevealAtom } from "./canvas-reveal/canvas-reveal-state";
 import {
+  measureCoveredRightWidth,
   measureObstacles,
   placementNodeIds,
   usableCanvasRect,
@@ -16,7 +17,8 @@ import { openingViewport, revealViewport } from "./workflow-viewport";
  * Places the camera where a workflow opens, or where a workspace view with no
  * remembered camera starts, in one `setViewport` with no animation. The graph
  * is placed by `openingViewport` inside the usable canvas: the canvas less the
- * controls floating over it. Then the nodes the Inspector's subject
+ * controls and the outline floating over it, and less the Inspector card or
+ * the review sheet where either covers its right edge. Then the nodes the Inspector's subject
  * names, or on a run that stopped the step where it stopped, move the least
  * distance that keeps them inside that usable canvas. A step inside a collapsed Group is placed by its Group card.
  *
@@ -64,7 +66,7 @@ export function useOpeningCamera(input: {
     const element = input.canvas.current;
     const usable = usableCanvasRect({
       canvas,
-      rightOccupiedWidth: 0,
+      rightOccupiedWidth: element ? measureCoveredRightWidth(element) : 0,
       obstacles: element ? measureObstacles(element) : [],
     }) ?? { x: 0, y: 0, ...canvas };
     const opening = openingViewport({
