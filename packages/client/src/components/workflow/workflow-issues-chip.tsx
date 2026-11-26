@@ -39,7 +39,11 @@ export function WorkflowIssuesChip() {
     // behind itself and read it twice.
     <button
       className={cn(
-        "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-0.5 font-medium transition-colors",
+        "relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-0.5 font-medium transition-colors",
+        // The 16px chip answers a 24px band across the strip, and on a phone
+        // a 44px one from the strip's bottom edge up into the gap under the
+        // agent's line.
+        "before:absolute before:inset-x-0 before:top-1/2 before:h-6 before:-translate-y-1/2 before:content-[''] max-md:before:top-auto max-md:before:-bottom-2 max-md:before:h-11 max-md:before:translate-y-0",
         hasBlocking
           ? "text-warning hover:bg-accent"
           : "hover:bg-accent hover:text-foreground"

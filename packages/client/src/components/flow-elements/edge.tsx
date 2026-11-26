@@ -227,7 +227,8 @@ const Animated = memo(function Animated({
       ) : null}
       <BaseEdge
         id={id}
-        interactionWidth={20}
+        // globals.css holds this stroke at 24px on screen, 44px on a phone.
+        interactionWidth={24}
         mask={maskId ? `url(#${maskId})` : undefined}
         path={edgePath}
         style={{
@@ -276,6 +277,8 @@ const Animated = memo(function Animated({
             r={INSERT_CONTROL_RADIUS}
             strokeWidth={1}
           />
+          {/* The hit area, held at 24px across on screen in globals.css. */}
+          <circle className="insert-step-hit fill-transparent" r={12} />
           <path
             className="stroke-foreground"
             d="M -4 0 H 4 M 0 -4 V 4"

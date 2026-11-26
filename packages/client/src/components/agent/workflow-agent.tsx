@@ -362,6 +362,7 @@ function PromptLine({
           {...part}
           animate={{ opacity: 1 }}
           className="flex flex-wrap items-center gap-1 px-1 pb-1"
+          data-slot="agent-chip-row"
           initial={part.layout === undefined ? false : { opacity: 0 }}
         >
           {attached ? (
