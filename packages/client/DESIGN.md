@@ -375,7 +375,16 @@ without sliding.
 
 The Inspector's header is one row: **Back** where a jump reached the object,
 the step's number and title, its status or issue count, a ⋯ menu, and
-**Close**. It draws no path. The ⋯ menu of a Draft step, Group or Lifecycle
+**Close**. It draws no path. The title of a Draft step, Group or Lifecycle
+node is its name, and for a person who may edit the Draft it is the one place
+the name is edited: at rest it reads as the title, the pointer over it draws a
+faint fill, and a click puts the caret in it. Each keystroke renames the
+object on its card and outline row and autosaves. Enter keeps the name and
+Escape puts back the name the title held when it took focus; both leave the
+card open with focus on the title, so the next Escape closes the card. An
+empty name shows the kind's own name, "Wait" or "Group", in its place. A
+viewer, a running agent turn, the review sheet and Runs show the title as
+plain text. The ⋯ menu of a Draft step, Group or Lifecycle
 node holds the commands its context menu on the canvas offers, from the same
 source, less Edit: Disable or Enable, Add step after on each outlet, Copy,
 Duplicate, Group, Ungroup, Collapse or Expand group, and Delete. The header
@@ -438,8 +447,9 @@ step that is not selected clears the selection. The header offers **Back** only
 where a jump reached the object, such as the Lifecycle node opened from an
 Event Split. No header control changes a level. A step's editor is one form
 that holds settings only: first what it does, then its Connection and every
-setting as its field, each under one label, and after a divider its editable
-**Label** and **Notes**, which is the step's description. Disabling,
+setting as its field, each under one label, and after a divider its
+**Notes**, which is the step's description. Its name is edited in the
+header's title. Disabling,
 duplicating and deleting the step are commands of the Inspector header's ⋯ menu and
 the context menu. Every field's help sits behind an info icon on its label. A
 field that takes inserted values and has no placeholder of its own says "Type @
@@ -487,7 +497,7 @@ the field and the value take the width it leaves. Selecting a
 Group, by its header or its card, opens its editor: the step count, each step
 in stored position order, the outside steps that enter it, the step it
 continues from with the Condition branch when it leaves by one, the steps it
-continues to, its issues, and after a divider its label and notes. **Ungroup**
+continues to, its issues, and after a divider its notes. **Ungroup**
 and **Delete Group and steps** are commands of the header's menu and the
 context menu. Each step is listed with its issue count and selects that step on
 the canvas. The Group's issue badge and the status in the Group's header count
@@ -497,8 +507,9 @@ its own.
 
 Selecting an object with the pointer opens its editor and leaves keyboard focus
 on the canvas object. The context menu's **Edit**, Enter on a focused object,
-and the command palette finding a step open the editor with focus in its label,
-or in the **Does** list's search of a step with no action. **Edit** on a row of the
+and the command palette finding a step open the editor with focus in its name
+in the header's title, or in the **Does** list's search of a step with no
+action. **Edit** on a row of the
 workflow's issue list, in the issues chip's list or in the list a blocked
 Publish opens, selects the step, opens the Inspector,
 and puts focus in the field the row names. A
@@ -542,8 +553,7 @@ Correlation Path or a custom cron expression. Start Filters and
 eligibility are separate rules, and each one's help says what it reads: the
 arriving Event's payload, or the Entity's current state from the host. A
 refusal Publish would give shows beneath the rule its check reads while that
-rule is on screen, and any other issue is listed at the end of the form, after
-the label, which follows a divider. Every Lifecycle Rules problem Publish refuses, including a Start or
+rule is on screen, and any other issue is listed at the end of the form. Every Lifecycle Rules problem Publish refuses, including a Start or
 Cancel Filter reading a path its Event does not declare, is a blocking issue. A
 schedule is a preset (Every hour, Every day at, Every weekday at, Every week on)
 or a Custom cron expression, with its own time zone, starting from the
@@ -561,8 +571,8 @@ groups. The rule builder sits beneath it, open for editing, with each rule on
 one line: the field and the value share the free width, the operator takes
 less, and the remove button keeps its own slot at the end. Then come the steps
 its True and False outlets continue to, or a line saying a disconnected branch
-ends the run, every value its rules can compare, and after a divider the label
-and notes. A Condition's issues name its rules, so each shows beneath the rule
+ends the run, every value its rules can compare, and after a divider its
+notes. A Condition's issues name its rules, so each shows beneath the rule
 builder, and an empty rule set waits there as an empty required field does. The
 workflow's issue list puts focus in the rule builder.
 Placing a Condition sets the zoom from its card and both outlet handles, and
@@ -712,7 +722,7 @@ the desktop editor would summarize it: settings as labels and values, a
 Condition's rules as sentences, and what the start has set as one sentence
 per rule. A
 summary sheet that opens moves the camera once, the least it must, to keep its
-subject above the sheet's top edge, and only when the sheet would cover it. The sheet's header names the object and its
+subject above the sheet's top edge, and only when the sheet would cover it. The sheet's header names the object, a name a person who may edit renames in place as in the Inspector's title, at a 44px height with 1rem text, and its
 validation status beside **Close** and the control that opens its full-screen
 editor: **Edit step**, **Edit rules** for a Condition, **Edit start**, or
 **Edit group**. That control and an issue open the full-screen editor, which
