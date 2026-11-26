@@ -8,6 +8,7 @@
  * Flow reacts to every pixel of it. A long workflow name truncates.
  */
 
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
@@ -64,6 +65,9 @@ import { useWorkflowCommands } from "#src/components/workflow/use-workflow-comma
 import { useOutlineControls } from "#src/components/workflow/columns/use-outline-controls";
 import { focusAgentComposerAtom } from "#src/lib/workflow-ui-store";
 import { isAgentEnabled } from "#src/lib/extensions";
+import { orpcQuery } from "#src/lib/rpc-query";
+import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
+import { isBlank } from "@wfgraph/shared/types/string";
 import {
   OUTLINE_SHORTCUT_KEY,
   currentPlatform,
@@ -753,9 +757,42 @@ export function WorkflowPublicationChip({
   return <PublicationChip commands={commands} workflowId={workflowId} />;
 }
 
+/** The workflow's description, read off its `getById` payload. */
+function selectWorkflowDescription(payload: WorkflowApiPayload) {
+  return payload.description;
+}
+
 /**
- * The one menu for the open workflow, under its name: Rename, Duplicate,
- * Copy workflow ID and Delete. Pause, Version history and Review changes are
+ * The open workflow's description at the top of its menu, read from the
+ * `getById` entry the editor already holds, so it costs no request. A
+ * workflow with no description shows nothing.
+ */
+function WorkflowDescription({ workflowId }: { workflowId: string }) {
+  const description = useQuery({
+    ...orpcQuery.workflow.getById.queryOptions({ input: { workflowId } }),
+    staleTime: Number.POSITIVE_INFINITY,
+    select: selectWorkflowDescription,
+  }).data;
+  if (description === undefined || isBlank(description)) {
+    return null;
+  }
+  return (
+    <>
+      <p
+        className="break-words px-2 py-1.5 text-muted-foreground text-xs"
+        data-slot="workflow-description"
+      >
+        {description}
+      </p>
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+/**
+ * The one menu for the open workflow, under its name: the workflow's
+ * description when it has one, then Rename, Duplicate, Copy workflow ID and
+ * Delete. Pause, Version history and Review changes are
  * in the publication chip's menu, beside the state they change. What is about
  * the app rather than this workflow is under Settings.
  */
@@ -806,6 +843,9 @@ export function WorkflowMenuComponent({
           <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-60">
+          {currentWorkflowId ? (
+            <WorkflowDescription workflowId={currentWorkflowId} />
+          ) : null}
           {offers.rename ? (
             <DropdownMenuItem onClick={openRename}>
               <Pencil />

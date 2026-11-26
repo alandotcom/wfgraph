@@ -8,13 +8,7 @@ import {
   RouterProvider,
   type SearchSchemaInput,
 } from "@tanstack/react-router";
-import {
-  act,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import {
   WorkflowIssuesOverlay,
   type WorkflowIssuesOverlayInput,
@@ -837,11 +831,11 @@ describe("details panel over a React Flow canvas", () => {
       fireEvent.keyDown(card, { key: "Escape", bubbles: true });
     });
 
-    // The details column stays where it is and shows the workflow.
+    // The panel loses its subject, so it shows no step.
     expect(level()).toBe("browse");
     expect(
-      view.getByRole("complementary", { name: "Workflow details" })
-    ).toBeTruthy();
+      view.queryByRole("complementary", { name: "Step inspector" })
+    ).toBeNull();
     expect(store.get(activeSelectionAtom).nodeIds).toEqual([]);
   });
 
@@ -862,8 +856,8 @@ describe("details panel edit focus", () => {
   it("opens the step from the context menu's Edit with focus in its label", async () => {
     const { view, level } = await renderReveal({}, { canvas: FlowCanvas });
     expect(
-      view.getByRole("complementary", { name: "Workflow details" })
-    ).toBeTruthy();
+      view.queryByRole("complementary", { name: "Step inspector" })
+    ).toBeNull();
 
     fireEvent.click(view.getByRole("button", { name: "Open step menu" }));
     fireEvent.click(
@@ -1075,27 +1069,13 @@ describe("Template field Escape", () => {
 });
 
 describe("details panel with nothing selected", () => {
-  it("shows the workflow's details and issues, and Edit opens the step at its field", async () => {
-    const { view, store } = await renderReveal();
-    await act(async () => {
-      store.set(workflowIssuesAtom, [SEND_TO_MISSING]);
-    });
-
-    const panel = view.getByRole("complementary", { name: "Workflow details" });
-    expect(
-      within(panel).getByRole("heading", { name: "Appointment reminders" })
-    ).toBeTruthy();
-    expect(panel.textContent).toContain("To is required.");
-
-    fireEvent.click(
-      within(panel).getByRole("button", { name: "Edit Send reminder" })
+  it("renders no header and no body", async () => {
+    const { view } = await renderReveal();
+    const panel = view.container.querySelector<HTMLElement>(
+      '[data-slot="details-panel"]'
     );
-
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
-    expect(
-      view.getByRole("complementary", { name: "Step inspector" })
-    ).toBeTruthy();
-    await waitFor(() => expect(document.activeElement?.id).toBe("to"));
+    expect(panel?.querySelector("header")).toBeNull();
+    expect(panel?.textContent).toBe("");
   });
 
   it("opens the step at its field from Edit in the issues list a blocked Publish opens", async () => {

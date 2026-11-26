@@ -843,6 +843,42 @@ describe("WorkflowMenuComponent", () => {
     }
   });
 
+  it("states the workflow's description above its commands", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        extractRpcProcedurePath(rpcUrl(input)) === "workflow/getById"
+          ? rpcJsonResponse({
+              id: "workflow_1",
+              name: "Appointment reminders",
+              description: "Reminds each patient a day before the visit.",
+              isPaused: false,
+              mode: "live",
+              visibility: "private",
+              createdAt: "2026-03-01T09:00:00.000Z",
+              updatedAt: "2026-03-01T09:30:00.000Z",
+              graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+              hasUnpublishedChanges: false,
+            })
+          : new Response("{}", { status: 404 })
+      )
+    );
+    try {
+      const { findByRole, findByText } = renderChrome(WorkflowMenuComponent, {
+        state: { currentWorkflowId: "workflow_1" },
+      });
+
+      await openWorkflowMenu(findByRole);
+
+      const description = await findByText(
+        "Reminds each patient a day before the visit."
+      );
+      expect(description.dataset.slot).toBe("workflow-description");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("offers no Delete on a draft with no id", async () => {
     const { findByRole, queryByRole } = renderChrome(WorkflowMenuComponent, {
       workflowId: undefined,

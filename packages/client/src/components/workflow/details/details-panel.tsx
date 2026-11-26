@@ -40,17 +40,15 @@ import type { RevealLevel } from "#src/lib/workflow-navigation-state";
 import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
-import { WorkflowDetails } from "./workflow-details";
 
 /**
- * The Details tab of the details column. With a selection it shows the
- * selected object's editor, or in Runs the run list, a run, or a run node's
- * evidence, under a header naming it. In Draft with nothing selected it shows
- * the workflow's own details and issues. The subject's kind supplies the
- * header and bodies. Escape and Back take one step back as the kind defines
- * it. With no step left, Escape hands focus back to the selected step's
- * outline row, or else to the object on the canvas, and closes details that
- * floats over the canvas. A run node's evidence opens with focus on its title.
+ * The Inspector's contents. It shows the selected object's editor, or in Runs
+ * a run or a run node's evidence, under a header naming it, and nothing while
+ * there is no subject, since the Inspector card is closed then. The subject's
+ * kind supplies the header and bodies. Escape and Back take one step back as
+ * the kind defines it. With no step left, Escape hands focus back to the
+ * selected step's outline row, or else to the object on the canvas, and closes
+ * the Inspector. A run node's evidence opens with focus on its title.
  */
 export function DetailsPanel() {
   // Workspace synchronization can write these before normal subscriptions mount.
@@ -254,7 +252,7 @@ export function DetailsPanel() {
 
   return (
     <aside
-      aria-label={kind?.regionLabel ?? "Workflow details"}
+      aria-label={kind?.regionLabel ?? "Inspector"}
       // React Flow already leaves input, textarea, select, and content-editable
       // fields alone. Other focused controls keep the selected step's canvas
       // shortcuts, including Delete and Backspace.
@@ -269,27 +267,20 @@ export function DetailsPanel() {
       onBlur={closeHistoryGroup}
       ref={rootRef}
     >
-      {subject === null ? (
-        <WorkflowDetails />
+      {header}
+      {/* The body paints `bg-card`, the tone the config form's sticky
+          headings paint, so a heading pinned over scrolled fields matches. */}
+      {kind?.shellOwnsScroll ? (
+        <div
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-card [scrollbar-gutter:stable]"
+          onScroll={onScroll}
+          onScrollEnd={onScrollEnd}
+          ref={scrollRef}
+        >
+          {body}
+        </div>
       ) : (
-        <>
-          {header}
-          {/* The body paints `bg-card`, the tone the config form's sticky
-              headings paint, so a heading pinned over scrolled fields
-              matches. */}
-          {kind?.shellOwnsScroll ? (
-            <div
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-card [scrollbar-gutter:stable]"
-              onScroll={onScroll}
-              onScrollEnd={onScrollEnd}
-              ref={scrollRef}
-            >
-              {body}
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col bg-card">{body}</div>
-          )}
-        </>
+        <div className="flex min-h-0 flex-1 flex-col bg-card">{body}</div>
       )}
       <DeleteConfirmDialog
         confirmLabel={request?.confirmLabel}
