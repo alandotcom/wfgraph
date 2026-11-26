@@ -386,9 +386,11 @@ header stays put.
 
 The build agent works on the whole workflow, so it sits on the canvas rather
 than in the Inspector. In Draft and Runs, for a viewer who may use it on
-a server that offers one, the agent's prompt floats at the bottom centre of
-the canvas on the card surface with a hairline border and shadow-sm, clear of
-the zoom controls on the left and of the open Inspector on the right. At rest,
+a server that offers one, the agent's prompt floats at the bottom of the
+canvas on the card surface with a hairline border and shadow-sm. It is centred
+in the part of the canvas the Inspector never covers, clear of the zoom
+controls on the left and of the Inspector card's width on the right, so
+opening or closing the Inspector leaves it where it is. At rest,
 with no text, no focus inside it and the conversation closed, it is a one-line
 pill: fully rounded, a third of the canvas wide held between 352px and 560px,
 with Send inside its right end and no chips. Its placeholder reads "Ask about

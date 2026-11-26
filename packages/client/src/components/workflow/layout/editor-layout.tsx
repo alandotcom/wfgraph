@@ -5,7 +5,6 @@ import {
   canvasRevealAtom,
   INSPECTOR_INSET_PX,
   INSPECTOR_WIDTH_PX,
-  inspectorCoveredWidthAtom,
   inspectorOpenAtom,
   inspectorSubjectAtom,
 } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
@@ -90,25 +89,29 @@ function InspectorCard({
   );
 }
 
-/** The gap between the agent's box and what it ends short of on the right. */
-const COMPOSER_RIGHT_GAP_PX = 12;
+/**
+ * Where the agent's box ends on the right: past the Inspector card's width and
+ * inset, and a 12px gap, whether or not the card is open. The prompt line then
+ * keeps one position and one width as the card opens and closes, and the open
+ * card never covers it.
+ */
+const COMPOSER_RIGHT_PX = INSPECTOR_WIDTH_PX + INSPECTOR_INSET_PX + 12;
 
 /**
  * The box the agent's prompt line and conversation are laid out in: the
  * height of the canvas less 12px at the top and bottom, clear of the zoom
- * controls on the left, and clear of the Inspector on the right while it is
- * open. It takes no pointer events itself, so the canvas around the line
+ * controls on the left, and clear of the space the Inspector card takes on
+ * the right. It takes no pointer events itself, so the canvas around the line
  * stays usable.
  */
 function ComposerBox({ children }: { children: ReactNode }) {
-  const coveredWidth = useAtomValue(inspectorCoveredWidthAtom);
   return (
     <div
       className="pointer-events-none absolute inset-y-3 z-10"
       data-slot="agent-composer-box"
       style={{
         left: DESKTOP_CONTROLS_CLEARANCE_PX.width,
-        right: coveredWidth + COMPOSER_RIGHT_GAP_PX,
+        right: COMPOSER_RIGHT_PX,
       }}
     >
       {children}
@@ -210,7 +213,8 @@ export function EditorLayout({
   inspector: ReactNode;
   /**
    * The build agent's prompt line and conversation, which float at the bottom
-   * of the canvas clear of the zoom controls and of the Inspector.
+   * of the canvas clear of the zoom controls and of the space the Inspector
+   * card takes, open or closed.
    */
   composer?: ReactNode;
   /**
