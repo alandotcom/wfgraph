@@ -127,7 +127,7 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 ### Neutral
 
 - **Paper** (oklch(1 0 0)): The content surface and card background in light mode.
-- **Panel** (oklch(0.985 0 0)): The inspector layer, half a step off Paper so panels read as a separate plane without a border doing all the work.
+- **Panel** (oklch(0.985 0 0)): The ground of the editor's panels: the status strip, the review sheet, and on a phone the outline and the agent's full-screen conversation. It sits half a step off Paper so a panel reads as a separate plane without a border doing all the work. The Inspector card is Paper, lifted by its border and shadow.
 - **Graphite Wash** (oklch(0.97 0 0)): Secondary and muted fills: hover states, secondary buttons, muted badges.
 - **Page** (oklch(0.96 0 0), oklch(0.18 0 0) in dark): The surface the editor shell is inset on, and the only thing that uses it. `--page`. Solved for the step against the two surfaces the shell shows at its edge, Paper and Panel, which measures 1.12:1 and 1.08:1. It is its own step on the ramp rather than a reuse of Graphite Wash, because a page and a fill inside a panel are different things and one value cannot be retuned for both; at three levels of 255 apart nobody would tell them apart where they met, so the separation is in what each token means. In dark mode the step goes up rather than down, as Graphite Wash Dark and the card step do, because nothing renders darker than Void: it sits between those two, above the wash so a fill inside the shell never matches the page and below the card so the page never reads as a surface something could sit on. The shell is what stays Void there, since the canvas is Void by design and lifting the shell would repaint the field the graph floats on.
 - **Graphite Line** (oklch(0.922 0 0)): Hairline borders and input strokes (oklch(0.27 0 0) in dark mode).
@@ -286,8 +286,8 @@ A quiet menu bar spans the editor. Below it the canvas fills the editor, with
 the status strip beneath it, and everything else floats over the canvas: the
 outline at the top left, the zoom controls at the bottom left, the agent's
 prompt line at the bottom, and the Inspector at the right edge while something
-is selected. Nothing docks beside the canvas, so the canvas box never changes
-size. The selected workspace uses a Graphite Ink fill with Paper text. Tone,
+is selected. Each of them floats inside the canvas box, so the box never
+changes size. The selected workspace uses a Graphite Ink fill with Paper text. Tone,
 rather than an accent stripe, marks the active workflow.
 
 The workflow workspace has two views: **Draft** and **Runs**. A
@@ -416,8 +416,8 @@ and every camera placement keeps the graph above the line and above the 24px
 row that chip adds, so selecting a step never covers a card the fit placed. A sent
 message shows its attached step above it in the thread. The command palette's
 **Agent** puts the cursor in the line. Opening
-or closing the conversation moves no camera and no column, and neither ever
-changes the canvas box. Opening a workflow, Fit view, and a placement keep
+or closing the conversation moves no camera and never changes the canvas
+box. Opening a workflow, Fit view, and a placement keep
 cards clear of the line. While the review sheet is open the line and the
 conversation hide, since the canvas is read-only then.
 
@@ -765,7 +765,7 @@ Runs a Group's summary in the run's sheet shows its run status, its member
 counts, and each step with its status, and a step there, or its outline row,
 selects that step on the canvas and opens its evidence over the run's sheet.
 
-A Panel-toned status strip closes the canvas column: 32px tall, Caption type, a
+A Panel-toned status strip sits below the canvas: 32px tall, Caption type, a
 hairline top border, and one line that never wraps. While the draft is on
 screen, the strip says whether the draft is saved, and holds the issue count.
 
@@ -786,8 +786,8 @@ it. The chip renders nothing until the workflow has loaded, since Live is a
 claim about real recipients.
 The strip also identifies **Runs**, explains that editing is
 off, and provides **Back to draft**. With a read-only view on the canvas, the
-strip tints toward `--info`. Its height remains constant because the strip and
-graph share the column height.
+strip tints toward `--info`. Its height stays constant, so the canvas box above
+it keeps its size whatever the strip says.
 
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 the workflow's menu under its name, and **Settings** form the leading group.

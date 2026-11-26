@@ -45,7 +45,7 @@ describe("editorChordAllowed", () => {
     ).toBe(false);
   });
 
-  it("does not count a docked agent panel as a layer", () => {
+  it("does not count a non-modal region as a layer", () => {
     document.body.innerHTML = '<div aria-modal="false"></div>';
 
     expect(keyboardLayerOpen()).toBe(false);

@@ -472,8 +472,9 @@ object's editor, or in Runs an open run at Browse and a run node's evidence at
 Focus. It has one shape: it opens while there is a subject and closes when the
 subject goes, on its close control, or on Escape with nothing left to step back
 through. Closed by the person, it stays closed on that subject until another
-is selected or a press on the step opens it again. Draft with nothing selected
-and the run list show no Inspector. Draft,
+is selected or a press on the step opens it again. Draft with nothing selected,
+two or more selected steps, whose commands are the context menu's, and the run
+list show no Inspector. Draft,
 each run, and each entered Group remember their own inspected object, scroll
 position, and camera. While the review sheet Publish opens is on screen, it
 covers the Inspector. On a phone a sequence of sheets takes its place.

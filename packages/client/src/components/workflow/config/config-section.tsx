@@ -102,7 +102,7 @@ export function ConfigGroup({
 }
 
 /**
- * The explanation a section used to carry as paragraphs in the column.
+ * A section's longer explanation, in a popover behind an info button.
  *
  * On click rather than hover: the content is long enough to want to stay open
  * while it is read, and hover does not exist on touch.
