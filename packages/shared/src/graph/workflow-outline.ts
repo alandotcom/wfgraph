@@ -26,7 +26,6 @@ import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import {
   conditionRulesPhrase,
   eventLabel,
-  overlappingRunsSentence,
   startClauses,
   stepLabel,
   stopClauses,
@@ -74,11 +73,6 @@ export type OutlineLifecycleRow = RowBase & {
    * Null when there is nothing to add.
    */
   summary: string | null;
-  /**
-   * What a newer start does to a run in progress, or null when every arrival
-   * starts a run of its own.
-   */
-  overlap: string | null;
 };
 
 export type OutlineStepRow = RowBase & {
@@ -764,7 +758,6 @@ class RowWriter {
       summary: name
         ? getStartSummary(node.data.config, this.walker.catalog)
         : joinOrNull(compact(clauses.map((clause) => clause.condition))),
-      overlap: overlappingRunsSentence(rules, this.walker.catalog),
     };
   }
 
