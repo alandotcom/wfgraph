@@ -115,7 +115,6 @@ export function useStepMenuItems(input: {
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
-
   const deleteCanvasSelection = useSetAtom(deleteCanvasSelectionAtom);
 
   const node = nodes.find((item) => item.id === input.nodeId);
@@ -259,7 +258,6 @@ export function useStepMenuItems(input: {
       run: () => ungroupSelected(nodeId),
     });
   }
-  // Collapsing is the viewer's own view, so it needs no edit grant.
   if (isGroup) {
     const collapsed = collapsedGroupIds.has(nodeId);
     items.push({

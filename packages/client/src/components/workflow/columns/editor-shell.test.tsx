@@ -75,8 +75,8 @@ function renderEditor() {
 /**
  * Focusing a field scrolls the nearest scroll container that holds it, and
  * every one above that. The Inspector body is meant to scroll; anything above
- * it scrolling is the editor shifting under the pointer, which is what adding
- * a step did when the new step's first field took focus.
+ * it scrolling is the editor shifting under the pointer, as it would when a
+ * newly added step's first field takes focus.
  */
 function expectOnlyTheInspectorBodyScrolls(): void {
   const body = screen.getByTestId("details-body");
