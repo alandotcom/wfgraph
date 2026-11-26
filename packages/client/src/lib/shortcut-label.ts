@@ -73,10 +73,10 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
 export const SHORTCUT_REFERENCE_KEY = "?";
 
 /**
- * The keys that collapse and show the editor's outline and details columns
- * from outside a text field.
+ * The key that hides and shows the outline floating over the canvas, from
+ * outside a text field.
  */
-export const COLUMN_SHORTCUT_KEYS = { outline: "[", details: "]" } as const;
+export const OUTLINE_SHORTCUT_KEY = "[";
 
 /** One row of the shortcut reference: what it does, and each key that does it. */
 export type ShortcutEntry = {
@@ -130,14 +130,7 @@ export function shortcutReference(
         { label: "Run draft", keys: [keys.run] },
         { label: "Undo", keys: [keys.undo] },
         { label: "Redo", keys: [keys.redo] },
-        {
-          label: "Collapse or show the outline",
-          keys: [COLUMN_SHORTCUT_KEYS.outline],
-        },
-        {
-          label: "Collapse or show details",
-          keys: [COLUMN_SHORTCUT_KEYS.details],
-        },
+        { label: "Hide or show the outline", keys: [OUTLINE_SHORTCUT_KEY] },
         { label: "Send a message to the agent", keys: [enter] },
       ],
     },
@@ -173,10 +166,9 @@ export function shortcutReference(
       entries: [
         {
           label:
-            "In details: close what is open, go back, then return to the step's outline row",
+            "In the Inspector: close what is open, go back, then close it and return to the step's outline row",
           keys: ["Esc"],
         },
-        { label: "In floating details: close it", keys: ["Esc"] },
         {
           label: "On the canvas: clear the selection, keeping your place",
           keys: ["Esc"],

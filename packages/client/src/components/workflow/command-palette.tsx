@@ -54,7 +54,7 @@ import { requestRevealEditFocusAtom } from "#src/components/workflow/canvas-reve
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
-import { useColumnControls } from "#src/components/workflow/columns/use-column-controls";
+import { useOutlineControls } from "#src/components/workflow/columns/use-outline-controls";
 import { useSelectedStepCommands } from "#src/components/workflow/use-selected-step-commands";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
@@ -379,7 +379,7 @@ function CommandPaletteDialog({
   // The palette's search box is gone once a row is chosen, so a row that
   // selects a step asks the details column to put focus on the step's title.
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
-  const columns = useColumnControls();
+  const outline = useOutlineControls();
   const hintsId = useId();
   const pageId = useId();
 
@@ -621,7 +621,7 @@ function CommandPaletteDialog({
       icon: <Search className="size-3.5 text-muted-foreground" />,
       select: () => {
         close();
-        columns.findStep();
+        outline.findStep();
       },
     };
     const extraItems: Record<string, readonly PaletteItem[]> = {

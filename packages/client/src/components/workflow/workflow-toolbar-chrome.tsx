@@ -17,7 +17,6 @@ import {
   Loader2,
   PanelLeft,
   Sparkles,
-  PanelRight,
   Pause,
   Pencil,
   Play,
@@ -62,12 +61,11 @@ import { can, canUseBuildAgent } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useWorkflowCommands } from "#src/components/workflow/use-workflow-commands";
-import { useColumnControls } from "#src/components/workflow/columns/use-column-controls";
+import { useOutlineControls } from "#src/components/workflow/columns/use-outline-controls";
 import { focusAgentComposerAtom } from "#src/lib/workflow-ui-store";
 import { isAgentEnabled } from "#src/lib/extensions";
-import { useIsMobile } from "#src/hooks/use-mobile";
 import {
-  COLUMN_SHORTCUT_KEYS,
+  OUTLINE_SHORTCUT_KEY,
   currentPlatform,
   editorShortcutLabels,
   isApplePlatform,
@@ -227,7 +225,7 @@ export function CommandPaletteTrigger() {
  * search field is hidden. It brings the outline into view when it is collapsed.
  */
 export function FindStepTrigger() {
-  const columns = useColumnControls();
+  const outline = useOutlineControls();
   const shortcut = editorShortcutLabels(
     isApplePlatform(currentPlatform())
   ).findStep;
@@ -238,7 +236,7 @@ export function FindStepTrigger() {
         aria-keyshortcuts="Meta+F Control+F"
         aria-label="Find a step"
         className="min-[70rem]:hidden"
-        onClick={columns.findStep}
+        onClick={outline.findStep}
         size="icon"
         variant="outline"
       >
@@ -585,7 +583,7 @@ function workflowMenuOffers(
 /**
  * The workflow menu's commands for the command palette, in the menu's words:
  * Rename, Duplicate workflow, Pause or Resume workflow, and Copy workflow ID,
- * with the commands that collapse and show the outline and details columns.
+ * with the command that hides and shows the floating outline.
  */
 function useWorkflowMenuCommands(
   state: WorkflowToolbarState,
@@ -595,8 +593,7 @@ function useWorkflowMenuCommands(
   const offers = workflowMenuOffers(state, workflowId);
   const pause = useSetWorkflowPaused(workflowId);
   const openRename = useSetAtom(openRenameWorkflowDialogAtom);
-  const columns = useColumnControls();
-  const isMobile = useIsMobile();
+  const outline = useOutlineControls();
   const focusAgentComposer = useSetAtom(focusAgentComposerAtom);
   const commands: PaletteMenuCommand[] = [];
   if (offers.rename) {
@@ -629,27 +626,16 @@ function useWorkflowMenuCommands(
       execute: () => pause.setPaused(!offers.isPaused),
     });
   }
-  if (!isMobile) {
-    commands.push(
-      {
-        id: "toggle-outline",
-        label: columns.toggleLabel("outline"),
-        keywords: "Outline column collapse show hide steps list sidebar",
-        hint: COLUMN_SHORTCUT_KEYS.outline,
-        disabled: false,
-        Icon: PanelLeft,
-        execute: () => columns.toggle("outline"),
-      },
-      {
-        id: "toggle-details",
-        label: columns.toggleLabel("details"),
-        keywords: "Details column collapse show hide inspector agent sidebar",
-        hint: COLUMN_SHORTCUT_KEYS.details,
-        disabled: false,
-        Icon: PanelRight,
-        execute: () => columns.toggle("details"),
-      }
-    );
+  if (outline.canHide) {
+    commands.push({
+      id: "toggle-outline",
+      label: outline.toggleLabel,
+      keywords: "Outline hide show steps list",
+      hint: OUTLINE_SHORTCUT_KEY,
+      disabled: false,
+      Icon: PanelLeft,
+      execute: outline.toggle,
+    });
   }
   if (workflowId !== undefined && isAgentEnabled() && canUseBuildAgent()) {
     commands.push({

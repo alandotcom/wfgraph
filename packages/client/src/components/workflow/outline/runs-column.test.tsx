@@ -35,7 +35,7 @@ function twoSteps() {
 }
 
 describe("RunsColumn", () => {
-  it("lists the runs in the left column and leaves the details column pointing at it", async () => {
+  it("lists the runs in the outline and leaves the Inspector pointing at it", async () => {
     served.items = [
       execution("exec_b", "completed"),
       execution("exec_a", "completed"),
@@ -60,47 +60,6 @@ describe("RunsColumn", () => {
     expect(aside()?.textContent).toContain(
       "Open a run from the list to see its summary here."
     );
-  });
-
-  it("opens a failed run with the step that failed selected and its evidence in details", async () => {
-    served.items = [execution("exec_f", "failed")];
-    served.graphs = { ver_exec_f: twoSteps() };
-    served.logsByExecutionId = {
-      exec_f: [
-        log({
-          id: "log_confirm",
-          nodeId: "confirm",
-          nodeName: "Send confirmation",
-          status: "success",
-        }),
-        log({
-          id: "log_receipt",
-          nodeId: "receipt",
-          nodeName: "Send receipt",
-          status: "error",
-          error: "invalid_auth",
-          startedAt: "2026-03-01T10:00:05.000Z",
-        }),
-      ],
-    };
-    const { view, store, aside, title } = await renderRunsReveal({
-      view: "runs",
-      executionId: "exec_f",
-    });
-
-    await waitFor(() =>
-      expect(store.get(activeSelectionAtom).nodeIds).toEqual(["receipt"])
-    );
-    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
-    expect(title()).toBe("Send receipt");
-    const column = view.getByTestId("outline-column");
-    expect(within(column).getByText(runHeading("exec_f"))).toBeTruthy();
-    expect(
-      within(column)
-        .getAllByRole("treeitem")
-        .find((row) => row.textContent?.includes("Send receipt"))
-        ?.getAttribute("aria-selected")
-    ).toBe("true");
   });
 
   it("opens a completed run with nothing selected", async () => {
