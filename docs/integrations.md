@@ -287,6 +287,23 @@ re-serialises, so a resolved value holding a quotation mark reaches your handler
 rather than leaving the string unparseable. A row's name is left as authored, because it is
 the key of whatever you build from it.
 
+### The "In test runs" field
+
+A config field whose key is `testBehavior` is the step's "In test runs" setting. The built-in
+Twilio, Resend, Slack and PostHog actions that reach outside the workflow each declare it as
+a `select` labelled "In test runs", with `log_only` ("Log only (do nothing)") as its default
+and one option that does the work: Twilio's `send_to_test_phone` sends to the Test Phone
+Number field it shows, Resend's `send_to_test_email` to the Test Email Address, Slack's
+`send_message` posts the real message, and PostHog's `send` captures a real event. The field
+does nothing by itself. Each of those handlers reads it, and in a test run answers without
+doing the work when it holds `log_only`.
+
+The editor reads the key from any action in the catalog, an integration outside this
+repository included. For a step whose action has a `testBehavior` field, the Run draft dialog
+and the build agent take the option the step holds, or the field's default when it holds
+none, say that a step holding `log_only` is skipped, and quote the fields whose `showWhen`
+names `testBehavior`. Nothing checks that the handler does what the option says.
+
 ### Fields the connection fills in
 
 This section describes integration providers, which resolve a Connection and its
