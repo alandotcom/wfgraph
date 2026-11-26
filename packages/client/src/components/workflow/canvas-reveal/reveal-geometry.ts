@@ -143,12 +143,14 @@ export function usableAboveSheet(input: {
 
 /**
  * Elements floating over the canvas that a placed step must not sit under:
- * the agent's prompt line at the bottom of the canvas, the outline floating
- * at its top left, the zoom controls and the minimap.
+ * the agent's prompt line at the bottom of the canvas, or the Show agent
+ * control in its place while the person hid it, the outline floating at its
+ * top left, the zoom controls and the minimap.
  */
 const AGENT_COMPOSER_SELECTOR = '[data-slot="agent-composer"]';
 const OBSTACLE_SELECTORS = [
   AGENT_COMPOSER_SELECTOR,
+  '[data-slot="agent-show-control"]',
   '[data-slot="floating-outline"]',
   `[data-slot="${CANVAS_OBSTACLE_SLOTS.controls}"]`,
   ".react-flow__minimap",

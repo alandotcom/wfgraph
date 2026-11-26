@@ -16,6 +16,8 @@ import {
   CirclePlay,
   Copy,
   Loader2,
+  PanelBottomClose,
+  PanelBottomOpen,
   PanelLeft,
   Sparkles,
   Pause,
@@ -63,7 +65,12 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useWorkflowCommands } from "#src/components/workflow/use-workflow-commands";
 import { useOutlineControls } from "#src/components/workflow/layout/use-outline-controls";
-import { focusAgentComposerAtom } from "#src/lib/workflow-ui-store";
+import {
+  agentHiddenAtom,
+  focusAgentComposerAtom,
+  toggleAgentHiddenAtom,
+} from "#src/lib/workflow-ui-store";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { orpcQuery } from "#src/lib/rpc-query";
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
@@ -599,6 +606,9 @@ function useWorkflowMenuCommands(
   const openRename = useSetAtom(openRenameWorkflowDialogAtom);
   const outline = useOutlineControls();
   const focusAgentComposer = useSetAtom(focusAgentComposerAtom);
+  const agentHidden = useAtomValue(agentHiddenAtom);
+  const toggleAgentHidden = useSetAtom(toggleAgentHiddenAtom);
+  const isMobile = useIsMobile();
   const commands: PaletteMenuCommand[] = [];
   if (offers.rename) {
     commands.push({
@@ -650,6 +660,18 @@ function useWorkflowMenuCommands(
       Icon: Sparkles,
       execute: () => focusAgentComposer(),
     });
+    // A phone's prompt line sits below the main view and cannot be hidden.
+    if (!isMobile) {
+      commands.push({
+        id: "toggle-agent",
+        label: agentHidden ? "Show agent" : "Hide agent",
+        keywords: "Agent hide show assistant chat prompt",
+        hint: editorShortcutLabels(isApplePlatform(currentPlatform())).agent,
+        disabled: false,
+        Icon: agentHidden ? PanelBottomOpen : PanelBottomClose,
+        execute: toggleAgentHidden,
+      });
+    }
   }
   if (workflowId !== undefined) {
     commands.push({

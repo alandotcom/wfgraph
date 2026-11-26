@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import type { WorkspaceView } from "#src/lib/workflow-navigation-state";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 
@@ -67,6 +68,86 @@ export const workflowGraphUpdateAtom = atom<WorkflowGraphUpdate | null>(null);
  */
 export const agentConversationOpenAtom = atom(false);
 
+/** The `localStorage` key holding whether the person hid the agent's box. */
+const AGENT_HIDDEN_STORAGE_KEY = "wfgraph:agent-hidden";
+
+/**
+ * This browser's `localStorage`, or undefined where reading it throws, as a
+ * policy that blocks site data makes it do.
+ */
+function browserStorage(): Storage | undefined {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A stored "true" or "false" as the boolean it names; anything else is unknown. */
+function storedBoolean(value: string | null | undefined): boolean | undefined {
+  return value === "true" ? true : value === "false" ? false : undefined;
+}
+
+/**
+ * Where the agent's hidden preference is kept. Storage can be absent or refuse
+ * a write (a private window, a full quota), so every access is wrapped: the
+ * preference then holds for the life of the page and the editor renders as it
+ * would with nothing stored. Another tab that hides or shows the agent updates
+ * this one through the `storage` event.
+ */
+const agentHiddenStorage = {
+  getItem: (key: string, initialValue: boolean): boolean => {
+    try {
+      return storedBoolean(browserStorage()?.getItem(key)) ?? initialValue;
+    } catch {
+      return initialValue;
+    }
+  },
+  setItem: (key: string, value: boolean): void => {
+    try {
+      browserStorage()?.setItem(key, String(value));
+    } catch {
+      // The preference stays in memory for this page.
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      browserStorage()?.removeItem(key);
+    } catch {
+      // Nothing was stored that could be read back.
+    }
+  },
+  subscribe: (
+    key: string,
+    callback: (value: boolean) => void,
+    initialValue: boolean
+  ) => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === key) {
+        callback(storedBoolean(event.newValue) ?? initialValue);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  },
+};
+
+/**
+ * Whether the person hid the build agent's box on the canvas, leaving only the
+ * small Show agent control at the foot of the canvas. It is this viewer's
+ * preference: it holds across workflows and survives a reload. A phone ignores
+ * it, because its prompt line sits in the page's flow below the main view.
+ */
+export const agentHiddenAtom = atomWithStorage(
+  AGENT_HIDDEN_STORAGE_KEY,
+  false,
+  agentHiddenStorage,
+  { getOnInit: true }
+);
+
 /**
  * A request to put the cursor in the agent's composer, with text to place in
  * it when `text` is set. `sequence` tells two requests apart. The composer
@@ -80,16 +161,43 @@ export type AgentComposerFocusRequest = {
 export const agentComposerFocusRequestAtom =
   atom<AgentComposerFocusRequest | null>(null);
 
+/** The next request for the composer's cursor, carrying `text`. */
+function nextFocusRequest(
+  previous: AgentComposerFocusRequest | null,
+  text: string | undefined
+): AgentComposerFocusRequest {
+  return { sequence: (previous?.sequence ?? 0) + 1, text };
+}
+
 /**
  * Focus the agent's composer and open its conversation, as the palette's
- * Agent command does.
+ * Agent command does. A hidden box shows again first.
  */
 export const focusAgentComposerAtom = atom(null, (get, set, text?: string) => {
+  set(agentHiddenAtom, false);
   set(agentConversationOpenAtom, true);
-  set(agentComposerFocusRequestAtom, {
-    sequence: (get(agentComposerFocusRequestAtom)?.sequence ?? 0) + 1,
-    text,
-  });
+  set(
+    agentComposerFocusRequestAtom,
+    nextFocusRequest(get(agentComposerFocusRequestAtom), text)
+  );
+});
+
+/**
+ * Hide the agent's box, or show it again with the cursor in its prompt line,
+ * as Cmd+J and the palette's Hide agent and Show agent do. Hiding collapses the
+ * conversation and keeps it; a turn in progress keeps going.
+ */
+export const toggleAgentHiddenAtom = atom(null, (get, set) => {
+  if (get(agentHiddenAtom)) {
+    set(agentHiddenAtom, false);
+    set(
+      agentComposerFocusRequestAtom,
+      nextFocusRequest(get(agentComposerFocusRequestAtom), undefined)
+    );
+    return;
+  }
+  set(agentConversationOpenAtom, false);
+  set(agentHiddenAtom, true);
 });
 
 /**

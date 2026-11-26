@@ -435,6 +435,24 @@ box. Opening a workflow, Fit view, and a placement keep
 cards clear of the line. While the review sheet is open the line and the
 conversation hide, since the canvas is read-only then.
 
+The person can hide the whole box. A 20px round **Hide agent** control sits on
+the line's top edge near its right end, shown while the pointer is over the
+line or focus is inside it, and its tooltip carries Cmd+J (Ctrl+J). That chord,
+from anywhere in the editor including a text field, and the palette's **Hide
+agent** do the same. Hiding collapses the conversation and keeps it. A hidden
+box leaves one quiet 32px round **Show agent** control at the foot of the
+canvas, centred where the pill was; it, Cmd+J and the palette's **Show agent**
+bring the box back with the cursor in the line, which opens the conversation
+when the thread holds messages. When the box hides with focus inside it, focus
+moves to Show agent. A turn keeps running while the box is hidden, and Show
+agent then carries the line's dot while the agent works or after it replied.
+A reply leaves the box hidden, because the person hid it to see the cards the
+agent may be changing. The palette's **Agent** shows a hidden box. Whether the
+box is hidden is this browser's preference, kept across workflows and reloads.
+While it is hidden, fits keep no room for the line, placements keep clear of
+Show agent alone, and hiding or showing moves no camera. A phone keeps its
+line, which sits in the page's flow and covers no canvas.
+
 A workflow that holds only its Lifecycle Node draws nothing more on the canvas: choosing what starts it is the Inspector's, adding a step is the outline's **Add a step** row and the start card's +, and the agent's prompt line sits at the foot of the canvas. The build agent's empty conversation offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
 
 On a phone the zoom controls sit in a row along the bottom edge. The zoom
