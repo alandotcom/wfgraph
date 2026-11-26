@@ -197,7 +197,6 @@ export function WorkflowCanvas() {
   const anchorNode = accessibleGraph.nodes.find(
     (node) => node.id === canvasGraph.anchor?.nodeId
   );
-  const pinnedAnchor = canvasGraph.anchor?.pinToTop ? anchorNode : undefined;
   // Declared ahead of the synchronized canvas below, so the camera of the
   // workspace being left is stored before any placement for the next one.
   const workspaceCamera = useWorkspaceCamera({
@@ -254,15 +253,15 @@ export function WorkflowCanvas() {
     }
   };
   const correctViewport = () => {
-    if (!currentWorkflowId || !pinnedAnchor) {
+    if (!currentWorkflowId || !anchorNode) {
       return;
     }
     const lifecycle = {
-      nodePosition: pinnedAnchor.position,
+      nodePosition: anchorNode.position,
       nodeWidth:
-        pinnedAnchor.measured?.width ??
-        pinnedAnchor.width ??
-        pinnedAnchor.initialWidth ??
+        anchorNode.measured?.width ??
+        anchorNode.width ??
+        anchorNode.initialWidth ??
         WORKFLOW_NODE_WIDTH,
     };
     if (fittedWorkflowIdRef.current !== currentWorkflowId) {
@@ -390,19 +389,7 @@ export function WorkflowCanvas() {
       nodePosition: lifecycleAnchor.position,
       nodeWidth: lifecycleAnchor.width,
     };
-    if (!canvasGraph.anchor?.pinToTop) {
-      // A graph with no Lifecycle card has nothing to anchor the opening on.
-      fittedWorkflowIdRef.current = currentWorkflowId;
-      const savedViewport = workspaceCamera.savedViewport();
-      if (savedViewport) {
-        void setViewport(savedViewport, { duration: 0 });
-      } else {
-        void fitView(workflowFitViewOptions(0));
-      }
-    } else if (
-      resolvedWorkspacePresentation !== null ||
-      workspaceView === "draft"
-    ) {
+    if (resolvedWorkspacePresentation !== null || workspaceView === "draft") {
       placeWorkflow(currentWorkflowId, lifecycle);
     } else {
       provisionalWorkflowIdRef.current = currentWorkflowId;
