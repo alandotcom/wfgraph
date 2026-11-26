@@ -125,7 +125,7 @@ function groupNode(): WorkflowNode {
 }
 
 /**
- * The panel in the rail's frame, over a router and a query client because the
+ * The panel in the Inspector's frame, over a router and a query client because the
  * write half it mounts reaches both. `confirm` is captured rather than rendered:
  * what a frame does with a request is the frame's business, and no case here is
  * about the dialog.

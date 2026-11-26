@@ -58,7 +58,7 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import { lifecycleRuleTargetId } from "./lifecycle-reveal-model";
 import { MobileReveal, MobileRevealCovered } from "./mobile-reveal";
 
@@ -169,7 +169,7 @@ async function renderMobile() {
             Agent
           </button>
         </MobileRevealCovered>
-        <DetailsPanel />
+        <InspectorContents />
         <MobileReveal />
       </div>
     ),

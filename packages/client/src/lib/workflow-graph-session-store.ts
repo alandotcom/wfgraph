@@ -12,7 +12,7 @@ import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import { getClientLogger } from "#src/lib/logger";
 import { repairCanvasGroups } from "#src/lib/node-group";
 import { repairLegacyGroupLayout } from "#src/components/workflow/workflow-layout";
-import { outlineHiddenAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { outlineHiddenAtom } from "#src/components/workflow/layout/editor-layout-store";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";

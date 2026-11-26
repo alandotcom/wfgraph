@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
@@ -216,7 +216,7 @@ async function renderEditor(
         <WorkspaceRouteSync />
         <RunStatusProjection />
         <WorkflowCanvas />
-        {options.reveal === false ? null : <DetailsPanel />}
+        {options.reveal === false ? null : <InspectorContents />}
         <Probe />
       </div>
     ),
@@ -256,7 +256,9 @@ async function renderEditor(
       (element) => element.dataset.id
     );
   const reveal = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
+    view.container.querySelector<HTMLElement>(
+      '[data-slot="inspector-contents"]'
+    );
   const select = async (nodeId: string) => {
     await act(async () => {
       store.set(selectOnlyNodeAtom, nodeId);

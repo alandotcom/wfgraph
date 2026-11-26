@@ -1046,7 +1046,7 @@ describe("Runs Focus node evidence", () => {
 
     await waitFor(() =>
       expect(
-        within(view.getByTestId("outline-column")).getByText(
+        within(view.getByTestId("editor-outline")).getByText(
           "The graph this run used could not be loaded, so its steps cannot be listed."
         )
       ).toBeTruthy()

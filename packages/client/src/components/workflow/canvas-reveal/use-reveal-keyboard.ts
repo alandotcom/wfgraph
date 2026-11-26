@@ -17,7 +17,7 @@ function escapeOwnedByControl(target: Element): boolean {
 }
 
 /**
- * Escape inside the details panel, or on a phone inside the canvas area under
+ * Escape inside the Inspector, or on a phone inside the canvas area under
  * its sheets, takes one step back, unless an overlay, an
  * open control, or an earlier capture listener that called `preventDefault`
  * owns it. Escape is read in the document's capture phase and stopped once the
@@ -26,7 +26,7 @@ function escapeOwnedByControl(target: Element): boolean {
 export function useRevealKeyboard(input: {
   enabled: boolean;
   hasOverlays: boolean;
-  /** The surface Escape must come from: the details panel or a phone's canvas area. */
+  /** The surface Escape must come from: the Inspector or a phone's canvas area. */
   area: RefObject<HTMLElement | null>;
   /**
    * Whether an Escape while focus sits on the page body counts as one from

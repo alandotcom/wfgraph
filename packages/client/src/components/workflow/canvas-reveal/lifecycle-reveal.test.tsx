@@ -19,7 +19,7 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import {
   LIFECYCLE_ADD_RULE_ID,
   lifecycleFilterTargetId,
@@ -186,7 +186,7 @@ async function renderLifecycle(
     component: () => (
       <div className="relative" data-testid="canvas-area">
         <FakeCanvas />
-        <DetailsPanel />
+        <InspectorContents />
       </div>
     ),
   });
@@ -217,7 +217,9 @@ async function renderLifecycle(
     store.set(selectOnlyNodeAtom, "lifecycle");
   });
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
+    view.container.querySelector<HTMLElement>(
+      '[data-slot="inspector-contents"]'
+    );
   // A rule is the section element around its label.
   const region = (name: string) => {
     const section = within(

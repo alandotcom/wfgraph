@@ -34,7 +34,7 @@ import {
   OverlayProvider,
   useOverlay,
 } from "#src/components/overlays/overlay-provider";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import {
   canvasRevealAtom,
   dismissInspectorAtom,
@@ -334,7 +334,7 @@ async function renderReveal(
     component: () => (
       <div className="relative" data-testid="canvas-area">
         <Canvas />
-        <DetailsPanel />
+        <InspectorContents />
         <OverlayProbe />
       </div>
     ),
@@ -378,7 +378,9 @@ async function renderReveal(
   );
   await view.findByTestId("canvas-area");
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
+    view.container.querySelector<HTMLElement>(
+      '[data-slot="inspector-contents"]'
+    );
   const level = () => aside()?.dataset.level;
   const select = async (nodeId: string) => {
     await act(async () => {
@@ -440,7 +442,7 @@ afterEach(() => {
   resetAuthorizationGrantsForTests();
 });
 
-describe("details panel presentation states", () => {
+describe("InspectorContents presentation states", () => {
   it("opens an Action's editor with the workspace, step, path, and status", async () => {
     const { view, level, select, store } = await renderReveal();
     await select("send");
@@ -541,7 +543,7 @@ describe("details panel presentation states", () => {
   });
 });
 
-describe("details panel editing", () => {
+describe("InspectorContents editing", () => {
   it("writes label and description edits to the draft in one autosave", async () => {
     const { view, store, update, select, level } = await renderReveal();
     await select("send");
@@ -623,7 +625,7 @@ describe("details panel editing", () => {
   });
 });
 
-describe("details panel keyboard and focus", () => {
+describe("InspectorContents keyboard and focus", () => {
   it("leaves focus on the canvas object, and Escape in the details hands it back there", async () => {
     const { view, store, select, escape, level } = await renderReveal();
     const card = view.getByText("Send reminder card");
@@ -780,7 +782,7 @@ describe("details panel keyboard and focus", () => {
   });
 });
 
-describe("details panel navigation state", () => {
+describe("InspectorContents navigation state", () => {
   it("restores the open inspector, step, and inspector scroll per scope", async () => {
     const { store, select, aside, level } = await renderReveal();
     await select("send");
@@ -810,7 +812,7 @@ describe("details panel navigation state", () => {
   });
 });
 
-describe("details panel on a narrow viewport", () => {
+describe("InspectorContents on a narrow viewport", () => {
   afterEach(() => setViewportWidth(1440));
 
   it("leaves a selected Draft step to the mobile Reveal sequence", async () => {
@@ -822,7 +824,7 @@ describe("details panel on a narrow viewport", () => {
   });
 });
 
-describe("details panel over a React Flow canvas", () => {
+describe("InspectorContents over a React Flow canvas", () => {
   const flow = { canvas: FlowCanvas };
 
   it("keeps the step when Backspace or Delete is pressed on a control inside the details", async () => {
@@ -883,7 +885,7 @@ describe("details panel over a React Flow canvas", () => {
   });
 });
 
-describe("details panel edit focus", () => {
+describe("InspectorContents edit focus", () => {
   it("opens the step from the context menu's Edit with focus in its label", async () => {
     const { view, level } = await renderReveal({}, { canvas: FlowCanvas });
     expect(
@@ -977,7 +979,7 @@ function stubFieldBox(input: { fieldId: string; top: number }): void {
       if (this.id === input.fieldId) {
         return rect(input.top, 20);
       }
-      if (this.matches('[data-slot="details-panel"] > .overflow-y-auto')) {
+      if (this.matches('[data-slot="inspector-contents"] > .overflow-y-auto')) {
         return rect(0, 400);
       }
       return rect(0, 0);
@@ -1006,7 +1008,7 @@ function expectNoAncestorScrolled(body: HTMLElement | null | undefined): void {
   expect(window.scrollY).toBe(0);
 }
 
-describe("details panel subjects and focus return", () => {
+describe("InspectorContents subjects and focus return", () => {
   it("hands focus to the selected node on Escape when it has none to step back to", async () => {
     const { view, store, escape } = await renderReveal();
     const canvas = view.getByTestId("workflow-canvas");
@@ -1164,11 +1166,11 @@ describe("Template field Escape", () => {
   });
 });
 
-describe("details panel with nothing selected", () => {
+describe("InspectorContents with nothing selected", () => {
   it("renders no header and no body", async () => {
     const { view } = await renderReveal();
     const panel = view.container.querySelector<HTMLElement>(
-      '[data-slot="details-panel"]'
+      '[data-slot="inspector-contents"]'
     );
     expect(panel?.querySelector("header")).toBeNull();
     expect(panel?.textContent).toBe("");

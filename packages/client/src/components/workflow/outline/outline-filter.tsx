@@ -1,7 +1,7 @@
 import { useAtom } from "jotai";
 import { type KeyboardEvent, useRef, useState } from "react";
 import { Input } from "#src/components/ui/input";
-import { outlineFilterFocusRequestAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { outlineFilterFocusRequestAtom } from "#src/components/workflow/layout/editor-layout-store";
 import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 

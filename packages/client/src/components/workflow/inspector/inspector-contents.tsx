@@ -56,7 +56,7 @@ import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
  * X does. A run node's evidence opens with focus on its title. Escape, a field
  * request and a title request wait for the card to be open.
  */
-export function DetailsPanel() {
+export function InspectorContents() {
   // Workspace synchronization can write these before normal subscriptions mount.
   const reveal = useAtomValueRawSync(canvasRevealAtom);
   const subject = useAtomValueRawSync(inspectorSubjectAtom);
@@ -302,7 +302,7 @@ export function DetailsPanel() {
       // shortcuts, including Delete and Backspace.
       className="flex min-h-0 flex-1 flex-col"
       data-level={level}
-      data-slot="details-panel"
+      data-slot="inspector-contents"
       // The review sheet covers the Inspector while it shows, so nothing under
       // it takes focus.
       inert={coveredByReview}

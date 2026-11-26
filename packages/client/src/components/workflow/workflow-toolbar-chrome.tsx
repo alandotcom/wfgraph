@@ -62,7 +62,7 @@ import { can, canUseBuildAgent } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useWorkflowCommands } from "#src/components/workflow/use-workflow-commands";
-import { useOutlineControls } from "#src/components/workflow/columns/use-outline-controls";
+import { useOutlineControls } from "#src/components/workflow/layout/use-outline-controls";
 import { focusAgentComposerAtom } from "#src/lib/workflow-ui-store";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { orpcQuery } from "#src/lib/rpc-query";

@@ -54,7 +54,7 @@ import { requestRevealEditFocusAtom } from "#src/components/workflow/canvas-reve
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
-import { useOutlineControls } from "#src/components/workflow/columns/use-outline-controls";
+import { useOutlineControls } from "#src/components/workflow/layout/use-outline-controls";
 import { useSelectedStepCommands } from "#src/components/workflow/use-selected-step-commands";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";

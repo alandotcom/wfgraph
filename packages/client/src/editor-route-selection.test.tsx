@@ -23,7 +23,7 @@ import {
   WorkflowIssuesOverlay,
   type WorkflowIssuesOverlayInput,
 } from "#src/components/overlays/workflow-issues-overlay";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
@@ -172,7 +172,7 @@ async function renderEditorRoute(initialSearch: string) {
       <div style={{ width: 1400, height: 900 }}>
         <WorkspaceRouteSync />
         <WorkflowCanvas />
-        <DetailsPanel />
+        <InspectorContents />
         <Probe />
       </div>
     ),

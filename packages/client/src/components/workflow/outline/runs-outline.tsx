@@ -39,7 +39,7 @@ import { WorkflowOutline } from "./workflow-outline";
  * With a run open it is that run's outline under a header naming the run, with
  * Back to the list; J and K open the next and previous run in the list.
  */
-export function RunsColumn() {
+export function RunsOutline() {
   const runs = useWorkflowRuns();
   const catalog = useExtensionCatalog();
   const openRunList = useOpenRunList();
@@ -153,7 +153,7 @@ export function RunsColumn() {
           draft.
         </p>
       ) : null}
-      <div className="flex min-h-0 flex-1 flex-col" data-slot="runs-column">
+      <div className="flex min-h-0 flex-1 flex-col" data-slot="runs-outline">
         {loadingList ? <RunsSkeleton /> : null}
         {screen.kind === "run-unavailable" ? (
           <RunUnavailableMessage retry={screen.retry} />

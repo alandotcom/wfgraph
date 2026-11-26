@@ -14,7 +14,7 @@ import { placementNodeIds } from "#src/components/workflow/canvas-reveal/reveal-
 import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import { phoneShowsMapAtom } from "./editor-columns-store";
+import { phoneShowsMapAtom } from "./editor-layout-store";
 import {
   useFindStepShortcut,
   useOutlineControls,
@@ -41,7 +41,6 @@ function FloatingOutline({
     <section
       aria-label="Outline"
       className="pointer-events-none absolute top-3 left-3 z-10 flex w-72 flex-col [text-shadow:0_0_2px_var(--background),0_0_6px_var(--background)]"
-      data-column="outline"
       data-slot="floating-outline"
       hidden={hidden}
       inert={hidden}
@@ -58,7 +57,7 @@ function FloatingOutline({
 
 /**
  * The Inspector: one card floating at the right edge of the canvas, holding
- * the details panel. It slides in on `open` and out again without changing
+ * `InspectorContents`. It slides in on `open` and out again without changing
  * the canvas box, so nothing reflows. Closed it stays mounted, out of sight and
  * inert, so the panel keeps its state.
  */
@@ -179,7 +178,6 @@ function PhoneMain({
           <section
             aria-label="Outline"
             className="absolute inset-0 z-10 flex flex-col bg-sidebar"
-            data-column="outline"
             data-slot="phone-outline"
           >
             {outline}
@@ -195,20 +193,21 @@ function PhoneMain({
  * The editor below the toolbar. At `md` and wider the canvas fills it, and
  * everything else floats over the canvas: the outline at the top left, the
  * agent's composer at the bottom, and the Inspector card at the right while
- * the details panel has a subject. The outline comes first in Tab order, then
+ * the Inspector has a subject. The outline comes first in Tab order, then
  * the canvas, the composer and the Inspector. `[` hides and shows the outline.
  */
 export function EditorLayout({
   outline,
   canvas,
-  details,
+  inspector,
   composer,
   phone,
   overlay,
 }: {
   outline: ReactNode;
   canvas: ReactNode;
-  details: ReactNode;
+  /** What the Inspector card holds, `InspectorContents`. */
+  inspector: ReactNode;
   /**
    * The build agent's prompt line and conversation, which float at the bottom
    * of the canvas clear of the zoom controls and of the Inspector.
@@ -262,7 +261,7 @@ export function EditorLayout({
         <FloatingOutline hidden={!controls.shown}>{outline}</FloatingOutline>
         {canvas}
         {composer ? <ComposerBox>{composer}</ComposerBox> : null}
-        <InspectorCard open={inspectorOpen}>{details}</InspectorCard>
+        <InspectorCard open={inspectorOpen}>{inspector}</InspectorCard>
       </div>
       {overlay}
     </div>

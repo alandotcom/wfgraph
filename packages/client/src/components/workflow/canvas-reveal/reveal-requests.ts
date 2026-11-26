@@ -1,8 +1,8 @@
 /**
  * Requests other surfaces make of the canvas camera and the Inspector:
- * show nodes in the usable rectangle, focus an element of a node's inspector,
- * and focus the details title. The canvas camera answers each placement once;
- * the details panel clears a field or title request once it has moved focus.
+ * show nodes in the usable rectangle, focus an element of a node's form, and
+ * focus the Inspector's title. The canvas camera answers each placement once;
+ * `InspectorContents` clears a field or title request once it has moved focus.
  */
 
 import { atom } from "jotai";

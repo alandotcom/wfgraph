@@ -123,7 +123,7 @@ export function WorkflowOutline({
   openRun,
 }: {
   /**
-   * What the Runs column already reads about the open run that the outline's
+   * What the Runs outline already reads about the open run that the outline's
    * rows say: the Waits it is parked on and the steps a test run skipped.
    */
   openRun?: OpenRunFacts | undefined;

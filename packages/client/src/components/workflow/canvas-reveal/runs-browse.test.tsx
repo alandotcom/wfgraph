@@ -252,7 +252,7 @@ describe("Runs Browse run list and selected run", () => {
     await waitFor(() => expect(title()).toBe(runHeading("exec_a")));
     // A browser scrolls a row it focuses into view; happy-dom does not, so a
     // run row taking focus stands in for that scroll here.
-    view.getByTestId("outline-column").addEventListener("focusin", (event) => {
+    view.getByTestId("editor-outline").addEventListener("focusin", (event) => {
       const scroller = listScroller();
       if (
         event.target instanceof HTMLElement &&
