@@ -31,13 +31,7 @@ import {
   X,
 } from "lucide-react";
 import { useAtom, useAtomValue } from "jotai";
-import {
-  type KeyboardEvent,
-  type RefObject,
-  useCallback,
-  useRef,
-  useState,
-} from "react";
+import { type KeyboardEvent, type RefObject, useRef, useState } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { isBlank } from "@wfgraph/shared/types/string";
@@ -71,11 +65,79 @@ export const AGENT_COMPOSER_PLACEHOLDER =
   "Ask about this workflow or describe a change";
 
 /**
- * Where the agent shows: `canvas` floats the line and the panel over the
- * canvas; `phone` puts the line below the main view, above the status strip,
- * and opens the conversation over the whole screen.
+ * Where the agent shows: `canvas` from `md` up, `phone` below it.
+ * `VARIANT_LAYOUTS` holds what each one changes.
  */
 export type WorkflowAgentVariant = "canvas" | "phone";
+
+/** The grow and shrink between the pill and the full line, in the 150 to 250ms band. */
+const PROMPT_TRANSITION = "duration-200 ease-out motion-reduce:transition-none";
+
+/** The rules and the layout one variant of the agent follows. */
+interface VariantLayout {
+  /**
+   * Whether the prompt rests as a one-line pill while nothing holds it open:
+   * no focus inside the agent, no text, and no open conversation.
+   */
+  restsAsPill: boolean;
+  /**
+   * Whether focusing or clicking the line opens a conversation whose thread
+   * holds no messages. Enter or Down in an empty line opens it in every
+   * variant, and focus opens a thread that holds messages in every variant.
+   */
+  focusOpensEmptyThread: boolean;
+  /**
+   * Whether Escape in an empty line, with the conversation closed, hands focus
+   * to the selected step's outline row or card, or to the page when nothing is
+   * selected.
+   */
+  escapeReturnsToCanvas: boolean;
+  /** The header control that collapses the conversation back to the line. */
+  closeControl: "close" | "back";
+  /** Classes on the agent's outer box, given whether the conversation is open. */
+  surfaceClass: (open: boolean) => string;
+  /** Classes on the open conversation's panel. */
+  conversationClass: string;
+  /** Classes on the box around the prompt line, given whether it is the pill. */
+  composerClass: (pill: boolean) => string;
+}
+
+const VARIANT_LAYOUTS: Record<WorkflowAgentVariant, VariantLayout> = {
+  // The line and the conversation float over the bottom centre of the canvas,
+  // and an empty thread has nothing to show, so focus only grows the pill.
+  canvas: {
+    restsAsPill: true,
+    focusOpensEmptyThread: false,
+    escapeReturnsToCanvas: true,
+    closeControl: "close",
+    surfaceClass: () => "h-full items-center justify-end gap-2",
+    conversationClass:
+      "h-[60%] w-full max-w-[35rem] rounded-xl shadow-lg ring-1 ring-foreground/10",
+    // A third of the canvas at rest, held between 352px and 560px, and the
+    // full 560px once grown. The box widens about its centre and keeps its
+    // bottom edge.
+    composerClass: (pill) =>
+      cn(
+        "transition-[width]",
+        PROMPT_TRANSITION,
+        pill ? "w-[min(100%,clamp(22rem,33%,35rem))]" : "w-[min(100%,35rem)]"
+      ),
+  },
+  // The line sits at full height below the main view in the page's flow, and
+  // the open conversation covers the whole screen under a Back control.
+  phone: {
+    restsAsPill: false,
+    focusOpensEmptyThread: true,
+    escapeReturnsToCanvas: false,
+    closeControl: "back",
+    surfaceClass: (open) =>
+      open
+        ? "fixed inset-0 z-40 bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+        : "",
+    conversationClass: "flex-1",
+    composerClass: () => "w-full p-2",
+  },
+};
 
 /**
  * The one step the selection holds, as the chip that offers it: its number in
@@ -94,22 +156,22 @@ function useOfferedStep(): AttachedStep | null {
 
 /**
  * The conversation's header: what it is, whether the agent is working, a new
- * conversation, and the control that collapses it back to the line, which on a
- * phone is Back.
+ * conversation, and the control that collapses it back to the line: Back at
+ * the start, or Close conversation at the end.
  */
 function ConversationHeader({
-  variant,
+  closeControl,
   onClose,
   onNewConversation,
 }: {
-  variant: WorkflowAgentVariant;
+  closeControl: VariantLayout["closeControl"];
   onClose: () => void;
   onNewConversation: () => void;
 }) {
   const isGenerating = useAtomValue(isGeneratingAtom);
   return (
     <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
-      {variant === "phone" ? (
+      {closeControl === "back" ? (
         <Button
           aria-label="Back"
           onClick={onClose}
@@ -140,7 +202,7 @@ function ConversationHeader({
         <SquarePenIcon />
         New conversation
       </Button>
-      {variant === "canvas" ? (
+      {closeControl === "close" ? (
         <Button
           aria-label="Close conversation"
           onClick={onClose}
@@ -154,9 +216,6 @@ function ConversationHeader({
     </div>
   );
 }
-
-/** The grow and shrink between the pill and the full line, in the 150 to 250ms band. */
-const PROMPT_TRANSITION = "duration-200 ease-out motion-reduce:transition-none";
 
 /**
  * The prompt line: the attached step's chip or the selected step offered as
@@ -361,6 +420,7 @@ function AgentSurface({
   const promptBlank = useAuiState((state) =>
     isBlank(state.thread.composer.text)
   );
+  const layout = VARIANT_LAYOUTS[variant];
   const offered = useOfferedStep();
   const [attached, setAttached] = useState<AttachedStep | null>(null);
   const [unseen, setUnseen] = useState(false);
@@ -370,9 +430,17 @@ function AgentSurface({
   const input = useRef<HTMLTextAreaElement>(null);
   const wasRunning = useRef(running);
   const wasOpenRef = useRef(open);
-  // Focus moved to the line by Escape from the conversation must not open the
-  // conversation it just closed.
+  // True only inside `focusLineKeepingClosed`. The browser runs the line's
+  // focus handler synchronously inside `focus()`, so the handler reads it.
   const keepClosedOnFocus = useRef(false);
+
+  // Moves focus to the line as the conversation collapses, without the line's
+  // focus handler opening the conversation again.
+  const focusLineKeepingClosed = () => {
+    keepClosedOnFocus.current = true;
+    input.current?.focus({ preventScroll: true });
+    keepClosedOnFocus.current = false;
+  };
 
   // A reply that finishes while the conversation is collapsed leaves the mark
   // on the line until the conversation is opened.
@@ -392,9 +460,7 @@ function AgentSurface({
     // The conversation also collapses when the agent's edit lands, and focus
     // inside it would fall to the page: it goes to the line instead.
     if (wasOpen && document.activeElement === document.body) {
-      keepClosedOnFocus.current = true;
-      input.current?.focus({ preventScroll: true });
-      keepClosedOnFocus.current = false;
+      focusLineKeepingClosed();
     }
   });
 
@@ -410,25 +476,20 @@ function AgentSurface({
     input.current?.focus({ preventScroll: true });
   });
 
-  const close = useCallback(() => {
+  const close = () => {
     setOpen(false);
-    keepClosedOnFocus.current = true;
-    input.current?.focus({ preventScroll: true });
-    keepClosedOnFocus.current = false;
-  }, [setOpen]);
+    focusLineKeepingClosed();
+  };
 
-  // On the canvas the prompt rests as a pill while nothing holds it open: no
-  // focus inside the agent, no text, and no open conversation. A phone keeps
-  // the full line below its main view.
-  const pill = variant === "canvas" && !focused && promptBlank && !open;
+  const pill = layout.restsAsPill && !focused && promptBlank && !open;
 
   const focusLine = () => {
     input.current?.focus({ preventScroll: true });
   };
 
-  // Escape in an empty line with the conversation closed hands focus to the
-  // selected step's outline row or card, or to the page when nothing is
-  // selected, and the line returns to the pill.
+  // Escape's hand-off from an empty line: focus goes to the selected step's
+  // outline row or card, or to the page when nothing is selected, and the
+  // line returns to the pill.
   const returnFocusToCanvas = () => {
     input.current?.blur();
     if (offered !== null) {
@@ -472,7 +533,11 @@ function AgentSurface({
       close();
       return;
     }
-    if (variant === "canvas" && event.target === input.current && promptBlank) {
+    if (
+      layout.escapeReturnsToCanvas &&
+      event.target === input.current &&
+      promptBlank
+    ) {
       event.preventDefault();
       returnFocusToCanvas();
     }
@@ -494,13 +559,10 @@ function AgentSurface({
         setAttached(null);
         focusLine();
       }}
-      // On the canvas an empty thread has nothing to show, so focus only
-      // grows the pill; Enter or Down in the empty line still opens it with
-      // its suggestions. A phone opens the conversation on focus either way.
       onActivate={() => {
         if (
           !keepClosedOnFocus.current &&
-          (variant === "phone" || !threadEmpty)
+          (layout.focusOpensEmptyThread || !threadEmpty)
         ) {
           setOpen(true);
         }
@@ -515,16 +577,14 @@ function AgentSurface({
       aria-label="Agent conversation"
       className={cn(
         "pointer-events-auto flex min-h-0 flex-col overflow-hidden bg-popover text-popover-foreground",
-        variant === "canvas"
-          ? "h-[60%] w-full max-w-[35rem] rounded-xl shadow-lg ring-1 ring-foreground/10"
-          : "flex-1"
+        layout.conversationClass
       )}
       data-slot="agent-conversation"
     >
       <ConversationHeader
+        closeControl={layout.closeControl}
         onClose={close}
         onNewConversation={newConversation}
-        variant={variant}
       />
       <AgentThread />
     </section>
@@ -534,13 +594,7 @@ function AgentSurface({
     <div
       className={cn(
         "flex min-h-0 flex-col",
-        variant === "canvas"
-          ? "h-full items-center justify-end gap-2"
-          : // On a phone the line sits below the main view in the page's
-            // flow, and the open conversation covers the whole screen.
-            open
-            ? "fixed inset-0 z-40 bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-            : "",
+        layout.surfaceClass(open),
         // The canvas is read-only under the review sheet, so the agent hides
         // and keeps its conversation.
         reviewShown && "hidden"
@@ -557,21 +611,7 @@ function AgentSurface({
     >
       {conversation}
       <div
-        className={cn(
-          "pointer-events-auto",
-          variant === "canvas"
-            ? cn(
-                // A third of the canvas at rest, held between 352px and
-                // 560px, and the full 560px once grown. The box widens about
-                // its centre and keeps its bottom edge.
-                "transition-[width]",
-                PROMPT_TRANSITION,
-                pill
-                  ? "w-[min(100%,clamp(22rem,33%,35rem))]"
-                  : "w-[min(100%,35rem)]"
-              )
-            : "w-full p-2"
-        )}
+        className={cn("pointer-events-auto", layout.composerClass(pill))}
         data-slot="agent-composer"
       >
         {line}
