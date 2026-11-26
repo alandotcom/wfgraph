@@ -1270,15 +1270,78 @@ describe("ConditionBuilderRow operator width", () => {
     expect(trigger.textContent).toContain("is greater than or equal");
     // The operator's column is sized to its content in both layouts, and
     // neither the cell nor the trigger lets the label shrink below it.
-    const rule = trigger.closest<HTMLElement>('[data-slot="condition-rule"]');
-    expect(rule?.className).toContain("grid-cols-[auto_minmax(0,1fr)_auto]");
-    expect(rule?.className).toContain(
-      "@md/rule:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]"
-    );
     const cell = trigger.closest<HTMLElement>(
       '[data-slot="condition-rule-operator"]'
     );
+    expect(cell?.className).toContain("shrink-0");
     expect(cell?.className ?? "").not.toContain("min-w-0");
     expect(trigger.className).not.toContain("min-w-0");
+  });
+});
+
+describe("ConditionBuilderRow value width", () => {
+  function relativeModel(): string {
+    return serializeConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "g",
+          logic: "and",
+          conditions: [
+            {
+              id: "r",
+              field: "occurredAt",
+              fieldType: "timestamp",
+              operator: "within_next",
+              amount: 1,
+              unit: "days",
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  // happy-dom lays nothing out, so these read the sizing each control asks
+  // for: a control allowed to shrink below its text is what drew "days" as an
+  // empty box beside its chevron in the Inspector.
+  it("keeps the time unit as wide as the unit it shows", () => {
+    const view = renderRow(
+      [field("occurredAt", "Created", { type: "timestamp" })],
+      relativeModel()
+    );
+
+    const unit = view.getByLabelText("occurredAt unit");
+    expect(unit.textContent).toContain("days");
+    expect(unit.className).toContain("shrink-0");
+    expect(unit.className).not.toContain("min-w-0");
+    expect(unit.className).not.toContain("flex-1");
+    expect(view.getByLabelText("occurredAt amount").className).toContain(
+      "shrink-0"
+    );
+  });
+
+  it("moves a value under the operator rather than narrowing it below its controls", () => {
+    const view = renderRow(
+      [field("occurredAt", "Created", { type: "timestamp" })],
+      relativeModel()
+    );
+
+    const value = view
+      .getByLabelText("occurredAt unit")
+      .closest<HTMLElement>('[data-slot="condition-rule-value"]');
+    // At least its controls' own width, so it wraps instead of shrinking.
+    expect(value?.className).toContain("min-w-fit");
+    const operands = value?.closest<HTMLElement>(
+      '[data-slot="condition-rule-operands"]'
+    );
+    expect(operands?.className).toContain("flex-wrap");
+    // From 36rem the operands join the rule's one line, where the value's
+    // column keeps its contents' width.
+    expect(operands?.className).toContain("@xl/rule:contents");
+    expect(
+      value?.closest<HTMLElement>('[data-slot="condition-rule"]')?.className
+    ).toContain("minmax(min-content,1fr)");
   });
 });

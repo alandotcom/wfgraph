@@ -489,11 +489,14 @@ the filters and eligibility rule in the Start's form included, edits in
 place; a person who may not edit reads the rules as sentences. A rule names
 its field with the step it comes from, "Status · Patient State", when another
 input shares the field's name. A Condition's rule keeps field,
-operator, value, and remove on one line where the rule has 28rem; in a
+operator, value, and remove on one line where the rule has 36rem; in a
 narrower Inspector the field shares the first line with remove, and the
 operator and value share the second. The operator is always as wide as its
 chosen label, so "is greater than or equal" never reads as "is greater than";
-the field and the value take the width it leaves. Selecting a
+the field and the value take the width it leaves. A value that cannot show
+what it holds in that width, such as an amount with its unit beside "is within
+the next", moves to a line of its own under the operator, so neither the
+operator nor the value narrows below its text. Selecting a
 Group, by its header or its card, opens its editor: the step count, each step
 in stored position order, the outside steps that enter it, the step it
 continues from with the Condition branch when it leaves by one, the steps it

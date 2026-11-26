@@ -89,13 +89,26 @@ type ConditionBuilderRowProps = {
 };
 
 /**
- * One rule's grid. The operator's column is `auto`, sized to the chosen
- * operator's whole label, and the field and value take what it leaves. Below a
- * 28rem rule the field and the remove button share the first line, and the
- * operator and the value the second.
+ * One rule's grid. Below a 36rem rule the field and the remove button share
+ * the first line, and the operator and the value share the second, which wraps
+ * the value onto a line of its own when the operator leaves it too little room
+ * to show what it holds. From 36rem the rule is one line, its operands' wrapper
+ * gives way to the grid's columns, and the value's column never narrows below
+ * its contents.
  */
 const CONDITION_RULE_GRID_CLASS =
-  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 @md/rule:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 @xl/rule:grid-cols-[minmax(0,1fr)_auto_minmax(min-content,1fr)_auto]";
+
+/**
+ * The operator and the value of a rule below 36rem. The operator is as wide as
+ * its chosen label. The value takes the rest of the line and asks for at least
+ * 8rem and the width its controls draw at (`min-w-fit`, capped at a whole
+ * line), so a value that cannot have them moves under the operator.
+ */
+const CONDITION_RULE_OPERANDS_CLASS =
+  "col-span-2 flex flex-wrap items-center gap-2 @xl/rule:contents";
+const CONDITION_RULE_VALUE_CLASS =
+  "flex min-w-fit grow basis-32 items-center gap-2";
 
 function isTimeUnitValue(value: string): value is TimeUnit {
   return TIME_UNIT_OPTIONS.some((option) => option.value === value);
@@ -171,9 +184,11 @@ function ConditionValueInput(input: {
   disabled: boolean;
   currentNodeId?: string | undefined;
   field?: ConditionSelectableField | undefined;
+  /** The rule's field as the row names it, for the value controls' labels. */
+  name: string;
   onConditionChange: (condition: ConditionRule) => void;
 }) {
-  const { condition, disabled, currentNodeId, field, onConditionChange } =
+  const { condition, disabled, currentNodeId, field, name, onConditionChange } =
     input;
   const enumValues = field?.enumValues;
 
@@ -187,6 +202,7 @@ function ConditionValueInput(input: {
       return (
         <>
           <Input
+            aria-label={`${name} amount`}
             className="w-16 shrink-0"
             disabled={disabled}
             min={1}
@@ -214,7 +230,9 @@ function ConditionValueInput(input: {
             })}
             value={condition.unit}
           >
-            <SelectTrigger className="min-w-0 flex-1">
+            {/* As wide as the chosen unit, like the operator: squeezed beside
+            the amount, "days" drew as an empty box holding its chevron. */}
+            <SelectTrigger aria-label={`${name} unit`} className="shrink-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -680,20 +698,22 @@ export function ConditionBuilderRow({
 
                       return (
                         <div className="@container/rule" key={condition.id}>
-                          {/* The operator's column is as wide as the chosen
-                          operator's whole label, because a clipped operator
-                          states another rule: "is greater than or equal" cut
-                          to "is greater than". Where the rule has 28rem, one
-                          line per rule: the field and the value share what
-                          the operator leaves, and the remove button keeps its
-                          own slot at the end. In a narrower Inspector the
-                          field takes the first line beside the remove button,
-                          and the operator and the value share the second. */}
+                          {/* The operator is as wide as the chosen operator's
+                          whole label, because a clipped operator states
+                          another rule: "is greater than or equal" cut to "is
+                          greater than". Where the rule has 36rem, one line per
+                          rule: the field and the value share what the operator
+                          leaves, and the remove button keeps its own slot at
+                          the end. In a narrower Inspector the field takes the
+                          first line beside the remove button, and the operator
+                          and the value share the second, or the value takes a
+                          third when it cannot show its contents beside the
+                          operator. */}
                           <div
                             className={CONDITION_RULE_GRID_CLASS}
                             data-slot="condition-rule"
                           >
-                            <div className="col-span-2 flex min-w-0 items-center gap-2 @md/rule:col-span-1">
+                            <div className="flex min-w-0 items-center gap-2">
                               <ConditionFieldCombobox
                                 disabled={
                                   disabled || availableFields.length === 0
@@ -763,66 +783,78 @@ export function ConditionBuilderRow({
                               )}
                             </div>
 
-                            <div data-slot="condition-rule-operator">
-                              <Select
-                                disabled={disabled}
-                                items={operatorOptions}
-                                onValueChange={whenChosen((operatorValue) => {
-                                  const nextCondition =
-                                    applyOperatorValueToCondition(
-                                      condition,
-                                      operatorValue
-                                    );
-                                  if (!nextCondition) {
-                                    return;
-                                  }
-
-                                  updateCondition(
-                                    group.id,
-                                    condition.id,
-                                    () => nextCondition
-                                  );
-                                })}
-                                value={condition.operator}
+                            <div
+                              className={CONDITION_RULE_OPERANDS_CLASS}
+                              data-slot="condition-rule-operands"
+                            >
+                              <div
+                                className="shrink-0"
+                                data-slot="condition-rule-operator"
                               >
-                                <SelectTrigger
-                                  aria-label={`${conditionName} operator`}
-                                  className="w-full"
-                                >
-                                  <SelectValue placeholder="Select operator" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {operatorOptions.map((option) => (
-                                    <SelectItem
-                                      key={option.value}
-                                      value={option.value}
-                                    >
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                                <Select
+                                  disabled={disabled}
+                                  items={operatorOptions}
+                                  onValueChange={whenChosen((operatorValue) => {
+                                    const nextCondition =
+                                      applyOperatorValueToCondition(
+                                        condition,
+                                        operatorValue
+                                      );
+                                    if (!nextCondition) {
+                                      return;
+                                    }
 
-                            <div className="flex min-w-0 items-center gap-2">
-                              <ConditionValueInput
-                                condition={condition}
-                                currentNodeId={currentNodeId}
-                                disabled={disabled}
-                                field={selectedFieldDef}
-                                onConditionChange={(nextCondition) => {
-                                  updateCondition(
-                                    group.id,
-                                    condition.id,
-                                    () => nextCondition
-                                  );
-                                }}
-                              />
+                                    updateCondition(
+                                      group.id,
+                                      condition.id,
+                                      () => nextCondition
+                                    );
+                                  })}
+                                  value={condition.operator}
+                                >
+                                  <SelectTrigger
+                                    aria-label={`${conditionName} operator`}
+                                    className="w-full"
+                                  >
+                                    <SelectValue placeholder="Select operator" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {operatorOptions.map((option) => (
+                                      <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                      >
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div
+                                className={CONDITION_RULE_VALUE_CLASS}
+                                data-slot="condition-rule-value"
+                              >
+                                <ConditionValueInput
+                                  condition={condition}
+                                  currentNodeId={currentNodeId}
+                                  disabled={disabled}
+                                  field={selectedFieldDef}
+                                  name={conditionName}
+                                  onConditionChange={(nextCondition) => {
+                                    updateCondition(
+                                      group.id,
+                                      condition.id,
+                                      () => nextCondition
+                                    );
+                                  }}
+                                />
+                              </div>
                             </div>
 
                             <Button
                               aria-label={`Remove condition on ${conditionName}`}
-                              className="col-start-3 row-start-1 @md/rule:col-start-auto @md/rule:row-start-auto"
+                              className="col-start-2 row-start-1 @xl/rule:col-start-4"
                               disabled={disabled}
                               onClick={() =>
                                 removeConditionFromGroup(group.id, condition.id)
