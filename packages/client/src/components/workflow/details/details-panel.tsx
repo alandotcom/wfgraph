@@ -171,7 +171,9 @@ export function DetailsPanel() {
 
   // A field request is answered once the column shows its node, at Focus for
   // a Runs subject that offers it. This runs after the scroll restore above,
-  // and the field's scroll becomes the position the scope keeps.
+  // and the field's scroll becomes the position the scope keeps. The field
+  // scrolls only when it is out of view, and then only to the nearest edge,
+  // so a field already on screen stays under the pointer.
   useAfterPaint(
     `${fieldRequest?.nodeId ?? ""}|${fieldRequest?.targetId ?? ""}|${subject?.key ?? ""}|${level}`,
     () => {
@@ -187,7 +189,7 @@ export function DetailsPanel() {
       setFieldRequest(null);
       const element = document.getElementById(fieldRequest.targetId);
       element?.focus({ preventScroll: true });
-      element?.scrollIntoView?.({ block: "center" });
+      element?.scrollIntoView?.({ block: "nearest" });
       adoptScroll();
     }
   );

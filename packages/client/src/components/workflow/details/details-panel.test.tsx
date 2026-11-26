@@ -43,6 +43,7 @@ import {
 } from "#src/components/overlays/overlay-provider";
 import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import { canvasRevealAtom } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
+import { revealFieldRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import {
   type RevealKind,
   revealKind,
@@ -1033,6 +1034,37 @@ describe("details panel subjects and focus return", () => {
     const body = aside()?.querySelector<HTMLElement>(".overflow-y-auto");
     expect(scrollIntoView).toHaveBeenCalled();
     expect(body?.scrollTop).toBe(320);
+    vi.restoreAllMocks();
+  });
+  it("scrolls a requested field only as far as its nearest edge, and focuses it without scrolling", async () => {
+    const { store, select } = await renderReveal();
+    await select("send");
+    const scrollIntoView = vi.fn();
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      scrollIntoView
+    );
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+
+    await act(async () => {
+      store.set(revealFieldRequestAtom, {
+        nodeId: "send",
+        targetId: "subject",
+      });
+    });
+    await waitFor(() => expect(document.activeElement?.id).toBe("subject"));
+
+    // `block: "nearest"` leaves a field that is already in view where it is,
+    // so the panel never re-centres under the pointer.
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scrollIntoView).not.toHaveBeenCalledWith(
+      expect.objectContaining({ block: "center" })
+    );
+    const subjectFocus = focus.mock.contexts.findIndex(
+      (element) => (element as HTMLElement).id === "subject"
+    );
+    expect(focus.mock.calls[subjectFocus]?.[0]).toEqual({
+      preventScroll: true,
+    });
     vi.restoreAllMocks();
   });
 });
