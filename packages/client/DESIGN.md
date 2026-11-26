@@ -559,7 +559,9 @@ Correlation Path or a custom cron expression. Start Filters and
 eligibility are separate rules, and each one's help says what it reads: the
 arriving Event's payload, or the Entity's current state from the host. A
 refusal Publish would give shows beneath the rule its check reads while that
-rule is on screen, and any other issue is listed at the end of the form. Every Lifecycle Rules problem Publish refuses, including a Start or
+rule is on screen, except a filter or eligibility rule that is not finished,
+which is named once, beneath that rule's value, and any other issue is listed
+at the end of the form. Every Lifecycle Rules problem Publish refuses, including a Start or
 Cancel Filter reading a path its Event does not declare, is a blocking issue. A
 schedule is a preset (Every hour, Every day at, Every weekday at, Every week on)
 or a Custom cron expression, with its own time zone, starting from the

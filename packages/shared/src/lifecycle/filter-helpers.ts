@@ -29,6 +29,7 @@ import type {
 import {
   lifecycleRulesValid,
   refuseLifecycleRules,
+  refuseUnfinishedLifecycleRules,
   retainNamedKeys,
 } from "#src/lifecycle/lifecycle-rules";
 
@@ -184,7 +185,7 @@ export function checkFilters(input: {
   for (const [eventName, model] of read.models) {
     const compiled = compileConditionModel(model);
     if (!compiled.valid) {
-      return refuseLifecycleRules(
+      return refuseUnfinishedLifecycleRules(
         `The ${label} for "${eventName}" is unfinished. Complete it, or remove it.`
       );
     }

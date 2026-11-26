@@ -32,6 +32,7 @@ import {
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
 import { browserTimeZone } from "#src/components/workflow/config/lifecycle-schedule";
+import { revealRefusedFieldsAtom } from "#src/lib/required-field-errors";
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import {
@@ -531,6 +532,73 @@ describe("Lifecycle form", () => {
       selector: "li",
     });
     expect(issue.className).toContain("text-destructive");
+  });
+
+  describe("a Start Filter rule nobody has finished", () => {
+    const UNFINISHED: LifecycleRules = {
+      startEvents: ["app/appointment.created"],
+      cancelEvents: [],
+      concurrency: "unlimited",
+      allowManualStart: false,
+      startFilters: { "app/appointment.created": condition("tenantId", "") },
+    };
+
+    /** Every red line the Starts when rule shows. */
+    function shownIssues(region: HTMLElement): string[] {
+      return [...region.querySelectorAll(".text-destructive")].map(
+        (element) => element.textContent ?? ""
+      );
+    }
+
+    function ruleValue(region: HTMLElement): HTMLElement {
+      const value = region.querySelector<HTMLElement>(
+        '[data-slot="condition-rule-value"] [contenteditable="true"]'
+      );
+      if (!value) {
+        throw new Error("the rule has no value field");
+      }
+      return value;
+    }
+
+    it("shows nothing while the value waits to be filled in, and still counts", async () => {
+      const { aside, region } = await renderLifecycle(UNFINISHED);
+
+      expect(shownIssues(region("Starts when"))).toEqual([]);
+      expect(aside()?.querySelector("header")?.textContent).toContain(
+        "1 issue"
+      );
+    });
+
+    it("says it once, beneath the value, after the value is left empty", async () => {
+      const { region } = await renderLifecycle(UNFINISHED);
+
+      const value = ruleValue(region("Starts when"));
+      fireEvent.focus(value);
+      fireEvent.blur(value);
+
+      await waitFor(() => {
+        expect(
+          region("Starts when").querySelector(
+            '[data-slot="condition-rule-issue"]'
+          )?.textContent
+        ).toBe("Text conditions require a value");
+      });
+      expect(shownIssues(region("Starts when"))).toEqual([
+        "Text conditions require a value",
+      ]);
+    });
+
+    it("says it once, beneath the value, after Publish is refused for it", async () => {
+      const { region, store } = await renderLifecycle(UNFINISHED);
+
+      await act(async () => {
+        store.set(revealRefusedFieldsAtom, store.get(workflowIssuesAtom));
+      });
+
+      expect(shownIssues(region("Starts when"))).toEqual([
+        "Text conditions require a value",
+      ]);
+    });
   });
 
   it("names an Event and an Entity the catalog no longer declares", async () => {

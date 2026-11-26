@@ -178,16 +178,28 @@ function fieldIssueText(issue: WorkflowIssue): string {
 }
 
 /**
+ * Whether the field's rule builder already says what the issue says: a
+ * Lifecycle Rules refusal of a rule nobody has finished, which the builder
+ * names beneath that rule's value.
+ */
+function namedByItsRule(issue: WorkflowIssue): boolean {
+  return issue.kind === "invalid_lifecycle_rules" && issue.unfinished === true;
+}
+
+/**
  * The issues that name the field `fieldKey`, one line each in the tone of its
  * severity, or nothing when the field has none. While it is mounted it claims
- * `fieldKey`, so `UnclaimedFieldIssues` leaves those issues to it.
+ * `fieldKey`, so `UnclaimedFieldIssues` leaves those issues to it, including
+ * the ones its rule builder names instead.
  */
 export function FieldIssueMessages({ fieldKey }: { fieldKey: string }) {
   const { byField, claims } = useContext(FieldIssuesContext);
   useRegistrationBeforePaint(fieldKey, () =>
     claims === null ? () => {} : claims.claim(fieldKey)
   );
-  const issues = byField.get(fieldKey);
+  const issues = byField
+    .get(fieldKey)
+    ?.filter((issue) => !namedByItsRule(issue));
   if (!issues || issues.length === 0) {
     return null;
   }
