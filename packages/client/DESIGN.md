@@ -436,8 +436,10 @@ built-in step such as Wait. Pressing it opens, in place of the form, the same
 searchable list grouped by category that adding a step uses, with focus in its
 search; choosing an action closes it, and Escape closes it with focus back on
 the field.
-Each issue shows beneath the field it names, and an issue that names no field
-is listed at the end of the form; there is no Validation list. An empty required
+Each issue shows beneath the field it names while that field is on screen.
+An issue that names no field, or whose field the form does not draw, such as a
+field its `showWhen` hides or the Connection picker a read-only viewer does not
+get, is listed at the end of the form; there is no Validation list. An empty required
 field waits: it says "is required" beneath itself once it has been focused and
 left empty, or once a Run draft or Publish was refused for it, so a step just
 added shows no red text before anyone types. The issue counts from the start,
@@ -523,9 +525,9 @@ What a choice does, which runs count as related, and the binding an Event with
 one binding uses sit behind the info icon on the rule's label. Start Filters and
 eligibility are separate rules, and each one's help says what it reads: the
 arriving Event's payload, or the Entity's current state from the host. A
-refusal Publish would give shows beneath the rule its check reads, and an issue
-no rule holds is listed at the end of the form, after the label, which follows a
-divider. Every Lifecycle Rules problem Publish refuses, including a Start or
+refusal Publish would give shows beneath the rule its check reads while that
+rule is on screen, and any other issue is listed at the end of the form, after
+the label, which follows a divider. Every Lifecycle Rules problem Publish refuses, including a Start or
 Cancel Filter reading a path its Event does not declare, is a blocking issue. A
 schedule is a preset (Every hour, Every day at, Every weekday at, Every week on)
 or a Custom cron expression, with its own time zone, starting from the

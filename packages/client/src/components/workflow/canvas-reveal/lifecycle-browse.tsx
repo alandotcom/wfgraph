@@ -3,7 +3,10 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { Separator } from "#src/components/ui/separator";
-import { FieldIssuesProvider } from "#src/components/workflow/config/field-issues";
+import {
+  FieldIssuesProvider,
+  UnclaimedFieldIssues,
+} from "#src/components/workflow/config/field-issues";
 import { LifecyclePanel } from "#src/components/workflow/config/lifecycle-panel";
 import { trackedEntityLabel } from "#src/components/workflow/config/lifecycle-policy-summary";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
@@ -19,7 +22,6 @@ import {
   startSentences,
   stopClauses,
 } from "@wfgraph/shared/graph/workflow-summary";
-import { issueFieldKey } from "#src/components/workflow/config/field-issues";
 import {
   initialLifecycleRules,
   type LifecycleRules,
@@ -58,7 +60,7 @@ function LifecycleLabelField({ node }: { node: WorkflowNode }) {
 
 /**
  * The Lifecycle Node's editor: the Start's one form, then its label after a
- * divider. It is the Inspector's body at `md` and wider and the phone's
+ * divider, then any issue no rule on screen shows. It is the Inspector's body at `md` and wider and the phone's
  * full-screen inspector, so both show the same form. Focus moves into a rule
  * a person adds through the shell's field request, which scrolls only when the
  * rule is out of view.
@@ -84,19 +86,10 @@ function LifecycleEditorBody({
         />
         <Separator />
         <LifecycleLabelField node={node} />
-        <UnplacedLifecycleIssues nodeId={node.id} />
+        <UnclaimedFieldIssues />
       </div>
     </FieldIssuesProvider>
   );
-}
-
-/** The node's issues that name no rule of the form, or nothing when there are none. */
-function UnplacedLifecycleIssues({ nodeId }: { nodeId: string }) {
-  const issues = useAtomValue(workflowIssuesAtom);
-  const unplaced = issues.filter(
-    (issue) => issue.nodeId === nodeId && issueFieldKey(issue) === null
-  );
-  return unplaced.length > 0 ? <NodeIssueList issues={unplaced} /> : null;
 }
 
 /**
