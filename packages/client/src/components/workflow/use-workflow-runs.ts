@@ -282,9 +282,10 @@ export function useOpenRunIdentity(): OpenRunIdentity | null {
 /**
  * The Runs surface's reads, writes, and screen, for the run the route names.
  * The run list polls, and an open run's logs and events poll while it is in
- * progress. A Runs visit that has never named a run opens the newest run,
- * replacing the history entry. Every read is keyed by workflow or execution
- * id, so a late response for another run never reaches the open run's screen.
+ * progress. A route that names no run shows the run list and opens nothing;
+ * a run opens only when the person picks one or the route names one. Every
+ * read is keyed by workflow or execution id, so a late response for another
+ * run never reaches the open run's screen.
  */
 export function useWorkflowRuns(): WorkflowRunsState {
   const reads = useRunReads();
