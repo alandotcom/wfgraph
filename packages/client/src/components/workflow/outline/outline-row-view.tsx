@@ -52,6 +52,8 @@ function indentPx(depth: number): number {
  * The control that folds a Group or a block. It sits in space the row already
  * has, the Group's empty number slot or the gap before a label, so rows that
  * cannot fold carry no column for it. The keyboard folds with Left and Right.
+ * Its 12px chevron answers a 24px square around it, and on a phone the row's
+ * full 44px height.
  */
 function FoldToggle({
   expanded,
@@ -63,7 +65,7 @@ function FoldToggle({
   return (
     <span
       aria-hidden
-      className="flex size-3 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+      className="relative flex size-3 shrink-0 items-center justify-center rounded-sm text-muted-foreground before:absolute before:top-1/2 before:left-1/2 before:size-6 before:-translate-1/2 before:content-[''] hover:bg-muted hover:text-foreground max-md:before:h-11"
       onClick={(event) => {
         event.stopPropagation();
         onToggle();
@@ -130,9 +132,14 @@ export function OutlineRowView({
         : `${row.text}${row.kind === "outlet" && row.detail ? ` · ${row.detail}` : ""}${
             expanded === false ? ` · ${stepsNoun(row.stepCount)}` : ""
           }`;
+    // A heading that folds is pressed like a row, so it is as tall as one:
+    // 24px, and 44px on a phone, where the step list is the main view.
     return (
       <div
-        className="flex min-h-5 cursor-default items-center gap-1 pt-1 pr-2 text-muted-foreground text-xs"
+        className={cn(
+          "flex cursor-default items-center gap-1 pt-1 pr-2 text-muted-foreground text-xs",
+          foldable ? "min-h-6 max-md:min-h-11" : "min-h-5"
+        )}
         onClick={foldable ? onToggle : undefined}
         role="none"
         style={{
@@ -155,9 +162,10 @@ export function OutlineRowView({
     onFocus,
   };
   // Fills alone mark a row: a faint one under the pointer and a stronger one
-  // when selected, with no border or edge bar.
+  // when selected, with no border or edge bar. On a phone, where the step list
+  // is the main view, each row is a 44px touch target.
   const rowClass = cn(
-    "flex min-h-6 cursor-default items-center gap-1.5 rounded-md py-1 pr-2 text-xs outline-none",
+    "flex min-h-6 cursor-default items-center gap-1.5 rounded-md py-1 pr-2 text-xs outline-none max-md:min-h-11",
     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
     selected ? "bg-selection/20" : "hover:bg-foreground/[0.06]"
   );
