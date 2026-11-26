@@ -36,9 +36,8 @@ export type RenderOptions = {
    * getter so the editor holds no live reference back into React state.
    */
   nodes: WorkflowNode[];
-  /** A focused field shows a caret rather than placeholder text. */
+  /** Whether to put the caret back in the field after drawing. */
   focused: boolean;
-  placeholder?: string | undefined;
   /**
    * Where to leave the caret afterwards, counted in the same units `readText`
    * produces: a badge is as long as the raw token it stands for. Omitted means
@@ -76,9 +75,6 @@ export type BadgeEditor = {
   insertText(text: string): boolean;
   insertLineBreak(): boolean;
 };
-
-/** Marks the prompt text shown in an empty, unfocused field. */
-const PLACEHOLDER_ATTRIBUTE = "data-placeholder";
 
 /** Marks the line an empty field shows its caret on. Not the user's text. */
 const FILLER_ATTRIBUTE = "data-filler";
@@ -158,10 +154,7 @@ function scanUnits(container: HTMLElement, multiline: boolean): Unit[] {
       return;
     }
 
-    if (
-      node.hasAttribute(PLACEHOLDER_ATTRIBUTE) ||
-      node.hasAttribute(FILLER_ATTRIBUTE)
-    ) {
+    if (node.hasAttribute(FILLER_ATTRIBUTE)) {
       return;
     }
 
@@ -184,8 +177,7 @@ function scanUnits(container: HTMLElement, multiline: boolean): Unit[] {
 
 /**
  * The raw template string a field holds: literals as typed, badges as the token
- * they stand for, line breaks as newlines. Placeholder text is not the user's
- * text and never appears.
+ * they stand for, line breaks as newlines.
  */
 function readTextFrom(container: HTMLElement, multiline: boolean): string {
   return scanUnits(container, multiline)
@@ -374,18 +366,6 @@ export function createBadgeEditor(
 
     container.innerHTML = "";
 
-    if (!(text || renderOptions.focused)) {
-      const placeholder = document.createElement("span");
-      // Marked so `readText` can tell prompt text from anything the user typed.
-      // Without it, focusing an empty field reads its own placeholder back as
-      // the field's value.
-      placeholder.setAttribute(PLACEHOLDER_ATTRIBUTE, "");
-      placeholder.className = "text-muted-foreground pointer-events-none";
-      placeholder.textContent = renderOptions.placeholder ?? "";
-      container.appendChild(placeholder);
-      return;
-    }
-
     for (const segment of parseTemplate(text)) {
       if (segment.kind === "literal") {
         appendLiteral(segment.text);
@@ -410,9 +390,9 @@ export function createBadgeEditor(
       appendCaretStop();
     }
 
-    // An empty focused field still needs a line to show its caret on. The break
-    // is marked so `scanUnits` passes over it rather than reading it as a
-    // newline the user typed.
+    // An empty field still needs a line to show its caret on. The break is
+    // marked so `scanUnits` passes over it rather than reading it as a newline
+    // the user typed.
     if (!text) {
       const filler = document.createElement("br");
       filler.setAttribute(FILLER_ATTRIBUTE, "");
