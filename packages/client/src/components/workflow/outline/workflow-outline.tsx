@@ -538,9 +538,14 @@ export function WorkflowOutline({
                       }
                     }}
                     onContextMenu={(event) => openRowMenu(row, event)}
-                    onFocus={() => {
+                    onFocus={(event) => {
                       setFocusedKey(row.key);
-                      point(row);
+                      // A row the keyboard reached tints its card. A row that
+                      // took focus with no ring, as on opening the editor or
+                      // from a click, leaves the card to the pointer.
+                      if (event.currentTarget.matches(":focus-visible")) {
+                        point(row);
+                      }
                     }}
                     onLeave={() => stopPointing(row)}
                     onPoint={() => point(row)}

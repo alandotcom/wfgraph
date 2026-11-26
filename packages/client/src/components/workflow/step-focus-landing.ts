@@ -92,13 +92,22 @@ export function focusStepWhenFocusIsLost(
 /**
  * Focuses the outline's current row: the one row of its tree that takes Tab,
  * which is the first row until the person moves through the outline. Does
- * nothing when the outline is not shown.
+ * nothing when the outline is not shown. `focusVisible: false` asks the
+ * browser to draw no focus ring until the person's next key press, for a
+ * landing nobody asked for, such as the editor opening; left out, the browser
+ * decides as it does for any scripted focus.
  */
-export function focusOutlineCurrentRow(): void {
+export function focusOutlineCurrentRow(options?: {
+  focusVisible?: false | undefined;
+}): void {
   const row = document.querySelector<HTMLElement>(
     '[data-slot="outline-body"] [role="treeitem"][tabindex="0"]'
   );
   if (row?.closest("[hidden], [inert]") === null) {
-    row.focus({ preventScroll: true });
+    row.focus(
+      options?.focusVisible === false
+        ? { preventScroll: true, focusVisible: false }
+        : { preventScroll: true }
+    );
   }
 }

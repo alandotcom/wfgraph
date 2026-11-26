@@ -109,10 +109,12 @@ const WorkflowEditor = () => {
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
   // Opening a workflow unmounts the control that opened it, which leaves
-  // focus on the page body; it lands on the outline's first row instead.
+  // focus on the page body; it lands on the outline's first row instead, so
+  // the first Tab or arrow key continues in the step list. Nothing is selected
+  // yet, so the row draws no focus ring until the person presses a key.
   useAfterPaint(currentWorkflowId, () => {
     if (document.activeElement === document.body) {
-      focusOutlineCurrentRow();
+      focusOutlineCurrentRow({ focusVisible: false });
     }
   });
   useEditorDocumentTitle(
