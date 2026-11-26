@@ -1,58 +1,23 @@
-import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
-import {
-  ChevronDown,
-  ChevronRight,
-  CircleX,
-  Clock,
-  CornerDownRight,
-  EyeOff,
-  Group,
-  Play,
-  Plus,
-  Zap,
-} from "lucide-react";
-import {
-  type FocusEvent,
-  type KeyboardEvent,
-  type MouseEvent,
-  type ReactNode,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { type KeyboardEvent, useMemo, useRef, useState } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
-import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
+import { useCanvasInteraction } from "#src/components/workflow/canvas-interaction";
 import { editFocusTarget } from "#src/components/workflow/canvas-reveal/reveal-edit-target";
 import { requestRevealEditFocusAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
-import { ProviderLogo } from "#src/components/workflow/nodes/action-node";
-import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-origin";
-import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
-import { useInspectRunNode } from "#src/components/workflow/use-run-node-evidence";
-import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
-import { useCanvasInteraction } from "#src/components/workflow/canvas-interaction";
-import { contextMenuAtom } from "#src/components/workflow/workflow-context-menu";
-import { scrollIntoScroller } from "#src/lib/scroll-into-scroller";
-import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
-import { expandGroupAtom } from "#src/lib/collapsed-groups";
-import {
-  activeSelectionAtom,
-  activeWorkspaceAddressAtom,
-} from "#src/lib/workflow-workspace-navigation";
-import { Input } from "#src/components/ui/input";
-import { outlineFilterFocusRequestAtom } from "#src/components/workflow/columns/editor-columns-store";
-import { useIsMobile } from "#src/hooks/use-mobile";
-import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
-import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
-import { isRunInProgress } from "#src/lib/execution-logs";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
+import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
+import { isRunInProgress } from "#src/lib/execution-logs";
 import { inactiveBranch } from "#src/lib/inactive-branch";
+import { scrollIntoScroller } from "#src/lib/scroll-into-scroller";
 import { editOfNode, workflowEdits } from "#src/lib/workflow-edits";
+import {
+  canvasIssuesByNodeIdAtom,
+  projectedRunLogsAtom,
+} from "#src/lib/workflow-graph-presentation-store";
 import {
   canvasSelectionAtom,
   edgesAtom,
-  executionOverlayGraphAtom,
   moveStepAtom,
   nodesAtom,
   presentedGraphAtom,
@@ -60,16 +25,10 @@ import {
   runPathAtom,
 } from "#src/lib/workflow-graph-store";
 import {
-  canvasIssuesByNodeIdAtom,
-  projectedRunLogsAtom,
-} from "#src/lib/workflow-graph-presentation-store";
-import {
   isReviewSheetShownAtom,
-  requestReviewScrollAtom,
   reviewComparisonAtom,
   reviewHighlightAtom,
 } from "#src/lib/workflow-review-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
   outlineRows,
@@ -77,8 +36,10 @@ import {
   workflowOutline,
   workflowStepNumbers,
 } from "@wfgraph/shared/graph/workflow-outline";
-import { cn } from "@wfgraph/shared/utils";
-import { type RunOutcome, runOutline } from "./outline-run";
+import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
+import { OutlineFilter } from "./outline-filter";
+import { OutlineRowView, outlineRowElementId } from "./outline-row-view";
+import { runOutline } from "./outline-run";
 import {
   ancestorKeys,
   foldableKeys,
@@ -87,10 +48,13 @@ import {
   moveFocus,
   type OutlineAddRow,
   type OutlineDisplayRow,
-  type OutlineNodeRow,
   visibleRows,
   withAddStepRows,
 } from "./outline-view";
+import {
+  outlineRowNodeId,
+  useOutlineRowGestures,
+} from "./use-outline-row-gestures";
 
 /** The open run's facts a row's outcome reads beyond its path and logs. */
 export type OpenRunFacts = {
@@ -104,20 +68,6 @@ export type OpenRunFacts = {
 
 const NO_WAITS: OpenRunFacts["waits"] = [];
 const NO_NODE_IDS: ReadonlySet<string> = new Set();
-
-/** Pixels each level of nesting indents a row. */
-const INDENT_PX = 14;
-
-/** The DOM id of an outline row, so another surface can return focus to it. */
-export function outlineRowElementId(key: string): string {
-  return `workflow-outline-row-${encodeURIComponent(key)}`;
-}
-
-/** The step a row stands for: its own, or the one a reference leads to. */
-function nodeIdOf(row: OutlineDisplayRow): string | null {
-  if (isNodeRow(row)) return row.nodeId;
-  return row.kind === "continues" ? row.targetNodeId : null;
-}
 
 type Section = { title: string; rows: readonly OutlineDisplayRow[] };
 
@@ -162,12 +112,12 @@ function outlineSections(input: {
  * the extension catalog from the editor's stores, so it takes no props. It
  * fills its container and scrolls inside it. The list is one Tab stop: arrow
  * keys, Home and End move between rows and select each step, Left and Right
- * fold, Enter selects the step and asks the details for focus, and `/` opens
+ * fold, Enter selects the step and asks the Inspector for focus, and `/` opens
  * the step picker to add a step after the row's step, and Alt+Up and Alt+Down
- * move the step within its sequence. Pointing at
- * or focusing a row puts the pointed tint on its card without moving the
- * camera. Cmd+F or Ctrl+F shows the filter field at the top of the list and
- * focuses it; Escape, or leaving it empty, hides it again.
+ * move the step within its sequence. Pointing at or focusing a row puts the
+ * pointed tint on its card without moving the camera. A row's clicks and
+ * right-click are its card's (`useOutlineRowGestures`), and `OutlineFilter`
+ * holds the "Filter steps" field above the rows.
  */
 export function WorkflowOutline({
   openRun,
@@ -188,12 +138,7 @@ export function WorkflowOutline({
   const comparison = useAtomValue(reviewComparisonAtom);
   const selection = useAtomValue(canvasSelectionAtom);
   const issuesByNode = useAtomValue(canvasIssuesByNodeIdAtom);
-  const workflowId = useAtomValue(currentWorkflowIdAtom);
-  const focusNode = useFocusWorkflowNode();
-  const inspectRunNode = useInspectRunNode();
-  const requestPlacement = useSetAtom(requestRevealPlacementAtom);
   const setHighlight = useSetAtom(reviewHighlightAtom);
-  const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
   const applyMoveStep = useSetAtom(moveStepAtom);
@@ -204,7 +149,6 @@ export function WorkflowOutline({
   const testSkipped = openRun?.testSkipped ?? NO_NODE_IDS;
 
   const editing = view === "draft" && !reviewShown;
-  const setContextMenu = useSetAtom(contextMenuAtom);
   // Whether a row answers right-click, Shift-click and Cmd-click, offers its
   // Add a step rows and `/`, and moves steps with Alt+Up and Alt+Down: where
   // the canvas offers the same, by the canvas's own answer.
@@ -286,19 +230,10 @@ export function WorkflowOutline({
 
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [filter, setFilter] = useState("");
-  // The filter field shows only while it is in use, except on a phone, where
-  // the outline is the screen and keeps its field at the top.
-  const isMobile = useIsMobile();
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [filterRequested, setFilterRequested] = useAtom(
-    outlineFilterFocusRequestAtom
-  );
-  const filterShown = isMobile || filterOpen || filterRequested;
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const treeRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const filterRef = useRef<HTMLInputElement>(null);
 
   const selectedIds = reviewShown ? [] : selection.nodeIds;
   const selectedKey =
@@ -346,125 +281,35 @@ export function WorkflowOutline({
     }
   });
 
-  // Cmd+F and "Find a step" (`useOutlineControls`) show the filter field in
-  // place at the top of the list, and the cursor goes into it once it has
-  // rendered.
-  useAfterCommit(filterRequested, () => {
-    if (!filterRequested) return;
-    setFilterRequested(false);
-    setFilterOpen(true);
-    filterRef.current?.focus({ preventScroll: true });
-    filterRef.current?.select();
-  });
-
   const focusRow = (key: string) => {
     setFocusedKey(key);
     setFocusRequest((count) => count + 1);
   };
 
-  /** Select the step a row stands for, as a press on its card would. */
-  const choose = (row: OutlineDisplayRow) => {
-    const nodeId = nodeIdOf(row);
-    if (nodeId === null) return;
-    if (row.kind === "continues") {
+  const { choose, extendSelection, openRowMenu } = useOutlineRowGestures({
+    authoring,
+    reviewShown,
+    edits,
+    // A reference row leads to the row of the step it names: the sections
+    // around that row unfold and it takes the keyboard.
+    revealRow: (nodeId) => {
       const target = rows.find(
         (candidate) => isNodeRow(candidate) && candidate.nodeId === nodeId
       );
       if (target) {
-        setFolded(
-          new Set(
-            [...folded].filter(
-              (key) => !ancestorKeys(rows, target.key).includes(key)
-            )
-          )
-        );
+        const above = ancestorKeys(rows, target.key);
+        setFolded(new Set([...folded].filter((key) => !above.includes(key))));
         focusRow(target.key);
       }
-    }
-    if (reviewShown) {
-      // The canvas holds no selection while the sheet shows, so a changed
-      // row scrolls the sheet to its edit, as a press on its card does.
-      setHighlight(nodeId);
-      if (edits && editOfNode(edits, nodeId)) requestReviewScroll(nodeId);
-      return;
-    }
-    if (view === "runs") {
-      // On a run the row shows the step's evidence on the one canvas, and
-      // Back and Escape return to the row. A step in a Group the viewer
-      // collapsed draws its Group in place again.
-      inspectRunNode({ nodeId, logId: null });
-      const origin = store.get(runEvidenceOriginAtom);
-      if (origin?.nodeId === nodeId) {
-        store.set(runEvidenceOriginAtom, { ...origin, fromOutline: true });
-      }
-      const parentId = store
-        .get(executionOverlayGraphAtom)
-        ?.nodes.find((node) => node.id === nodeId)?.parentId;
-      if (parentId !== undefined) {
-        store.set(expandGroupAtom, parentId);
-      }
-      requestPlacement({
-        addressId: workspaceAddressId(store.get(activeWorkspaceAddressAtom)),
-        nodeIds: [nodeId],
-      });
-      return;
-    }
-    if (workflowId !== null) {
-      focusNode({ nodeId, workflowId });
-    }
-  };
-
-  /**
-   * Shift-click adds the row's step to the selection and Cmd-click or
-   * Ctrl-click adds or removes it, as on the canvas. Answers whether the
-   * click was one of those.
-   */
-  const extendSelection = (row: OutlineDisplayRow, event: MouseEvent) => {
-    if (
-      !(authoring && isNodeRow(row)) ||
-      !(event.shiftKey || event.metaKey || event.ctrlKey)
-    ) {
-      return false;
-    }
-    const current = store.get(activeSelectionAtom).nodeIds;
-    const holds = current.includes(row.nodeId);
-    const nodeIds =
-      holds && !event.shiftKey
-        ? current.filter((id) => id !== row.nodeId)
-        : holds
-          ? current
-          : [...current, row.nodeId];
-    store.set(activeSelectionAtom, { nodeIds, edgeIds: [] });
-    return true;
-  };
-
-  /**
-   * Right-click opens the step's context menu, the one its canvas card opens.
-   * A row outside the selection becomes the selection first; a row inside it
-   * keeps the selection, so the menu offers the commands for all of it.
-   */
-  const openRowMenu = (row: OutlineDisplayRow, event: MouseEvent) => {
-    if (!(authoring && isNodeRow(row))) return;
-    event.preventDefault();
-    const current = store.get(activeSelectionAtom).nodeIds;
-    const keeps = current.includes(row.nodeId);
-    if (!keeps) {
-      store.set(activeSelectionAtom, { nodeIds: [row.nodeId], edgeIds: [] });
-    }
-    setContextMenu({
-      type: "node",
-      position: { x: event.clientX, y: event.clientY },
-      nodeId: row.nodeId,
-      selectedIds: new Set(keeps ? current : [row.nodeId]),
-    });
-  };
+    },
+  });
 
   const point = (row: OutlineDisplayRow) => {
-    const nodeId = nodeIdOf(row);
+    const nodeId = outlineRowNodeId(row);
     if (nodeId !== null) setHighlight(nodeId);
   };
   const stopPointing = (row: OutlineDisplayRow) => {
-    const nodeId = nodeIdOf(row);
+    const nodeId = outlineRowNodeId(row);
     if (nodeId !== null && store.get(reviewHighlightAtom) === nodeId) {
       setHighlight(null);
     }
@@ -528,7 +373,7 @@ export function WorkflowOutline({
           return true;
         case "Enter": {
           choose(row);
-          const nodeId = nodeIdOf(row);
+          const nodeId = outlineRowNodeId(row);
           const node = draftNodes.find((item) => item.id === nodeId);
           if (!reviewShown && node !== undefined) {
             requestEditFocus({
@@ -600,20 +445,6 @@ export function WorkflowOutline({
     showGraphEditRefusal(applyMoveStep({ nodeId: row.nodeId, direction }));
   };
 
-  // Escape clears the filter, hides the field and returns to the rows. Down
-  // moves to the rows and keeps the filter.
-  const onFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setFilter("");
-      setFilterOpen(false);
-      if (activeKey !== null) focusRow(activeKey);
-    } else if (event.key === "ArrowDown" && activeKey !== null) {
-      event.preventDefault();
-      focusRow(activeKey);
-    }
-  };
-
   // A run's rows name a time only where it differs from the row before.
   const timedRowKeys = new Set<string>();
   let lastTime: string | null = null;
@@ -632,24 +463,13 @@ export function WorkflowOutline({
       className="flex h-full min-h-0 w-full flex-col"
       data-slot="workflow-outline"
     >
-      {filterShown ? (
-        <div className="shrink-0 px-1.5 pt-1 pb-1">
-          <Input
-            aria-keyshortcuts="Meta+F Control+F"
-            aria-label="Filter steps"
-            // Leaving an empty field hides it again.
-            onBlur={() => {
-              if (filter === "") setFilterOpen(false);
-            }}
-            onChange={(event) => setFilter(event.target.value)}
-            onKeyDown={onFilterKeyDown}
-            placeholder="Filter steps"
-            ref={filterRef}
-            type="search"
-            value={filter}
-          />
-        </div>
-      ) : null}
+      <OutlineFilter
+        onChange={setFilter}
+        onReturnToRows={() => {
+          if (activeKey !== null) focusRow(activeKey);
+        }}
+        value={filter}
+      />
       <div
         className="min-h-0 flex-1 overflow-y-auto px-1.5 pt-1 pb-3"
         ref={scrollerRef}
@@ -738,309 +558,4 @@ export function WorkflowOutline({
       </div>
     </div>
   );
-}
-
-/** Pixels of the row's own left padding, before any nesting. */
-const ROW_INSET_PX = 8;
-
-/**
- * Pixels from a row's indent to its text: the number column, the glyph and
- * the gaps between them. An outlet label and a note start their text here,
- * so they line up with the labels of the rows under them.
- */
-const TEXT_OFFSET_PX = 46;
-
-function indentPx(depth: number): number {
-  return ROW_INSET_PX + INDENT_PX * depth;
-}
-
-/**
- * The control that folds a Group or a block. It sits in space the row already
- * has, the Group's empty number slot or the gap before a label, so rows that
- * cannot fold carry no column for it. The keyboard folds with Left and Right.
- */
-function FoldToggle({
-  expanded,
-  onToggle,
-}: {
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <span
-      aria-hidden
-      className="flex size-3 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-      onClick={(event) => {
-        event.stopPropagation();
-        onToggle();
-      }}
-    >
-      {expanded ? (
-        <ChevronDown className="size-3" />
-      ) : (
-        <ChevronRight className="size-3" />
-      )}
-    </span>
-  );
-}
-
-function OutlineRowView({
-  row,
-  active,
-  selected,
-  expanded,
-  muted,
-  issues,
-  edit,
-  outcome,
-  showsTime,
-  onChoose,
-  onContextMenu,
-  onFocus,
-  onLeave,
-  onPoint,
-  onToggle,
-}: {
-  row: OutlineDisplayRow;
-  /** Whether the row holds the list's one Tab stop. */
-  active: boolean;
-  selected: boolean;
-  /** Undefined for a row with nothing under it. */
-  expanded: boolean | undefined;
-  /** Whether no run can reach the step, as the canvas mutes its card. */
-  muted: boolean;
-  issues: Parameters<typeof NodeIssueBadge>[0]["issues"];
-  edit: { kind: "added" | "modified" | "removed" } | null;
-  /** What the open run did at the step, which takes the summary's place. */
-  outcome: RunOutcome | undefined;
-  /**
-   * Whether the outcome names its time. A time shows only where it differs
-   * from the row before, since a run's steps often finish within one second.
-   */
-  showsTime: boolean;
-  onChoose: (event: MouseEvent) => void;
-  onContextMenu: (event: MouseEvent) => void;
-  onFocus: () => void;
-  onLeave: () => void;
-  onPoint: () => void;
-  onToggle: () => void;
-}) {
-  if (row.kind === "note" || row.kind === "outlet" || row.kind === "parallel") {
-    // A heading over the rows behind an outlet or an arm, or a line a run's
-    // outline folds rows into. Pressing a heading folds its block; the
-    // keyboard folds from the step that opens it.
-    const foldable = row.kind !== "note" && expanded !== undefined;
-    const text =
-      row.kind === "note"
-        ? row.text
-        : `${row.text}${row.kind === "outlet" && row.detail ? ` · ${row.detail}` : ""}${
-            expanded === false ? ` · ${stepsNoun(row.stepCount)}` : ""
-          }`;
-    return (
-      <div
-        className="flex min-h-5 cursor-default items-center gap-1 pt-1 pr-2 text-muted-foreground text-xs"
-        onClick={foldable ? onToggle : undefined}
-        role="none"
-        style={{
-          paddingLeft:
-            indentPx(row.depth) + TEXT_OFFSET_PX - (foldable ? 16 : 0),
-        }}
-      >
-        {foldable ? (
-          <FoldToggle expanded={expanded ?? true} onToggle={onToggle} />
-        ) : null}
-        <span className="min-w-0 truncate">{text}</span>
-      </div>
-    );
-  }
-
-  const focusHandlers = {
-    onBlur: (event: FocusEvent<HTMLElement>) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) onLeave();
-    },
-    onFocus,
-  };
-  // Fills alone mark a row: a faint one under the pointer and a stronger one
-  // when selected, with no border or edge bar.
-  const rowClass = cn(
-    "flex min-h-6 cursor-default items-center gap-1.5 rounded-md py-1 pr-2 text-xs outline-none",
-    "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-    selected ? "bg-selection/20" : "hover:bg-foreground/[0.06]"
-  );
-
-  if (row.kind === "add") {
-    return (
-      <div
-        aria-level={row.depth + 1}
-        className={cn(rowClass, "text-muted-foreground hover:text-foreground")}
-        id={outlineRowElementId(row.key)}
-        onClick={onChoose}
-        role="treeitem"
-        style={{ paddingLeft: indentPx(row.depth) }}
-        tabIndex={active ? 0 : -1}
-        {...focusHandlers}
-      >
-        <span className="w-5 shrink-0" />
-        <Plus aria-hidden className="size-3.5 shrink-0" />
-        <span className="min-w-0 truncate">{row.text}</span>
-      </div>
-    );
-  }
-
-  if (row.kind === "continues") {
-    return (
-      <div
-        aria-level={row.depth + 1}
-        className={cn(rowClass, "text-muted-foreground")}
-        id={outlineRowElementId(row.key)}
-        onClick={onChoose}
-        onPointerEnter={onPoint}
-        onPointerLeave={onLeave}
-        role="treeitem"
-        style={{ paddingLeft: indentPx(row.depth) }}
-        tabIndex={active ? 0 : -1}
-        {...focusHandlers}
-      >
-        <span className="w-5 shrink-0" />
-        <CornerDownRight aria-hidden className="size-3.5 shrink-0" />
-        <span className="min-w-0 truncate">{row.text}</span>
-      </div>
-    );
-  }
-
-  const nodeRow: OutlineNodeRow = row;
-  return (
-    <div
-      aria-expanded={expanded}
-      aria-level={row.depth + 1}
-      aria-selected={selected}
-      className={cn(rowClass, outcome && "items-start")}
-      data-node-id={nodeRow.nodeId}
-      id={outlineRowElementId(row.key)}
-      onClick={onChoose}
-      onContextMenu={onContextMenu}
-      onPointerEnter={onPoint}
-      onPointerLeave={onLeave}
-      role="treeitem"
-      style={{ paddingLeft: indentPx(row.depth) }}
-      tabIndex={active ? 0 : -1}
-      {...focusHandlers}
-    >
-      <span className="flex h-4 w-5 shrink-0 items-center justify-end text-muted-foreground tabular-nums">
-        {nodeRow.kind === "step" ? (
-          (nodeRow.number ?? "")
-        ) : nodeRow.kind === "group" && expanded !== undefined ? (
-          <FoldToggle expanded={expanded} onToggle={onToggle} />
-        ) : null}
-      </span>
-      <span aria-hidden className="flex h-4 w-3.5 shrink-0 items-center">
-        <RowGlyph outcome={outcome} row={nodeRow} />
-      </span>
-      {outcome ? (
-        // On a run the label takes the first line and what the run did there
-        // takes the second, whole, so a deep row never cuts the outcome.
-        <span
-          className={cn(
-            "flex min-w-0 flex-1 flex-col",
-            muted && "text-muted-foreground"
-          )}
-        >
-          <span className={cn("truncate", !muted && "font-medium")}>
-            {nodeRow.label}
-          </span>
-          <span
-            className={cn("break-words", OUTCOME_TONE_CLASS[outcome.tone])}
-            data-slot="run-outcome"
-          >
-            {outcome.text}
-            {showsTime && outcome.time ? (
-              <span className="text-muted-foreground tabular-nums">
-                {" "}
-                · {outcome.time}
-              </span>
-            ) : null}
-          </span>
-        </span>
-      ) : (
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate",
-            muted && "text-muted-foreground"
-          )}
-        >
-          <span className={cn(!muted && "font-medium")}>{nodeRow.label}</span>
-          {nodeRow.summary ? (
-            <span className="text-muted-foreground"> · {nodeRow.summary}</span>
-          ) : null}
-        </span>
-      )}
-      <RowEnd>
-        {nodeRow.kind === "step" && nodeRow.disabled ? (
-          <span className="flex items-center text-muted-foreground">
-            <EyeOff aria-hidden className="size-3.5" />
-            <span className="sr-only">Disabled</span>
-          </span>
-        ) : null}
-        {issues ? <NodeIssueBadge issues={issues} placement="inline" /> : null}
-        {edit ? (
-          <ComparisonMarker className="static shrink-0" comparison={edit} />
-        ) : null}
-      </RowEnd>
-    </div>
-  );
-}
-
-/** A run outcome's words in the signal its status uses, or muted. */
-const OUTCOME_TONE_CLASS: Record<RunOutcome["tone"], string> = {
-  done: "text-muted-foreground",
-  failed: "text-destructive",
-  waiting: "text-warning",
-  running: "text-info",
-  quiet: "text-muted-foreground",
-};
-
-function RowEnd({ children }: { children: ReactNode }) {
-  return <span className="flex shrink-0 items-center gap-1">{children}</span>;
-}
-
-/**
- * The glyph a row's card leads with on the canvas. On a run, a step that
- * failed or is waiting shows its status glyph in the status colour instead.
- */
-function RowGlyph({
-  row,
-  outcome,
-}: {
-  row: OutlineNodeRow;
-  outcome: RunOutcome | undefined;
-}) {
-  const catalog = useExtensionCatalog();
-  if (outcome?.tone === "failed") {
-    return <CircleX className="size-3.5 text-destructive" strokeWidth={2} />;
-  }
-  if (outcome?.tone === "waiting") {
-    return <Clock className="size-3.5 text-warning" strokeWidth={2} />;
-  }
-  if (row.kind === "lifecycle") {
-    return <Play className="size-3.5 text-node-lifecycle" strokeWidth={1.5} />;
-  }
-  if (row.kind === "group") {
-    return (
-      <Group className="size-3.5 text-muted-foreground" strokeWidth={1.5} />
-    );
-  }
-  if (row.actionType === undefined) {
-    return <Zap className="size-3.5 text-muted-foreground" strokeWidth={1.5} />;
-  }
-  return (
-    <ProviderLogo
-      actionType={row.actionType}
-      catalog={catalog}
-      className="size-3.5"
-    />
-  );
-}
-
-function stepsNoun(count: number): string {
-  return count === 1 ? "1 step" : `${count} steps`;
 }

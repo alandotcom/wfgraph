@@ -1,4 +1,4 @@
-import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
+import { outlineRowElementId } from "#src/components/workflow/outline/outline-row-view";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
