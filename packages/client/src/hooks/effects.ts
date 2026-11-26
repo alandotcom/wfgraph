@@ -324,6 +324,22 @@ export function useBeforePaint(key: unknown, run: () => void): void {
 }
 
 /**
+ * Hold a registration with a registry outside React for as long as the
+ * component is mounted and `key` stays the same. `register` adds the entry and
+ * returns the function that removes it, which runs on unmount or before the
+ * entry for a new `key` is added. Both run before the browser paints, so a
+ * component reading the registry draws the result in the same frame.
+ */
+export function useRegistrationBeforePaint(
+  key: unknown,
+  register: () => () => void
+): void {
+  const onRegister = useLatestEvent(() => register());
+
+  useLayoutEffect(() => onRegister(), [key, onRegister]);
+}
+
+/**
  * Like `useAfterCommit`, but on the next macrotask rather than during the
  * commit, cancelling a pending run if `key` changes again first.
  *

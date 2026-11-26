@@ -10,7 +10,6 @@ import {
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
@@ -23,9 +22,11 @@ import {
   ActionChoiceField,
 } from "./config/action-choice-field";
 import { ActionLinks } from "./config/action-links";
-import { FieldIssuesProvider, issueFieldKey } from "./config/field-issues";
+import {
+  FieldIssuesProvider,
+  UnclaimedFieldIssues,
+} from "./config/field-issues";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
-import { NodeIssueList } from "./canvas-reveal/reveal-sections";
 
 /**
  * The Label and Notes inputs of one node, with the element ids `label` and
@@ -74,22 +75,10 @@ export function NodeDetailsFields({
 }
 
 /**
- * The issues of the node `nodeId` that name no field, which no field can show
- * beneath itself, or nothing when there are none.
- */
-export function UnplacedNodeIssues({ nodeId }: { nodeId: string }) {
-  const issues = useAtomValue(workflowIssuesAtom);
-  const unplaced = issues.filter(
-    (issue) => issue.nodeId === nodeId && issueFieldKey(issue) === null
-  );
-  return unplaced.length > 0 ? <NodeIssueList issues={unplaced} /> : null;
-}
-
-/**
  * The complete form of one step: what it does ("Does"), the settings that
  * action takes, each with the issues that name it beneath it, the action's
- * links, then its Label and Notes after a divider, and last any issue that
- * names no field. It holds settings only: disabling, duplicating and deleting
+ * links, then its Label and Notes after a divider, and last any issue no
+ * field on screen shows. It holds settings only: disabling, duplicating and deleting
  * the step are commands of the Inspector header's ⋯ menu and the context menu.
  * Every value writes straight to the graph store, so the form can unmount and
  * mount again without losing an edit or skipping autosave.
@@ -222,7 +211,7 @@ export function NodePropertiesForm({
           node={selectedNode}
         />
 
-        <UnplacedNodeIssues nodeId={selectedNode.id} />
+        <UnclaimedFieldIssues />
       </div>
     </FieldIssuesProvider>
   );

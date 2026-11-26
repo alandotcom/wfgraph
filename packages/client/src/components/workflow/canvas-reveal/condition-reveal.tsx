@@ -13,11 +13,9 @@ import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-co
 import {
   FieldIssueMessages,
   FieldIssuesProvider,
+  UnclaimedFieldIssues,
 } from "#src/components/workflow/config/field-issues";
-import {
-  NodeDetailsFields,
-  UnplacedNodeIssues,
-} from "#src/components/workflow/node-properties-form";
+import { NodeDetailsFields } from "#src/components/workflow/node-properties-form";
 import { PhoneStepToggle } from "#src/components/workflow/step-controls";
 import { can } from "#src/lib/authorization";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
@@ -326,7 +324,7 @@ export function ConditionEditor({ subject }: RevealBodyProps) {
             refused for it. */}
           <FieldIssueMessages fieldKey={CONDITION_RULES_TARGET_ID} />
           <FieldIssueMessages fieldKey="conditionModel" />
-          <UnplacedNodeIssues nodeId={nodeId} />
+          <UnclaimedFieldIssues />
         </section>
 
         <Section title="Branches">
