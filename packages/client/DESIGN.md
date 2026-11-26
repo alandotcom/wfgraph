@@ -346,9 +346,13 @@ box keeps its size and nothing reflows, and the camera moves only when the card
 would cover the selection. Under reduced motion the card appears and leaves
 without sliding.
 
-The Inspector's header names the object and its status, with **Back** where a
-jump reached it and **Close**. Its body scrolls inside the card while the
-header stays put.
+The Inspector's header is one row: **Back** where a jump reached the object,
+the step's number and title, its status or issue count, a ⋯ menu, and
+**Close**. It draws no path. The ⋯ menu of a Draft step, Group or Lifecycle
+node holds the commands its context menu on the canvas offers, from the same
+source, less Edit: Disable or Enable, Add step after on each outlet, Copy,
+Duplicate, Group, Ungroup, Collapse or Expand group, and Delete. The body
+scrolls inside the card while the header stays put.
 
 The build agent works on the whole workflow, so it sits on the canvas rather
 than in the Inspector. In Draft and Runs, for a viewer who may use it on

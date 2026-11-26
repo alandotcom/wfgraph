@@ -74,9 +74,7 @@ describe("Runs Group summary", () => {
     const summary = await view.findByTestId("runs-group-summary");
     expect(aside()?.dataset.level).toBe("browse");
     expect(title()).toBe("Outreach");
-    expect(path()).toBe(
-      `Appointment reminders › Runs › ${runHeading("exec_f")} › Outreach`
-    );
+    expect(path()).toBeUndefined();
     expect(aside()?.querySelector("header")?.textContent).toContain("Failed");
     expect(
       within(summary).getByText("2 of 3 steps reached, 1 failed")
