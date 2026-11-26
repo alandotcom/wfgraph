@@ -1,7 +1,6 @@
 /**
  * The mobile Reveal sequence as navigation state: the sheets one address keeps
- * open below `md`, and the pure reducers that open, close, scroll, and section
- * them. Each reducer answers its input unchanged when nothing needed to change.
+ * open below `md`, and the pure reducers that open, close, and scroll them. Each reducer answers its input unchanged when nothing needed to change.
  */
 
 import {
@@ -24,14 +23,12 @@ export type MobileRevealLevel = "summary" | "inspector";
  * One sheet of the mobile Reveal sequence. `inspected` is the object the sheet
  * shows, or null for an address sheet, which shows the address itself, such as
  * a run list or a run's overview. `scroll` is its body's scroll in pixels from
- * the top. `section` is the section a sectioned inspector shows, with null for
- * the first section.
+ * the top.
  */
 export type MobileSheet = {
   level: MobileRevealLevel;
   inspected: InspectedObject | null;
   scroll: number;
-  section: string | null;
 };
 
 /**
@@ -139,14 +136,14 @@ export function withMobileSummaryOf(
     return workspace;
   }
   return withMobileSheets(workspace, [
-    { level: "summary", inspected, scroll: 0, section: null },
+    { level: "summary", inspected, scroll: 0 },
   ]);
 }
 
 /**
  * Open one mobile sheet over the sheets already open, and select the object it
  * shows alone. When the last sheet already is that level for that object, only
- * a given `section` is recorded. An inspector opened with no sheet open gets
+ * the selection is written. An inspector opened with no sheet open gets
  * its object's summary beneath it, so Back reaches that summary before the
  * canvas.
  */
@@ -155,7 +152,6 @@ export function withMobileSheet(
   input: {
     level: MobileRevealLevel;
     inspected: InspectedObject;
-    section?: string | null | undefined;
   }
 ): WorkspaceNavigation {
   const selected = withSelection(workspace, selectionOf(input.inspected));
@@ -165,29 +161,15 @@ export function withMobileSheet(
     top.level === input.level &&
     sameObject(top.inspected, input.inspected)
   ) {
-    return input.section === undefined
-      ? selected
-      : withMobileSheetSection(selected, input.inspected, input.section);
+    return selected;
   }
   const below: readonly MobileSheet[] =
     top === null && input.level === "inspector"
-      ? [
-          {
-            level: "summary",
-            inspected: input.inspected,
-            scroll: 0,
-            section: null,
-          },
-        ]
+      ? [{ level: "summary", inspected: input.inspected, scroll: 0 }]
       : selected.mobile.sheets;
   return withMobileSheets(selected, [
     ...below,
-    {
-      level: input.level,
-      inspected: input.inspected,
-      scroll: 0,
-      section: input.section ?? null,
-    },
+    { level: input.level, inspected: input.inspected, scroll: 0 },
   ]);
 }
 
@@ -219,7 +201,6 @@ const ADDRESS_SHEET: MobileSheet = {
   level: "summary",
   inspected: null,
   scroll: 0,
-  section: null,
 };
 
 /**
@@ -255,7 +236,7 @@ export function withMobileSequenceFrom(
  * Show the inspector of `inspected` over the current address. With no sheet
  * open the sequence becomes the address sheet and the inspector. Over an
  * inspector of another object the object is swapped in place, starting its
- * scroll and section over. Over any other sheet the inspector is pushed. The
+ * scroll over. Over any other sheet the inspector is pushed. The
  * selection is left as it is, for a caller
  * that writes it in the same navigation update.
  */
@@ -265,12 +246,7 @@ export function withMobileInspectorOverAddress(
 ): WorkspaceNavigation {
   const { sheets } = workspace.mobile;
   const top = sheets.at(-1);
-  const inspector: MobileSheet = {
-    level: "inspector",
-    inspected,
-    scroll: 0,
-    section: null,
-  };
+  const inspector: MobileSheet = { level: "inspector", inspected, scroll: 0 };
   if (top === undefined) {
     return withMobileSheets(workspace, [ADDRESS_SHEET, inspector]);
   }
@@ -287,27 +263,6 @@ function selectionOf(object: InspectedObject): CanvasSelection {
   return object.kind === "node"
     ? { nodeIds: [object.id], edgeIds: [] }
     : { nodeIds: [], edgeIds: [object.id] };
-}
-
-/**
- * Apply `update` to the last mobile sheet while it shows `inspected`. A write
- * for an object the last sheet no longer shows is dropped, so a value read
- * before Back or a new selection never lands on the next sheet.
- */
-function withTopMobileSheet(
-  workspace: WorkspaceNavigation,
-  inspected: InspectedObject,
-  update: (sheet: MobileSheet) => MobileSheet
-): WorkspaceNavigation {
-  const { sheets } = workspace.mobile;
-  const top = sheets.at(-1);
-  if (!top || !sameObject(top.inspected, inspected)) {
-    return workspace;
-  }
-  const next = update(top);
-  return next === top
-    ? workspace
-    : withMobileSheets(workspace, [...sheets.slice(0, -1), next]);
 }
 
 /**
@@ -341,19 +296,5 @@ export function withMobileSheetScroll(
     sheets.map((item, index) =>
       index === input.depth - 1 ? { ...item, scroll: input.top } : item
     )
-  );
-}
-
-/**
- * Record the section the last mobile sheet shows. Another section starts its
- * scroll at the top.
- */
-export function withMobileSheetSection(
-  workspace: WorkspaceNavigation,
-  inspected: InspectedObject,
-  section: string | null
-): WorkspaceNavigation {
-  return withTopMobileSheet(workspace, inspected, (sheet) =>
-    sheet.section === section ? sheet : { ...sheet, section, scroll: 0 }
   );
 }

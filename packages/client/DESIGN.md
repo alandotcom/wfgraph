@@ -689,15 +689,17 @@ Selecting a step, Condition, Lifecycle node, Event Split,
 Group, or connection opens its summary sheet over the bottom of the
 canvas, which stays pannable and zoomable above it. It reads the object the way
 the desktop editor would summarize it: settings as labels and values, a
-Condition's rules as sentences, and the start's sections. A
+Condition's rules as sentences, and what the start has set as one sentence
+per rule. A
 summary sheet that opens moves the camera once, the least it must, to keep its
 subject above the sheet's top edge, and only when the sheet would cover it. The sheet's header names the object and its
 validation status beside **Close** and the control that opens its full-screen
-editor: **Edit step**, **Edit rules** for a Condition, or **Edit group**. That
-control, an issue, a start section's **Edit** and an **Add a rule** item open
-the full-screen editor; the start's section list sits above its section there
-and holds the sections the start has set and the one open now. An Event Split's action opens the start's details
-at its section, or the Wait's summary, over the Event Split's summary. Every
+editor: **Edit step**, **Edit rules** for a Condition, **Edit start**, or
+**Edit group**. That control and an issue open the full-screen editor, which
+for the start is the same form the Inspector shows at `md` and wider; an issue
+moves focus to the field or rule it is about. An Event Split's action opens
+the start's form with focus on its Start or Cancel Events, or the Wait's
+summary, over the Event Split's summary. Every
 sheet above the first leads with a Back control named for the sheet beneath,
 **Summary** when that sheet shows the same object. Back and Escape remove one
 sheet and restore the sheet beneath with its selection and its scroll position.
@@ -709,8 +711,8 @@ title of the sheet on screen. Closing the last sheet returns focus to the canvas
 node. The canvas and the outline under the inspector leave the tab
 order. Every control inside the sequence, and every option of a select, combobox
 or menu popup while the sequence shows, is at least 44px tall, text fields read
-at 1rem, and the sheets clear the left and right safe-area insets. The sheets,
-their scroll positions, and the Lifecycle section are remembered for each Draft
+at 1rem, and the sheets clear the left and right safe-area insets. The sheets
+and their scroll positions are remembered for each Draft
 scope apart from the Inspector, and each form factor keeps its own camera.
 While a sheet shows, the toolbar's **Configuration** button is absent. A phone
 offers no topology authoring: nodes cannot be dragged, added, deleted, pasted,

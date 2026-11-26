@@ -72,7 +72,7 @@ export function LifecyclePanel({
   const [added, setAdded] = useState<readonly LifecycleSectionId[]>([]);
   const shown = (section: LifecycleSectionId) =>
     added.includes(section) ||
-    lifecycleSectionShown({ section, rules, catalog, issueCount: 0 });
+    lifecycleSectionShown({ section, rules, catalog });
   const removeRule = (section: RemovableLifecycleSection) =>
     disabled
       ? undefined
@@ -169,7 +169,7 @@ const NO_SECTIONS: readonly LifecycleSectionId[] = [];
  * "Add a rule": each rule not set yet, named for what it does. A rule whose
  * section `exclude` names is left out, since its controls already show.
  */
-export function AddRuleMenu({
+function AddRuleMenu({
   rules,
   onChoose,
   exclude = NO_SECTIONS,
@@ -220,7 +220,7 @@ export function AddRuleMenu({
  * since both answer what starts a run. `inputId` names the Event picker, and
  * `onRemove`, when given, offers Remove on the label row.
  */
-export function LifecycleRoleEventGroup({
+function LifecycleRoleEventGroup({
   role,
   editor,
   disabled,
@@ -274,7 +274,7 @@ export function LifecycleRoleEventGroup({
 }
 
 /** One Connection picker per integration a Lifecycle Event arrives through. */
-export function LifecycleEventConnections({
+function LifecycleEventConnections({
   editor,
   disabled,
 }: {

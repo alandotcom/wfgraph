@@ -59,15 +59,14 @@ export type RevealNavigation = {
     origin?: InspectedOrigin | undefined;
   }) => void;
   /**
-   * Open the inspector of `nodeId` at `section`. On desktop, where one form
-   * shows every section, the node opens as `openNode` opens it and focus moves
-   * to the element `targetId` names. On a phone the full-screen inspector
-   * opens at `section`.
+   * Open the editor of `nodeId` with focus on the element `targetId` names,
+   * such as the first control of one of the Start's rules. On desktop the
+   * node opens as `openNode` opens it; on a phone the full-screen inspector
+   * opens.
    */
   openSection: (input: {
     address: WorkspaceAddress;
     nodeId: string;
-    section: string;
     targetId: string;
     origin?: InspectedOrigin | undefined;
   }) => void;
@@ -160,13 +159,14 @@ export function useRevealNavigation(): RevealNavigation {
             level: level === "focus" ? "inspector" : "summary",
             inspected: node(nodeId),
           }),
-        openSection: ({ address, nodeId, section }) =>
+        openSection: ({ address, nodeId, targetId }) => {
           store.set(openMobileSheetAtom, {
             address,
             level: "inspector",
             inspected: node(nodeId),
-            section,
-          }),
+          });
+          store.set(revealFieldRequestAtom, { nodeId, targetId });
+        },
         openInspector: openSheet,
         showSwitchedWorkspace: ({ address }) => openSheet(address),
         followSelection: openSheet,

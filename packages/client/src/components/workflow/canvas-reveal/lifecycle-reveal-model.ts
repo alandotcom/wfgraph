@@ -1,13 +1,12 @@
 /**
- * What the Lifecycle bodies share: the sections in order, which ones a start
- * shows, the rules "Add a rule" offers, the element each rule's focus lands
- * on, and the section an issue opens. The phone's full-screen editor shows one
- * section at a time, recorded on its sheet; the desktop form shows every rule
- * that is set and has no section state.
+ * What the Start's form needs beyond its controls: the rules it holds, which
+ * ones show, the rules "Add a rule" offers, the element each rule's focus
+ * lands on, and the rule an issue is about. Desktop and phone show the same
+ * form, which keeps no section state.
  */
 
 import { START_RULE_NAMES } from "#src/components/workflow/config/lifecycle-policy-summary";
-import { atom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { useStore } from "jotai";
 import {
   type ExtensionCatalog,
   uniqueIntegrationsOfEvents,
@@ -18,33 +17,21 @@ import type {
   LifecycleRulesCheckId,
   WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
-import { recordMobileSheetSectionAtom } from "#src/lib/mobile-sheet-store";
 import type { InspectedOrigin } from "#src/lib/workflow-navigation-state";
-import {
-  activeMobileSheetsAtom,
-  activeWorkspaceAddressAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { useRevealNavigation } from "./use-reveal-navigation";
 
-/** The start's sections in order, each titled with its rule's one name. */
-export const LIFECYCLE_SECTIONS = [
-  { id: "start-events", label: START_RULE_NAMES.starts },
-  { id: "overlapping-runs", label: START_RULE_NAMES.overlapping },
-  { id: "schedule", label: START_RULE_NAMES.schedule },
-  { id: "cancel-events", label: START_RULE_NAMES.stop },
-  { id: "entity-eligibility", label: START_RULE_NAMES.entity },
-  { id: "connections", label: "Event Connections" },
-  { id: "validation", label: "Validation" },
-] as const;
-
-/** The title of `section`. */
-export function lifecycleSectionTitle(section: LifecycleSectionId): string {
-  return (
-    LIFECYCLE_SECTIONS.find((entry) => entry.id === section)?.label ?? section
-  );
-}
-
-export type LifecycleSectionId = (typeof LIFECYCLE_SECTIONS)[number]["id"];
+/**
+ * The rule groups of the Start's form, in the order it shows them: what starts
+ * a run, then each optional rule, then the Connections its Events need.
+ */
+export type LifecycleSectionId =
+  | "start-events"
+  | "overlapping-runs"
+  | "schedule"
+  | "cancel-events"
+  | "entity-eligibility"
+  | "connections";
 
 /**
  * The rules "Add a rule" offers, each by the name its section or form heading
@@ -119,18 +106,15 @@ export function offeredLifecycleRules(
 }
 
 /**
- * Whether the start's details show `section` for `rules`. What starts a run
+ * Whether the Start's form shows `section` for `rules`. What starts a run
  * always shows. A rule shows once it is set. Event Connections show whenever
  * a Start or Cancel Event arrives through an integration, because such an
- * Event reaches no run until a Connection is chosen, and Validation shows
- * while the start has an issue. The section open for editing shows too, which
- * is how a rule being added appears before it is set.
+ * Event reaches no run until a Connection is chosen.
  */
 export function lifecycleSectionShown(input: {
   section: LifecycleSectionId;
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
-  issueCount: number;
 }): boolean {
   const { rules, section } = input;
   if (section === "start-events") {
@@ -144,9 +128,6 @@ export function lifecycleSectionShown(input: {
       ]).length > 0
     );
   }
-  if (section === "validation") {
-    return input.issueCount > 0;
-  }
   if (section === "entity-eligibility") {
     return RULE_IS_SET.entity(rules) || RULE_IS_SET.eligibility(rules);
   }
@@ -159,18 +140,6 @@ export type RemovableLifecycleSection =
   | "schedule"
   | "cancel-events"
   | "entity-eligibility";
-
-/** Whether `section` holds a rule a person can remove. */
-export function isRemovableLifecycleSection(
-  section: LifecycleSectionId
-): section is RemovableLifecycleSection {
-  return (
-    section === "overlapping-runs" ||
-    section === "schedule" ||
-    section === "cancel-events" ||
-    section === "entity-eligibility"
-  );
-}
 
 /**
  * `rules` with the rule `section` edits back at its default, which hides the
@@ -197,15 +166,6 @@ const RULE_DEFAULTS: Readonly<
     entityEligibility: undefined,
   },
 };
-
-/** The section `value` names, or null when it names none. */
-function findSectionId(value: string | null): LifecycleSectionId | null {
-  return LIFECYCLE_SECTIONS.find((section) => section.id === value)?.id ?? null;
-}
-
-function readSectionId(value: string | null): LifecycleSectionId {
-  return findSectionId(value) ?? LIFECYCLE_SECTIONS[0].id;
-}
 
 /**
  * What a rule from "Add a rule" or a jump to a section moves focus to: a
@@ -237,26 +197,24 @@ const LIFECYCLE_CHECK_SECTIONS: Readonly<
 };
 
 /**
- * The section that edits what `issue` names: the Start Events for a
- * Lifecycle Rules or Start Filter problem, the Schedule for a schedule problem,
- * the Cancel Events for a Cancel Filter problem, Entity eligibility for an
- * eligibility problem, and Validation for any other issue.
+ * The rule an issue is about: the Start Events for a Lifecycle Rules or Start
+ * Filter problem, the Schedule for a schedule problem, the Cancel Events for a
+ * Cancel Filter problem, Entity eligibility for an eligibility problem, and
+ * null for any other issue.
  */
 export function lifecycleIssueSection(
   issue: WorkflowIssue
-): LifecycleSectionId {
-  if (issue.kind !== "invalid_lifecycle_rules") {
-    return "validation";
-  }
-  return LIFECYCLE_CHECK_SECTIONS[issue.check];
+): LifecycleSectionId | null {
+  return issue.kind === "invalid_lifecycle_rules"
+    ? LIFECYCLE_CHECK_SECTIONS[issue.check]
+    : null;
 }
 
 /**
- * Open the Lifecycle Node `nodeId` at `section` in the active address,
- * selecting it first when another object is selected. `origin`, when given,
- * records where the jump started, which Back returns to. On desktop the form
- * shows every rule, so focus moves to the section's first control. Below `md`
- * it opens the full-screen inspector sheet at `section` over the sheets
+ * Open the Lifecycle Node `nodeId` in the active address with focus on the
+ * first control of `section`, selecting the node first when another object is
+ * selected. `origin`, when given, records where the jump started, which Back
+ * returns to. Below `md` the full-screen inspector opens over the sheets
  * already open, which is itself the way Back returns.
  */
 export function useOpenLifecycleSection(
@@ -268,44 +226,8 @@ export function useOpenLifecycleSection(
     navigation.openSection({
       address: store.get(activeWorkspaceAddressAtom),
       nodeId,
-      section,
       targetId: lifecycleRuleTargetId(section),
       origin,
     });
-  };
-}
-
-/** The object the top mobile sheet shows, with the section it records. */
-const mobileShownSectionAtom = atom((get) => {
-  const top = get(activeMobileSheetsAtom).at(-1);
-  return top?.inspected
-    ? { inspected: top.inspected, section: top.section }
-    : null;
-});
-
-/**
- * The section the phone's full-screen Lifecycle editor shows for the Lifecycle
- * Node `nodeId`, and `choose`, which records another section on its sheet. A
- * sheet showing a different object shows the first section.
- */
-export function useLifecycleSection(nodeId: string): {
-  section: LifecycleSectionId;
-  choose: (section: LifecycleSectionId) => void;
-} {
-  const store = useStore();
-  const shown = useAtomValue(mobileShownSectionAtom);
-  const recordSection = useSetAtom(recordMobileSheetSectionAtom);
-  const section = readSectionId(
-    shown?.inspected.id === nodeId ? shown.section : null
-  );
-  return {
-    section,
-    choose: (next) => {
-      recordSection({
-        address: store.get(activeWorkspaceAddressAtom),
-        inspected: { kind: "node", id: nodeId },
-        section: next,
-      });
-    },
   };
 }
