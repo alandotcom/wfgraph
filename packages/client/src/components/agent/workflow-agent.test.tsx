@@ -446,6 +446,14 @@ describe("WorkflowAgentView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(conversation()).toBeNull();
     expect(agent()?.className).not.toContain("fixed");
+    expect(document.activeElement).toBe(field());
+
+    // A phone's line has no pill to return to, so Escape in the empty line
+    // keeps focus there and leaves the conversation closed.
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(document.activeElement).toBe(field());
+    expect(conversation()).toBeNull();
+    expect(lineState()).toBe("grown");
   });
 
   it("collapses to the working line when the agent's edit lands, and shows the changed step", async () => {
