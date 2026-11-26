@@ -171,7 +171,7 @@ async function renderEditorRoute(initialSearch: string) {
     component: () => (
       <div style={{ width: 1400, height: 900 }}>
         <WorkspaceRouteSync />
-        <WorkflowCanvas canEdit />
+        <WorkflowCanvas />
         <DetailsPanel />
         <Probe />
       </div>

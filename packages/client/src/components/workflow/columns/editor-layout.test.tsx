@@ -293,7 +293,9 @@ describe("EditorLayout", () => {
     const store = renderLayout();
     pressKey("[");
 
-    act(() => showWorkspaceRoute(store, { view: "runs", executionId: "run_1" }));
+    act(() =>
+      showWorkspaceRoute(store, { view: "runs", executionId: "run_1" })
+    );
 
     expect(store.get(outlineHiddenAtom)).toBe(false);
     expect(outlineShown()).toBe(true);

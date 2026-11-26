@@ -15,6 +15,7 @@ import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
+import { useCanvasInteraction } from "#src/components/workflow/canvas-interaction";
 import { useInsertStepOnEdge } from "#src/components/workflow/use-add-step";
 import {
   chord,
@@ -56,19 +57,23 @@ export type ContextMenuState = {
 export const contextMenuAtom = atom<ContextMenuState>(null);
 
 type WorkflowContextMenuProps = {
-  canEdit: boolean;
-  /** Whether Add step, Paste, and Duplicate may insert steps. */
-  canInsert: boolean;
   menuState: ContextMenuState;
   onClose: () => void;
 };
 
+/**
+ * The canvas's context menu for a step, a connection or the empty pane. What
+ * it offers follows `useCanvasInteraction`: nothing while the canvas takes no
+ * topology edits, and no Add step, Insert step, Paste or Duplicate while it
+ * inserts no steps.
+ */
 export function WorkflowContextMenu({
-  canEdit,
-  canInsert,
   menuState,
   onClose,
 }: WorkflowContextMenuProps) {
+  const interaction = useCanvasInteraction();
+  const canEdit = interaction.editsTopology;
+  const canInsert = interaction.insertsNodes;
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
   const pasteSelection = useSetAtom(pasteCopiedSelectionAtom);
@@ -78,8 +83,6 @@ export function WorkflowContextMenu({
   const nodeItems = useStepMenuItems({
     nodeId: menuState?.type === "node" ? menuState.nodeId : undefined,
     selectedIds: menuState?.selectedIds ?? new Set<string>(),
-    canEdit,
-    canInsert,
   });
 
   // Deleting a connection is one undo step, as deleting a step is, so it

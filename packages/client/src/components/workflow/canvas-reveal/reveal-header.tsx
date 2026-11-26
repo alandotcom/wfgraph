@@ -10,21 +10,15 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
-import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import {
   type StepMenuItem,
   startsGroup,
   useStepMenuItems,
 } from "#src/components/workflow/step-menu-items";
-import { can } from "#src/lib/authorization";
 import { stepNumbersAtom } from "#src/lib/step-numbers";
-import {
-  canvasEditingLockedAtom,
-  nodesAtom,
-} from "#src/lib/workflow-graph-store";
+import { nodesAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import {
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
@@ -94,16 +88,10 @@ function inspectorMenuLabel(
  * the Inspector already shows its editor.
  */
 function StepActionsMenu({ nodeId }: { nodeId: string }) {
-  const locked = useAtomValue(canvasEditingLockedAtom);
   const node = useAtomValue(nodesAtom).find((item) => item.id === nodeId);
-  const topologyAuthoring = useTopologyAuthoring();
-  const canEdit =
-    can(WfGraphOperations.workflowUpdate.id) && !locked && topologyAuthoring;
   const items = useStepMenuItems({
     nodeId,
     selectedIds: new Set([nodeId]),
-    canEdit,
-    canInsert: canEdit,
   }).filter((item) => item.id !== "edit");
   if (items.length === 0) {
     return null;

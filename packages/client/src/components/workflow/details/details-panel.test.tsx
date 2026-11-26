@@ -283,8 +283,6 @@ function FlowCanvas() {
         Open step menu
       </button>
       <WorkflowContextMenu
-        canEdit
-        canInsert
         menuState={
           menu === null
             ? null

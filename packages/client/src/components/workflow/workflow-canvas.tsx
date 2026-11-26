@@ -44,9 +44,7 @@ import {
   displayNodesAtom,
   edgesAtom,
   nodesAtom,
-  canvasEditingLockedAtom,
   executionOverlayGraphAtom,
-  isExecutionOverlayActiveAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
   redoAtom,
@@ -86,7 +84,7 @@ import { useCanvasConnections } from "./use-canvas-connections";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
 import { useReflowLayout } from "./use-reflow-layout";
 import {
-  canvasInteractionState,
+  useCanvasInteraction,
   useTopologyAuthoring,
 } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
@@ -143,7 +141,7 @@ const nodeTypes = {
   group: GroupNode,
 };
 
-export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
+export function WorkflowCanvas() {
   const catalog = useExtensionCatalog();
   // What the canvas paints, and every node of the graph, which the
   // connection rules read because a collapsed Group card stands for its
@@ -159,13 +157,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const storeEdges = useAtomValue(edgesAtom);
   // Draft edits and run-overlay viewing are mutually exclusive: mutating while
   // the overlay is up would write the draft under a canvas that is not showing
-  // it. The toolbar's Publish button reads this same atom.
-  const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const overlayActive = useAtomValueRawSync(isExecutionOverlayActiveAtom);
+  // it. The toolbar's Publish button reads the same editing lock.
+  const interaction = useCanvasInteraction();
   const executionOverlay = useAtomValueRawSync(executionOverlayGraphAtom);
   // While the review sheet shows a comparison, the Draft canvas draws it.
   const comparison = useAtomValue(reviewDisplayGraphAtom);
-  const comparisonActive = comparison !== null;
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
   const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
@@ -284,13 +280,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       placeOpeningCamera({ lifecycle, zoomLimit: getViewport().zoom });
     }
   };
-  const graphEditingLocked = editingLocked || !canEdit;
-  const interaction = canvasInteractionState({
-    editingLocked: graphEditingLocked,
-    comparisonActive,
-    overlayActive,
-    topologyAuthoring,
-  });
+  const graphEditingLocked = !interaction.editsDraft;
   // Without topology authoring nothing a gesture or key below would add,
   // connect, or remove is offered, and the canvas only selects, pans and zooms.
   const topologyLocked = !interaction.editsTopology;
@@ -763,8 +753,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
 
       {/* Context Menu */}
       <WorkflowContextMenu
-        canEdit={canEdit}
-        canInsert={interaction.insertsNodes}
         menuState={contextMenuState}
         onClose={closeContextMenu}
       />

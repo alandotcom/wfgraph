@@ -15,7 +15,7 @@ import {
   within,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
@@ -72,8 +72,13 @@ import {
   SETTLED,
 } from "@wfgraph/shared/graph/workflow-outline-test-support";
 
+// The outline is drawn for a person who may edit, unless a case says not.
+beforeEach(() => {
+  installAuthorizationGrantsForTests(WfGraphOperationIds);
+});
 afterEach(() => {
   cleanup();
+  resetAuthorizationGrantsForTests();
 });
 
 function runLog(
@@ -364,10 +369,7 @@ describe("WorkflowOutline", () => {
   });
 
   describe("gestures a row shares with its card", () => {
-    afterEach(resetAuthorizationGrantsForTests);
-
     it("extends the selection with Shift-click and toggles a step with Cmd-click", async () => {
-      installAuthorizationGrantsForTests(WfGraphOperationIds);
       const { store } = renderOutline();
       await tree();
 
@@ -391,7 +393,6 @@ describe("WorkflowOutline", () => {
     });
 
     it("opens the card's context menu on right-click, keeping a selection that holds the row", async () => {
-      installAuthorizationGrantsForTests(WfGraphOperationIds);
       const { store } = renderOutline();
       await tree();
 
