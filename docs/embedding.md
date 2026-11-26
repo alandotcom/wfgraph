@@ -159,7 +159,10 @@ checks `runMode`. An action that charges, cancels, deletes or sends answers with
 when `runMode` is `"test"`, or does it against a sandbox. The Run draft dialog names a
 host action's steps as ones whose test-run behaviour is up to the app, and the run then
 shows "Skipped (test run)" on a step whose handler did nothing, which is the `runMode`
-check this section asks of a handler.
+check this section asks of a handler. The editor shows "Skipped (test run)" on a step of a test
+run when the step succeeded and its handler's answer is an object with a top-level `status`
+of `"skipped"`, as in the example above, or a top-level `reasonCode` starting with
+`test_mode_`, the marker the built-in integrations return.
 
 `sideEffect: true` declares that an action changes something outside the workflow. The
 catalog carries it to the editor, and the run dialog of a Live-mode published run counts the
