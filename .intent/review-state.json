@@ -457,16 +457,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-canvas.tsx": {
-      "fingerprint": "5adba04eabc02aae096303fb4bc79ddf6a2c160a6ccba102a623d7ae7919d23b",
+      "fingerprint": "d0838ca5ff6e3f39c8e1c3e7623a5dcfaed0846efccce9bb93bb94b66e340432",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-canvas.tsx": "f8bed08717cbebf981d5f889f3ae17307607611727e1afb1adb0dc8d86b7835a"
+        "packages/client/src/components/workflow/workflow-canvas.tsx": "aaf58028d08c3d914795a66a70a12df9f9544a5729edc3fa546a3d3a50ea6e2f"
       },
-      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "head": "48d5a20e9c4d5e3dd2a21e309d25f1fe5ce5cc5a",
       "outcome": "out-of-scope",
-      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "reason": "The minimap floats at the top right, clear of the attribution and of the Inspector card's column. Editor canvas layout no published skill teaches.",
       "evidence": [
         "packages/client/src/components/workflow/workflow-canvas.tsx",
-        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+        "skills grep for minimap at 48d5a20e finds none in packages/core/skills or packages/plugins/skills"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-draft-sync.test.tsx": {
@@ -9114,16 +9114,16 @@
       ]
     },
     "source:packages/client/DESIGN.md": {
-      "fingerprint": "d7c1c7154e341db53972d5c8a39a1be65f5345d0b214fc8fa71a3942e3b67e03",
+      "fingerprint": "675e66cce4df94c16881f410a3cb950bc2f610dd5411877b5b60bc4b06214736",
       "snapshot": {
-        "packages/client/DESIGN.md": "1493d0e0603363a4c61dd14771250e796a949fa242fc57b3dcd1a7bbbdd59aec"
+        "packages/client/DESIGN.md": "866114803adf8292dc448a33adcc52e74a88ebc4b910c3aa7ee184382978a542"
       },
-      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
+      "head": "48d5a20e9c4d5e3dd2a21e309d25f1fe5ce5cc5a",
       "outcome": "out-of-scope",
-      "reason": "DESIGN.md now records the Hide agent control's 24px target and the 20px gap above the line, the phone step list's 44px rows and the toolbar's hit areas, the attribution at the top centre, and the 24px targets of connections, the + controls and the issue count. It is the editor's design vocabulary and no published skill's source.",
+      "reason": "DESIGN.md now places the minimap 36px below the canvas top, ending 12px short of where the Inspector card starts whether or not it is open, and at the top right of a phone's map. It is the editor's design vocabulary and no published skill's source.",
       "evidence": [
         "packages/client/DESIGN.md",
-        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
+        "skills grep for minimap at 48d5a20e finds none in packages/core/skills or packages/plugins/skills"
       ]
     },
     "source:packages/client/PRODUCT.md": {
@@ -9797,16 +9797,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts": {
-      "fingerprint": "6b0680ba95bb8c187def3dcba5edb3b00750879510a6794e5a9bf322b8e3bd31",
+      "fingerprint": "735b6416b035b234994bbf3095431e63b268fde5d629b848aa98ba2720424fdc",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts": "0fc06907c1ac323888c974fc3ec5d4be3355f1918d36919f7caab49d5841b6f8"
+        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts": "e967e6faa4260132876b4dcd2f8463e874fde3fa6454e2b0603b93df54d82737"
       },
-      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "head": "48d5a20e9c4d5e3dd2a21e309d25f1fe5ce5cc5a",
       "outcome": "out-of-scope",
-      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "reason": "Adds INSPECTOR_CLEARANCE_PX, the right-edge clearance the agent's box and the minimap keep from the Inspector card. Editor layout internals no published skill teaches.",
       "evidence": [
         "packages/client/src/components/workflow/canvas-reveal/canvas-reveal-state.ts",
-        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+        "skills grep for minimap at 48d5a20e finds none in packages/core/skills or packages/plugins/skills"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/canvas-reveal.tsx": {
@@ -11109,16 +11109,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/mobile-canvas.test.tsx": {
-      "fingerprint": "983fa5d6c9ecad05577a1c5bd96ded774995bb21555a3d18e0d7a800e0cb431a",
+      "fingerprint": "703123f57adecd849f1f93267fcd7918a349561819c19b60312afca10fb5452c",
       "snapshot": {
-        "packages/client/src/components/workflow/mobile-canvas.test.tsx": "c4a665f5b86f2b28bbc36a2809639c9d9a56ca349715b12750b23bd70e83bd65"
+        "packages/client/src/components/workflow/mobile-canvas.test.tsx": "a7ec6593fd375553ee8c3aad25cb3e9e2805748b99052b2999e7417eb6cb306f"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "48d5a20e9c4d5e3dd2a21e309d25f1fe5ce5cc5a",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Two tests hold the minimap's desktop and phone margins. A client test no skill describes.",
       "evidence": [
-        "packages/client/src/components/workflow/mobile-canvas.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/mobile-canvas.test.tsx",
+        "skills grep for minimap at 48d5a20e finds none in packages/core/skills or packages/plugins/skills"
       ]
     },
     "source:packages/client/src/components/workflow/mobile-group-sequence.test.tsx": {
@@ -14255,16 +14255,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/layout/editor-layout.tsx": {
-      "fingerprint": "1728289dbbba25be7b83e0a72c301460047621c0288d8a3537b3a852f7303c25",
+      "fingerprint": "88dc98c12aaf0c446f01c86ef069915e3f3389b2605d4152e618fcab3c90b170",
       "snapshot": {
-        "packages/client/src/components/workflow/layout/editor-layout.tsx": "a6b95eba930bb9ee1dfe4ab6315a5a0c001f19ab760f5dd961373194bec3a43a"
+        "packages/client/src/components/workflow/layout/editor-layout.tsx": "757b7f450c31ae86b0f179c1b63c38f1c43a12abb2973218aaa9bca05e1e1cee"
       },
-      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "head": "48d5a20e9c4d5e3dd2a21e309d25f1fe5ce5cc5a",
       "outcome": "out-of-scope",
-      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "reason": "The agent's box reads its right clearance from INSPECTOR_CLEARANCE_PX instead of a local constant of the same value. Editor layout internals no published skill teaches.",
       "evidence": [
         "packages/client/src/components/workflow/layout/editor-layout.tsx",
-        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+        "skills grep for minimap at 48d5a20e finds none in packages/core/skills or packages/plugins/skills"
       ]
     },
     "source:packages/client/src/components/workflow/layout/editor-shell.tsx": {
