@@ -22,7 +22,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import { inspectorOpenAtom } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
+import { WorkflowOutline } from "#src/components/workflow/outline/workflow-outline";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
@@ -184,7 +186,7 @@ async function renderEditor(
     nodes: NODES,
     edges: EDGES,
   },
-  options: { reveal?: boolean; canEdit?: boolean } = {}
+  options: { reveal?: boolean; canEdit?: boolean; outline?: boolean } = {}
 ) {
   // A person without the edit grant sees the canvas read-only.
   if (options.canEdit === false) {
@@ -215,6 +217,7 @@ async function renderEditor(
       >
         <WorkspaceRouteSync />
         <RunStatusProjection />
+        {options.outline ? <WorkflowOutline /> : null}
         <WorkflowCanvas />
         {options.reveal === false ? null : <InspectorContents />}
         <Probe />
@@ -589,6 +592,77 @@ describe("canvas Delete gesture", () => {
         false
       )
     );
+  });
+
+  it("renames the step from the Inspector's title on its card and outline row", async () => {
+    const { store, view, reveal, select } = await renderEditor("", undefined, {
+      outline: true,
+    });
+    await select("qualify");
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
+    const outline = () =>
+      view.container.querySelector<HTMLElement>(
+        '[data-slot="workflow-outline"]'
+      );
+    expect(outline()?.textContent).toContain("Qualification");
+
+    const name = within(reveal() ?? document.body).getByRole("textbox", {
+      name: "Name",
+    });
+    name.focus();
+    fireEvent.change(name, { target: { value: "Qualify lead" } });
+    fireEvent.keyDown(name, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(view.getByTestId("action-node-qualify").textContent).toContain(
+        "Qualify lead"
+      )
+    );
+    expect(outline()?.textContent).toContain("Qualify lead");
+    expect(outline()?.textContent).not.toContain("Qualification");
+    expect(store.get(inspectorOpenAtom)).toBe(true);
+  });
+
+  it("puts the name back on Escape in the title and leaves the Inspector open", async () => {
+    const { store, view, reveal, select } = await renderEditor("", undefined, {
+      outline: true,
+    });
+    await select("qualify");
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
+    const name = within(reveal() ?? document.body).getByRole("textbox", {
+      name: "Name",
+    });
+    name.focus();
+    fireEvent.change(name, { target: { value: "Qualify lead" } });
+    await act(async () => {
+      fireEvent.keyDown(name, { key: "Escape" });
+    });
+
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "qualify")?.data.label
+    ).toBe("Qualification");
+    expect(view.getByTestId("action-node-qualify").textContent).toContain(
+      "Qualification"
+    );
+    expect(store.get(inspectorOpenAtom)).toBe(true);
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"]);
+    expect(document.activeElement).toBe(
+      reveal()?.querySelector('[data-slot="reveal-title"]')
+    );
+  });
+
+  it("shows a read-only viewer the step's name as plain text in the Inspector", async () => {
+    const { view, reveal, select } = await renderEditor("", undefined, {
+      canEdit: false,
+    });
+    await select("qualify");
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
+    const inspector = within(reveal() ?? document.body);
+    expect(inspector.queryByRole("textbox", { name: "Name" })).toBeNull();
+    expect(
+      inspector.getByRole("heading", { name: "Qualification" })
+    ).toBeTruthy();
+    expect(view.getByTestId("action-node-qualify")).toBeTruthy();
   });
 
   it("leaves the node in place while typing in its editor", async () => {

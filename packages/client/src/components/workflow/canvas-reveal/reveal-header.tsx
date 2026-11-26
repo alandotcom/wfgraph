@@ -23,10 +23,16 @@ import {
   type StatusTone,
   statusToneTextClass,
 } from "#src/components/workflow/workflow-run-shared";
+import { type RevealName, RevealTitle } from "./reveal-title";
 
 /** What a subject kind puts in the Inspector's header. */
 export type RevealHeaderModel = {
   title: string;
+  /**
+   * The Draft object's name, which the title edits in place; null for a
+   * subject whose title is not a name a person sets, such as a run.
+   */
+  name: RevealName | null;
   /** A step's validation status or a run's status, in its signal color. */
   status: { text: string; tone: StatusTone } | null;
   /** Whether Back is offered. */
@@ -103,7 +109,8 @@ function StepActionsMenu({ nodeId }: { nodeId: string }) {
  * The Inspector's header for the shown object: Back where the model offers
  * it, the step's number and title, its status, a Draft object's ⋯ menu, and
  * Close. It stays put while the body under it scrolls. The title takes focus
- * when a run node's evidence opens, so it carries `tabIndex={-1}`.
+ * when a run node's evidence opens, and renames a Draft object in place
+ * (`RevealTitle`).
  */
 export function RevealHeader({
   model,
@@ -151,14 +158,12 @@ export function RevealHeader({
           {number}
         </span>
       )}
-      <h2
-        className="min-w-0 flex-1 truncate px-1 font-semibold text-sm outline-none"
-        data-slot="reveal-title"
-        ref={titleRef}
-        tabIndex={-1}
-      >
-        {model.title}
-      </h2>
+      <RevealTitle
+        name={model.name}
+        size="inspector"
+        title={model.title}
+        titleRef={titleRef}
+      />
       {status ? (
         <span
           className={`shrink-0 px-1 text-xs ${statusToneTextClass(status.tone)}`}

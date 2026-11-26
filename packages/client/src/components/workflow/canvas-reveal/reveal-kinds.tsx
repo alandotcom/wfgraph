@@ -259,16 +259,16 @@ function stepHeaderModel(
     node?.data.config,
     ACTION_TYPE_CONFIG_KEY
   );
-  const title =
-    node && !isBlank(node.data.label)
-      ? node.data.label
-      : ((actionType && findAction(context.catalog, actionType)?.label) ??
-        "Untitled step");
+  const fallback =
+    (actionType && findAction(context.catalog, actionType)?.label) ??
+    "Untitled step";
+  const title = node && !isBlank(node.data.label) ? node.data.label : fallback;
   const issues = context.issues.filter(
     (issue) => issue.nodeId === subject.nodeId
   );
   return {
     title,
+    name: node ? { nodeId: node.id, label: node.data.label, fallback } : null,
     // A disabled step is not ready for anything: a run stops on reaching it.
     status:
       node?.data.enabled === false
@@ -286,6 +286,9 @@ function groupHeaderModel(
   const title = groupLabel(node?.data.label);
   return {
     title,
+    name: node
+      ? { nodeId: node.id, label: node.data.label, fallback: groupLabel("") }
+      : null,
     // The collapsed card hides the Group's steps, so the status counts their
     // issues with the Group's own.
     status:
@@ -310,6 +313,16 @@ function lifecycleHeaderModel(
   const title = node ? startNodeTitle(context.catalog, node.data) : "Start";
   return {
     title,
+    name: node
+      ? {
+          nodeId: node.id,
+          label: node.data.label,
+          fallback: startNodeTitle(context.catalog, {
+            ...node.data,
+            label: "",
+          }),
+        }
+      : null,
     status: node
       ? issueStatus(
           context.issues.filter((issue) => issue.nodeId === subject.nodeId)
@@ -334,6 +347,7 @@ function PanelHeader({ controls }: RevealKindHeaderProps) {
       controls={controls}
       model={{
         title,
+        name: null,
         status: null,
         showsBack: false,
       }}

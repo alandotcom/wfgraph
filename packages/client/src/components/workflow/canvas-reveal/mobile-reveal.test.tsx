@@ -243,8 +243,12 @@ describe("mobile Reveal for an ordinary step", () => {
     const summary = view.getByRole("region", { name: "Step inspector" });
     expect(summary.dataset.level).toBe("summary");
     expect(within(summary).getByRole("heading", { name: "Wait 5 days" }));
+    // The sheet's title holds the step's name, and the heading around it
+    // takes focus as the sheet opens.
     await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("Wait 5 days")
+      expect(document.activeElement).toBe(
+        within(summary).getByRole("heading", { name: "Wait 5 days" })
+      )
     );
 
     fireEvent.click(view.getByRole("button", { name: "Edit step" }));
@@ -341,7 +345,9 @@ describe("mobile Reveal focus and camera", () => {
       });
     });
     await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("Wait 5 days")
+      expect(document.activeElement).toBe(
+        view.getByRole("heading", { name: "Wait 5 days" })
+      )
     );
     fireEvent.click(view.getByRole("button", { name: "Back to Summary" }));
     await waitFor(() =>

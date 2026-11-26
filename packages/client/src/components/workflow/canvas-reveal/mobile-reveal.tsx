@@ -85,21 +85,21 @@ function draftBackLabel(
 }
 
 /**
- * The title and status of a sheet whose kind has no mobile `Header`. A kind
+ * The title, name and status of a sheet whose kind has no mobile `Header`. A kind
  * whose header the shell builds names them from its model; the one Draft kind
  * that builds its own header uses the node config panel's title.
  */
 function useSheetHeading(
   state: MobileRevealState | null,
   kind: RevealKind | null
-): Pick<RevealHeaderModel, "title" | "status"> {
+): Pick<RevealHeaderModel, "title" | "name" | "status"> {
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
   const catalog = useExtensionCatalog();
   const presentation = useAtomValue(activeRevealPresentationAtom);
   const panelTitle = useNodeConfigTitle();
   if (state === null || kind === null || kind.header.owner === "kind") {
-    return { title: panelTitle, status: null };
+    return { title: panelTitle, name: null, status: null };
   }
   const model = kind.header.model(state.subject, {
     nodes,
@@ -107,7 +107,7 @@ function useSheetHeading(
     catalog,
     presentation,
   });
-  return { title: model.title, status: model.status };
+  return { title: model.title, name: model.name, status: model.status };
 }
 
 /**
@@ -326,6 +326,7 @@ export function MobileReveal() {
             backLabel={draftBackLabel(state, nodes, catalog)}
             controls={controls}
             fullSheetLabel={mobile?.fullSheetLabel}
+            name={heading.name}
             status={heading.status}
             title={heading.title}
           />
