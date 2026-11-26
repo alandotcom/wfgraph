@@ -1,7 +1,7 @@
 import { compact, uniq } from "es-toolkit/array";
 import { isEqual } from "es-toolkit/predicate";
 import { useAtomValue } from "jotai";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { type ReactNode, useCallback, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
@@ -44,8 +44,9 @@ import {
   readStartFilterLayout,
 } from "@wfgraph/shared/lifecycle/start-filters";
 import { ConditionBuilderRow } from "./condition-builder-row";
-import { ConfigGroup } from "./config-section";
+import { ConfigGroup, RemoveGroupButton } from "./config-section";
 import { EventMultiCombobox } from "./event-combobox";
+import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
 import {
   START_RULE_NAMES,
   trackedEntityLabel,
@@ -56,11 +57,12 @@ const ROLE_COPY = {
     label: START_RULE_NAMES.starts,
     pickerPlaceholder: "Add start event",
     help: [
-      "A selected Start Event starts a run.",
-      "“Only start when” limits which arrivals start a run.",
+      "Each arrival of a Start Event starts a run, unless “Only start when” turns it away.",
     ],
     entityIdentity: (label: string) =>
-      `Each Event's ${label} binding provides the ${label} ID tracked by the run.`,
+      `Each Event's ${label} binding provides the ${label} ID tracked by the run. Correlation Paths are not used.`,
+    // The Publish checks whose refusals show beneath this group.
+    checks: ["rules", "start_filter"],
   },
   cancel: {
     label: START_RULE_NAMES.stop,
@@ -70,7 +72,8 @@ const ROLE_COPY = {
       "“Only stop when” limits which arrivals stop a run.",
     ],
     entityIdentity: (label: string) =>
-      `Each Event's ${label} binding provides its ${label} ID. A Cancel Event only affects active runs with the same ID.`,
+      `Each Event's ${label} binding provides its ${label} ID. A Cancel Event only affects active runs with the same ID. Correlation Paths are not used.`,
+    checks: ["cancel_filter"],
   },
 } as const;
 
@@ -100,6 +103,13 @@ type LifecycleEventGroupProps = {
   onFilterChange: (eventName: string, model: string | undefined) => void;
   /** Writes the same filter to every Event with this role. */
   onFilterChangeForAll: (model: string | undefined) => void;
+  /** Clears every Event of this role, offered on the label row when given. */
+  onRemove?: (() => void) | undefined;
+  /**
+   * The element id of the first "Filter the arrivals" control, which focus
+   * moves to when a person adds a filter from "Add a rule".
+   */
+  firstFilterButtonId?: string | undefined;
 };
 
 export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
@@ -172,12 +182,20 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
 
   return (
     <ConfigGroup
-      className="py-3 first:pt-0 last:pb-0"
-      help={copy.help.map((sentence) => (
-        <p key={sentence}>{sentence}</p>
-      ))}
+      help={[...copy.help, entityIdentityCopy].map((sentence) =>
+        sentence === undefined ? null : <p key={sentence}>{sentence}</p>
+      )}
       label={copy.label}
       prominent
+      trailing={
+        props.onRemove ? (
+          <RemoveGroupButton
+            disabled={disabled}
+            label={copy.label}
+            onRemove={props.onRemove}
+          />
+        ) : null
+      }
     >
       <div className="space-y-2">
         <EventPicker hasEvents={catalog.events.length > 0}>
@@ -193,12 +211,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
             value={eventNames}
           />
         </EventPicker>
-        {entityIdentityCopy ? (
-          <p className="text-muted-foreground text-xs">
-            {entityIdentityCopy} Correlation Paths are not used.
-          </p>
-        ) : null}
-        {eventNames.map((eventName) => (
+        {eventNames.map((eventName, index) => (
           <ChosenEvent
             catalog={catalog}
             disabled={disabled}
@@ -208,6 +221,8 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
                 ? {
                     model: readFilter(rules, eventName),
                     onChange: perEventFilter,
+                    seedButtonId:
+                      index === 0 ? props.firstFilterButtonId : undefined,
                   }
                 : undefined
             }
@@ -235,6 +250,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
               model={collapsed.model}
               onChange={collapsed.write}
               role={role}
+              seedButtonId={props.firstFilterButtonId}
             />
             <FilterLayoutLink
               disabled={disabled}
@@ -250,6 +266,12 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
             onClick={() => setSplitFor([])}
           />
         ) : null}
+        {copy.checks.map((check) => (
+          <FieldIssueMessages
+            fieldKey={lifecycleCheckFieldKey(check)}
+            key={check}
+          />
+        ))}
       </div>
     </ConfigGroup>
   );
@@ -309,6 +331,8 @@ function EventPicker({
 type ChosenEventFilter = {
   model: string | undefined;
   onChange: (eventName: string, model: string | undefined) => void;
+  /** The element id of the control that adds the filter, while it has none. */
+  seedButtonId?: string | undefined;
 };
 
 function ChosenEvent({
@@ -386,6 +410,7 @@ function ChosenEvent({
               model={filter.model}
               onChange={(model) => filter.onChange(eventName, model)}
               role={role}
+              seedButtonId={filter.seedButtonId}
             />
           ) : null}
         </div>
@@ -414,6 +439,7 @@ function LifecycleFilterEditor({
   onChange,
   disabled,
   role,
+  seedButtonId,
 }: {
   /**
    * The Events this filter is written against. One means a filter of its own,
@@ -425,6 +451,8 @@ function LifecycleFilterEditor({
   onChange: (model: string | undefined) => void;
   disabled: boolean;
   role: "start" | "cancel";
+  /** The element id of "Filter the arrivals", shown while no filter is set. */
+  seedButtonId?: string | undefined;
 }) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
@@ -471,28 +499,22 @@ function LifecycleFilterEditor({
     );
   }, [payloadFields, onChange]);
 
+  // With no filter every arrival counts, which the group's help says, so the
+  // one control here is the one that adds a filter.
   if (!model) {
     return (
-      <div className="space-y-1">
-        <p className="text-muted-foreground text-xs">
-          {shared
-            ? role === "start"
-              ? "No filter is set. Every selected event starts a run."
-              : "No filter is set. Every selected event can cancel matching active runs."
-            : role === "start"
-              ? "No filter is set. Every arrival starts a run."
-              : "No filter is set. Every arrival can cancel matching active runs."}
-        </p>
-        <Button
-          disabled={disabled || payloadFields.length === 0}
-          onClick={seedFilter}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          Add a filter
-        </Button>
-      </div>
+      <Button
+        className="-ml-2 text-muted-foreground"
+        disabled={disabled || payloadFields.length === 0}
+        id={seedButtonId}
+        onClick={seedFilter}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <Plus data-icon="inline-start" />
+        Filter the arrivals
+      </Button>
     );
   }
 

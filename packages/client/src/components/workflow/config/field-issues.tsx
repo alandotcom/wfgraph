@@ -1,8 +1,10 @@
 /**
  * The validation issues of the node a config form edits, shown beside the
  * field each one names. The form wraps its fields in `FieldIssuesProvider`, and
- * a field renders `FieldIssueMessages` with its config key. A form outside the
- * provider shows no messages.
+ * a field renders `FieldIssueMessages` with its config key. A Lifecycle Rules
+ * problem Publish refuses names no config key, so it goes to the rule its
+ * check reads, keyed by `lifecycleCheckFieldKey`. A form outside the provider
+ * shows no messages.
  */
 
 import { useAtomValue, useSetAtom } from "jotai";
@@ -13,7 +15,10 @@ import {
   revealLeftFieldAtom,
 } from "#src/lib/required-field-errors";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
-import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
+import type {
+  LifecycleRulesCheckId,
+  WorkflowIssue,
+} from "@wfgraph/shared/graph/workflow-issues";
 import { cn } from "@wfgraph/shared/utils";
 
 /** The config key of the Connection picker, which a missing Connection names. */
@@ -24,10 +29,21 @@ const NO_FIELD_ISSUES: ReadonlyMap<string, readonly WorkflowIssue[]> =
 
 const FieldIssuesContext = createContext(NO_FIELD_ISSUES);
 
+/**
+ * The key under which the Start's form shows the Lifecycle Rules problems one
+ * Publish check reports, beneath the rule that check reads.
+ */
+export function lifecycleCheckFieldKey(check: LifecycleRulesCheckId): string {
+  return `lifecycle-rules:${check}`;
+}
+
 /** The config key of the field an issue is about, or null for none. */
-function issueFieldKey(issue: WorkflowIssue): string | null {
+export function issueFieldKey(issue: WorkflowIssue): string | null {
   if ("fieldKey" in issue) {
     return issue.fieldKey;
+  }
+  if (issue.kind === "invalid_lifecycle_rules") {
+    return lifecycleCheckFieldKey(issue.check);
   }
   return issue.kind === "missing_integration" ? CONNECTION_FIELD_KEY : null;
 }

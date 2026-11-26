@@ -5,12 +5,18 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { createStore, Provider as JotaiProvider } from "jotai";
 import { useState } from "react";
 import { Toaster, toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { FieldIssuesProvider } from "#src/components/workflow/config/field-issues";
 import { LifecyclePanel } from "#src/components/workflow/config/lifecycle-panel";
+import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { browserTimeZone } from "./lifecycle-schedule";
 
@@ -42,9 +48,31 @@ const MANUAL_ONLY: LifecycleRules = {
   allowManualStart: true,
 };
 
-/** The panel over config it owns, reporting each config it writes. */
+/**
+ * The panel over config it owns, reporting each config it writes, over the
+ * editor's issue list for the rules it starts with, inside the provider that
+ * shows each refusal beneath its rule.
+ */
 function renderPanel(rules: LifecycleRules = MANUAL_ONLY) {
   const writes: LifecycleRules[] = [];
+  const nodes: WorkflowNode[] = [
+    {
+      id: "lifecycle_1",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Start",
+        type: "lifecycle",
+        config: { lifecycleRules: rules },
+      },
+    },
+  ];
+  const store = createStore();
+  store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
+  store.set(
+    workflowIssuesAtom,
+    collectWorkflowIssues({ nodes, edges: [], catalog, integrations: [] })
+  );
   function ControlledPanel() {
     const [config, setConfig] = useState<Record<string, unknown>>({
       lifecycleRules: rules,
@@ -65,11 +93,29 @@ function renderPanel(rules: LifecycleRules = MANUAL_ONLY) {
   }
   const view = render(
     <ExtensionCatalogProvider value={catalog}>
-      <ControlledPanel />
+      <JotaiProvider store={store}>
+        <FieldIssuesProvider nodeId="lifecycle_1">
+          <ControlledPanel />
+        </FieldIssuesProvider>
+      </JotaiProvider>
       <Toaster />
     </ExtensionCatalogProvider>
   );
   return { view, writes, latest: () => writes.at(-1) };
+}
+
+/**
+ * Presses Add schedule, first adding the rule from "Add a rule" when the start
+ * has no schedule yet, the way a builder reaches it.
+ */
+function addSchedule(view: RenderResult) {
+  if (view.queryByRole("button", { name: "Add schedule" }) === null) {
+    const trigger = view.getByRole("button", { name: "Add a rule" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyUp(trigger, { key: "ArrowDown" });
+    fireEvent.click(view.getByRole("menuitem", { name: "On a schedule…" }));
+  }
+  fireEvent.click(view.getByRole("button", { name: "Add schedule" }));
 }
 
 function schedule(view: RenderResult, number: number): HTMLElement {
@@ -83,10 +129,11 @@ function choose(scope: HTMLElement, name: string, option: string) {
   fireEvent.click(choice);
 }
 
+/** What the schedule rule says about rows the stored rules cannot hold. */
 function refusal(view: RenderResult): string | null {
   return (
-    view.queryByText("The start needs attention")?.parentElement?.textContent ??
-    null
+    view.container.querySelector('[data-slot="unsaved-schedules"]')
+      ?.textContent ?? null
   );
 }
 
@@ -108,7 +155,7 @@ describe("LifecyclePanel Schedule", () => {
   it("adds a daily 9:00 AM schedule in the browser's time zone", async () => {
     const { view, latest } = renderPanel();
 
-    fireEvent.click(view.getByRole("button", { name: "Add schedule" }));
+    addSchedule(view);
 
     await waitFor(() => {
       expect(latest()?.schedules).toEqual([
@@ -207,9 +254,9 @@ describe("LifecyclePanel Schedule", () => {
   it("refuses a duplicate schedule until one is removed", async () => {
     const { view, latest } = renderPanel();
 
-    fireEvent.click(view.getByRole("button", { name: "Add schedule" }));
+    addSchedule(view);
     await waitFor(() => expect(latest()?.schedules).toHaveLength(1));
-    fireEvent.click(view.getByRole("button", { name: "Add schedule" }));
+    addSchedule(view);
 
     expect(refusal(view)).toContain(
       "Two schedules have the same cron expression and time zone. Remove one of them."
@@ -281,7 +328,7 @@ describe("LifecyclePanel Schedule", () => {
       schedules: [{ cron: "0 9 * * *", timeZone: browserTimeZone() }],
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Add schedule" }));
+    addSchedule(view);
     expect(refusal(view)).toContain("Schedule 2 isn't saved.");
 
     fireEvent.click(view.getByRole("button", { name: "Remove schedule 1" }));
@@ -307,7 +354,7 @@ describe("LifecyclePanel Schedule", () => {
       within(schedule(view, 1)).getByLabelText("Cron expression"),
       { target: { value: "0 9 * *" } }
     );
-    fireEvent.click(view.getByRole("button", { name: "Add schedule" }));
+    addSchedule(view);
 
     await waitFor(() => {
       expect(latest()?.schedules).toEqual([
@@ -356,29 +403,8 @@ describe("LifecyclePanel Schedule", () => {
       schedules: [{ cron: "0 9 * * *", timeZone: "UTC" }],
     });
 
-    expect(refusal(view)).toContain(
+    expect(view.container.textContent).toContain(
       "A scheduled run carries no Entity, so a workflow that tracks an Entity cannot have a schedule."
-    );
-  });
-
-  it("summarizes each schedule with its next run", () => {
-    const { view } = renderPanel({
-      ...MANUAL_ONLY,
-      schedules: [
-        { cron: "0 9 * * 1-5", timeZone: "America/New_York" },
-        { cron: "*/15 * * * *", timeZone: "UTC" },
-      ],
-    });
-
-    const summary = view
-      .getAllByRole("heading", { name: "On a schedule" })
-      .map((heading) => heading.closest("section")?.textContent ?? "")
-      .find((text) => text.includes("Next run"));
-    expect(summary).toContain(
-      "Every weekday at 9:00 AM (America/New_York)Next run: Fri Nov 6, 9:00 AM"
-    );
-    expect(summary).toContain(
-      "Every 15 minutes (UTC)Next run: Fri Nov 6, 12:15 PM"
     );
   });
 });

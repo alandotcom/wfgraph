@@ -23,7 +23,8 @@ import {
 import { whenChosen } from "#src/lib/select-choice";
 import type { ScheduleIssue } from "@wfgraph/shared/lifecycle/cron-schedule";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { ConfigGroup } from "./config-section";
+import { ConfigGroup, RemoveGroupButton } from "./config-section";
+import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
 import {
   browserTimeZone,
   cronForPreset,
@@ -39,6 +40,7 @@ import {
   withPreset,
   withPresetFields,
   readWeekday,
+  unsavedScheduleMessage,
 } from "./lifecycle-schedule";
 import type { ScheduleEditor } from "./use-lifecycle-rules-editor";
 
@@ -49,15 +51,21 @@ const READOUT_FIRES = 3;
  * The Schedule group: the clocks that start a run. Each schedule is a preset
  * or a cron expression with its own time zone, and reads back as a sentence
  * with its next fire times. A row the stored rules cannot hold stays in the
- * rows unsaved; the caller shows `schedules.unsaved` where it shows the
- * panel's other Lifecycle issues.
+ * rows unsaved, and the group says why beneath the rows, with any schedule
+ * problem Publish refuses. With `onRemove`, the label row offers Remove,
+ * which clears every schedule.
  */
 export function LifecycleScheduleGroup({
   schedules,
   disabled,
+  onRemove,
+  addButtonId,
 }: {
   schedules: ScheduleEditor;
   disabled: boolean;
+  onRemove?: (() => void) | undefined;
+  /** The element id of Add schedule, which focus moves to when the rule is added. */
+  addButtonId?: string | undefined;
 }) {
   const { rows, unsaved, setRows, isSaved } = schedules;
   const zones = useMemo(
@@ -71,11 +79,11 @@ export function LifecycleScheduleGroup({
 
   return (
     <ConfigGroup
-      className="py-3 first:pt-0 last:pb-0"
       help={
         <>
           <p>
-            A schedule starts a run at each time it names, in its time zone.
+            A schedule starts a run of the published version at each time it
+            names, in its time zone.
           </p>
           <p>A scheduled run includes no Event data.</p>
           <p>A workflow that tracks an Entity can't have a schedule.</p>
@@ -83,12 +91,17 @@ export function LifecycleScheduleGroup({
       }
       label={START_RULE_NAMES.schedule}
       prominent
+      trailing={
+        onRemove ? (
+          <RemoveGroupButton
+            disabled={disabled}
+            label={START_RULE_NAMES.schedule}
+            onRemove={onRemove}
+          />
+        ) : null
+      }
     >
       <div className="space-y-2">
-        <p className="text-muted-foreground text-xs">
-          Schedules start runs of the published version. Changes take effect
-          when you publish.
-        </p>
         {rows.map((row, index) => (
           <ScheduleCard
             disabled={disabled}
@@ -113,6 +126,7 @@ export function LifecycleScheduleGroup({
         ))}
         <Button
           disabled={disabled}
+          id={addButtonId}
           onClick={() =>
             setRows([
               ...rows,
@@ -131,6 +145,19 @@ export function LifecycleScheduleGroup({
           <Plus data-icon="inline-start" />
           Add schedule
         </Button>
+        {unsaved.length > 0 ? (
+          <ul className="space-y-0.5" data-slot="unsaved-schedules">
+            {unsaved.map((issue) => (
+              <li
+                className="text-warning text-xs"
+                key={unsavedScheduleMessage(issue)}
+              >
+                {unsavedScheduleMessage(issue)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <FieldIssueMessages fieldKey={lifecycleCheckFieldKey("schedule")} />
       </div>
     </ConfigGroup>
   );

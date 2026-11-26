@@ -21,7 +21,6 @@ import {
   withDesktopRevealLevel,
   withInspectedOrigin,
   withInspectorScroll,
-  withInspectorSection,
   withChosenExecution,
   withInspectedSelection,
   withShowSuperseded,
@@ -281,62 +280,6 @@ export const recordInspectorScrollAtom = atom(
 );
 
 /**
- * Record the Focus section a sectioned inspector shows for a named address.
- * Like a scroll, the write is dropped when the address no longer inspects the
- * node `inspectedId` names.
- */
-export const recordInspectorSectionAtom = atom(
-  null,
-  (
-    _get,
-    set,
-    input: {
-      address: WorkspaceAddress;
-      inspectedId: string;
-      section: string | null;
-    }
-  ) => {
-    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
-        workspace.desktop.inspected?.id === input.inspectedId
-          ? withInspectorSection(workspace, input.section)
-          : workspace
-      )
-    );
-  }
-);
-
-/**
- * Select the node `nodeId` alone in a named address and record `section` as
- * the section its inspector has open for editing. One navigation write holds
- * both, so the selection cannot start the new object's section over after the
- * section is recorded.
- *
- * `origin` records where this jump started, for Back to return to. A call that
- * names no origin keeps the origin of a node that was already inspected, so
- * moving between that node's own sections keeps the way back.
- */
-export const openInspectorSectionAtom = atom(
-  null,
-  (
-    _get,
-    set,
-    input: {
-      address: WorkspaceAddress;
-      nodeId: string;
-      section: string;
-      origin?: InspectedOrigin | undefined;
-    }
-  ) => {
-    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
-        withInspectorSection(selectFromOrigin(workspace, input), input.section)
-      )
-    );
-  }
-);
-
-/**
  * Select the node `nodeId` alone in a named address and record `origin` as
  * where the jump started, in one navigation write.
  */
@@ -359,22 +302,20 @@ export const openNodeRevealFromOriginAtom = atom(
   }
 );
 
-/** Select `nodeId` alone, then record `origin` when one is named. */
+/** Select `nodeId` alone, then record `origin` as where the jump started. */
 function selectFromOrigin(
   workspace: WorkspaceNavigation,
   input: {
     address: WorkspaceAddress;
     nodeId: string;
-    origin?: InspectedOrigin | undefined;
+    origin: InspectedOrigin;
   }
 ): WorkspaceNavigation {
   const select = revealFollowsSelection(input.address.key.workspace)
     ? withInspectedSelection
     : withSelection;
   const selected = select(workspace, { nodeIds: [input.nodeId], edgeIds: [] });
-  return input.origin === undefined
-    ? selected
-    : withInspectedOrigin(selected, input.origin);
+  return withInspectedOrigin(selected, input.origin);
 }
 
 /** Forget the active address's inspected object when the graph lost it. */

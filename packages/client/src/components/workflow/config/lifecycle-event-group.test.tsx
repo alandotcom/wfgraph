@@ -109,7 +109,9 @@ function renderPanel(input: {
 
 describe("LifecyclePanel Connection picker", () => {
   it("gives both Event groups clear headings", () => {
-    const view = renderPanel({});
+    const view = renderPanel({
+      rules: { ...startRules, cancelEvents: ["resend/email.bounced"] },
+    });
 
     for (const name of ["Starts when", "Stop a run when"]) {
       const heading = view.getByRole("heading", { level: 4, name });

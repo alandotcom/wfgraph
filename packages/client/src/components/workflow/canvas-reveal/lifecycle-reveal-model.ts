@@ -1,11 +1,13 @@
 /**
- * What the Lifecycle bodies share: the sections in order, the section an issue
- * opens, and the section a scope has open. The section lives in the scope's
- * navigation state beside the inspector scroll, so both restore together.
+ * What the Lifecycle bodies share: the sections in order, which ones a start
+ * shows, the rules "Add a rule" offers, the element each rule's focus lands
+ * on, and the section an issue opens. The phone's full-screen editor shows one
+ * section at a time, recorded on its sheet; the desktop form shows every rule
+ * that is set and has no section state.
  */
 
 import { START_RULE_NAMES } from "#src/components/workflow/config/lifecycle-policy-summary";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { atom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   type ExtensionCatalog,
   uniqueIntegrationsOfEvents,
@@ -16,14 +18,11 @@ import type {
   LifecycleRulesCheckId,
   WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
-import type {
-  DesktopPresentation,
-  InspectedOrigin,
-} from "#src/lib/workflow-navigation-state";
+import { recordMobileSheetSectionAtom } from "#src/lib/mobile-sheet-store";
+import type { InspectedOrigin } from "#src/lib/workflow-navigation-state";
 import {
-  activeRevealPresentationAtom,
+  activeMobileSheetsAtom,
   activeWorkspaceAddressAtom,
-  recordInspectorSectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { useRevealNavigation } from "./use-reveal-navigation";
 
@@ -90,7 +89,7 @@ const LIFECYCLE_RULE_CHOICES = [
   section: LifecycleSectionId;
 }>;
 
-type LifecycleRuleChoice = (typeof LIFECYCLE_RULE_CHOICES)[number];
+export type LifecycleRuleChoice = (typeof LIFECYCLE_RULE_CHOICES)[number];
 
 /** Whether the rule each choice adds is already set in `rules`. */
 const RULE_IS_SET: Readonly<
@@ -208,15 +207,24 @@ function readSectionId(value: string | null): LifecycleSectionId {
   return findSectionId(value) ?? LIFECYCLE_SECTIONS[0].id;
 }
 
-/** The element id of the heading of a section open for editing in place. */
-export function lifecycleSectionHeadingId(section: LifecycleSectionId): string {
-  return `lifecycle-section-${section}`;
+/**
+ * What a rule from "Add a rule" or a jump to a section moves focus to: a
+ * section, or the Start Filter, which the "Starts when" rule holds.
+ */
+export type LifecycleRuleTarget = LifecycleSectionId | "start-filter";
+
+/**
+ * The element id of the first control of a rule in the Start's form, which
+ * takes focus when the rule is added or a jump opens it: the Event picker of
+ * "Starts when" or "Stop a run when", the dropdown of overlapping runs, Add
+ * schedule, the Entity picker, or the first "Filter the arrivals".
+ */
+export function lifecycleRuleTargetId(target: LifecycleRuleTarget): string {
+  return `lifecycle-rule-${target}`;
 }
 
-/** The element id of a section summary's Edit button. */
-export function lifecycleEditButtonId(section: LifecycleSectionId): string {
-  return `lifecycle-edit-${section}`;
-}
+/** The element id of "Add a rule", where focus goes when a rule is removed. */
+export const LIFECYCLE_ADD_RULE_ID = "lifecycle-add-rule";
 
 const LIFECYCLE_CHECK_SECTIONS: Readonly<
   Record<LifecycleRulesCheckId, LifecycleSectionId>
@@ -244,11 +252,12 @@ export function lifecycleIssueSection(
 }
 
 /**
- * Open the Lifecycle Node `nodeId` with `section` open for editing in the
- * active address, selecting it first when another object is selected. `origin`, when given,
- * records where the jump started, which Back returns to. Below `md` it opens
- * the full-screen inspector sheet at `section` over the sheets already open,
- * which is itself the way Back returns.
+ * Open the Lifecycle Node `nodeId` at `section` in the active address,
+ * selecting it first when another object is selected. `origin`, when given,
+ * records where the jump started, which Back returns to. On desktop the form
+ * shows every rule, so focus moves to the section's first control. Below `md`
+ * it opens the full-screen inspector sheet at `section` over the sheets
+ * already open, which is itself the way Back returns.
  */
 export function useOpenLifecycleSection(
   nodeId: string
@@ -260,73 +269,43 @@ export function useOpenLifecycleSection(
       address: store.get(activeWorkspaceAddressAtom),
       nodeId,
       section,
+      targetId: lifecycleRuleTargetId(section),
       origin,
     });
   };
 }
 
+/** The object the top mobile sheet shows, with the section it records. */
+const mobileShownSectionAtom = atom((get) => {
+  const top = get(activeMobileSheetsAtom).at(-1);
+  return top?.inspected
+    ? { inspected: top.inspected, section: top.section }
+    : null;
+});
+
 /**
  * The section the phone's full-screen Lifecycle editor shows for the Lifecycle
- * Node `nodeId`, and `choose`, which records another section. An inspector
- * showing a different object shows the first section.
+ * Node `nodeId`, and `choose`, which records another section on its sheet. A
+ * sheet showing a different object shows the first section.
  */
 export function useLifecycleSection(nodeId: string): {
   section: LifecycleSectionId;
   choose: (section: LifecycleSectionId) => void;
 } {
   const store = useStore();
-  const navigation = useRevealNavigation();
-  const shown = useAtomValue(navigation.shownSectionAtom);
+  const shown = useAtomValue(mobileShownSectionAtom);
+  const recordSection = useSetAtom(recordMobileSheetSectionAtom);
   const section = readSectionId(
     shown?.inspected.id === nodeId ? shown.section : null
   );
   return {
     section,
     choose: (next) => {
-      navigation.recordSection({
+      recordSection({
         address: store.get(activeWorkspaceAddressAtom),
-        nodeId,
+        inspected: { kind: "node", id: nodeId },
         section: next,
       });
     },
   };
-}
-
-/**
- * The section of the Lifecycle Node `nodeId` that the details column has
- * open for editing in place, or null while every section shows its summary.
- * `open` and `close` record the change on the active scope.
- */
-export function useLifecycleOpenSection(nodeId: string): {
-  section: LifecycleSectionId | null;
-  open: (section: LifecycleSectionId) => void;
-  close: () => void;
-} {
-  const store = useStore();
-  const presentation = useAtomValue(activeRevealPresentationAtom);
-  const recordSection = useSetAtom(recordInspectorSectionAtom);
-  const record = (section: LifecycleSectionId | null) =>
-    recordSection({
-      address: store.get(activeWorkspaceAddressAtom),
-      inspectedId: nodeId,
-      section,
-    });
-  return {
-    section: lifecycleOpenSection(presentation, nodeId),
-    open: record,
-    close: () => record(null),
-  };
-}
-
-/**
- * The section of the Lifecycle Node `nodeId` that `presentation` records as
- * open for editing in the details column, or null for none.
- */
-export function lifecycleOpenSection(
-  presentation: DesktopPresentation,
-  nodeId: string
-): LifecycleSectionId | null {
-  return presentation.inspected?.id === nodeId
-    ? findSectionId(presentation.inspectorSection)
-    : null;
 }

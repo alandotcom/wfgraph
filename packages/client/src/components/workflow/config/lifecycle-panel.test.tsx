@@ -13,7 +13,10 @@ import {
   CONCURRENCY_OPTIONS,
   LifecyclePanel,
 } from "#src/components/workflow/config/lifecycle-panel";
+import { FieldIssuesProvider } from "#src/components/workflow/config/field-issues";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
+import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
+import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
@@ -143,6 +146,36 @@ function rulesOf(config: Record<string, unknown>): LifecycleRules {
   return config.lifecycleRules as LifecycleRules;
 }
 
+/** The "Add a rule" item that shows each optional rule's controls. */
+const RULE_MENU_ITEMS: Readonly<Record<string, string>> = {
+  "Stop a run when": "Stop a run when…",
+  "If a run is already in progress": "If a run is already in progress…",
+  "One run per": "One run per…",
+};
+
+/** Chooses `label` from the start's "Add a rule" menu. */
+function addRule(view: RenderResult, label: string) {
+  const trigger = view.getByRole("button", { name: "Add a rule" });
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  fireEvent.keyUp(trigger, { key: "ArrowDown" });
+  fireEvent.click(view.getByRole("menuitem", { name: label }));
+}
+
+/**
+ * Shows the controls of the optional rule labelled `name` when the start has
+ * not set it, the way a builder reaches them: from "Add a rule".
+ */
+function showRule(view: RenderResult, name: string) {
+  const item = RULE_MENU_ITEMS[name];
+  if (
+    item !== undefined &&
+    view.queryAllByLabelText(name).length === 0 &&
+    view.queryAllByRole("combobox", { name }).length === 0
+  ) {
+    addRule(view, item);
+  }
+}
+
 /**
  * Search one of the two pickers and take the first Event it offers.
  *
@@ -154,6 +187,7 @@ function rulesOf(config: Record<string, unknown>): LifecycleRules {
  * once.
  */
 function chooseEvent(view: RenderResult, label: string, query: string) {
+  showRule(view, label);
   const input = view.getByLabelText(label);
   fireEvent.keyDown(input, { key: "ArrowDown" });
   fireEvent.change(input, { target: { value: query } });
@@ -204,6 +238,7 @@ function choosePath(view: RenderResult, eventName: string, option: string) {
 
 /** Pick an overlapping-run setting by the words its option carries. */
 function chooseConcurrency(view: RenderResult, label: string) {
+  showRule(view, "If a run is already in progress");
   fireEvent.click(
     view.getByRole("combobox", { name: "If a run is already in progress" })
   );
@@ -214,6 +249,7 @@ function chooseConcurrency(view: RenderResult, label: string) {
 }
 
 function chooseSelect(view: RenderResult, name: string, option: string) {
+  showRule(view, name);
   fireEvent.click(view.getByRole("combobox", { name }));
   const choice = view.getByRole("option", { name: option });
   fireEvent.pointerDown(choice);
@@ -310,6 +346,7 @@ describe("LifecyclePanel", () => {
           }}
         />
       );
+      showRule(view, label);
       const input = view.getByLabelText(label);
 
       fireEvent.keyDown(input, { key: "ArrowDown" });
@@ -417,7 +454,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    fireEvent.click(view.getByRole("checkbox", { name: "Allow manual runs" }));
+    fireEvent.click(view.getByRole("checkbox", { name: "Can be run by hand" }));
     await waitFor(() => {
       expect(rulesOf(latest).allowManualStart).toBe(false);
     });
@@ -451,17 +488,28 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    expect(view.queryByText(/do not include Event data/)).toBeNull();
+    const manualHelp = () => {
+      fireEvent.click(
+        view.getByRole("button", { name: "About Can be run by hand" })
+      );
+      const text =
+        view.getByRole("dialog", { name: "Can be run by hand" }).textContent ??
+        "";
+      fireEvent.keyDown(document.activeElement ?? document.body, {
+        key: "Escape",
+      });
+      return text;
+    };
+    expect(manualHelp()).not.toContain("carries no Event data");
 
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
     );
 
-    // A consequence of the configuration rather than an explanation of a
-    // control, so it stays in the column rather than moving into the help
-    // popover the Concurrency heading offers.
+    // A consequence of the configuration, said in the help of the control
+    // that allows such runs.
     await waitFor(() => {
-      expect(view.getByText(/do not include Event data/)).toBeTruthy();
+      expect(manualHelp()).toContain("carries no Event data");
     });
   });
 });
@@ -585,39 +633,6 @@ describe("LifecyclePanel Cancel Events", () => {
       expect(rulesOf(latest).correlationPaths).toEqual({
         "app/appointment.created": "patient.id",
       });
-    });
-  });
-
-  // ADR-0007 refuses one Event holding both roles rather than picking a
-  // winner, and the panel runs that same check.
-  it("shows the shared refusal when a pick gives one Event both roles", async () => {
-    let latest: Record<string, unknown> = {
-      lifecycleRules: {
-        startEvents: ["app/appointment.created"],
-        cancelEvents: [],
-        concurrency: "unlimited",
-        allowManualStart: true,
-      },
-    };
-    const view = renderWithCatalog(
-      <ControlledPanel
-        initialConfig={latest}
-        onConfigChange={(config) => {
-          latest = config;
-        }}
-      />
-    );
-
-    expect(view.queryByText("The start needs attention")).toBeNull();
-
-    chooseEvent(view, "Stop a run when", "Appointment created");
-
-    await waitFor(() => {
-      expect(
-        view.getByText(
-          'Event "app/appointment.created" cannot both start and cancel runs of this workflow. Give it one role, or start on one Event and cancel on another.'
-        )
-      ).toBeTruthy();
     });
   });
 });
@@ -859,7 +874,6 @@ describe("LifecyclePanel Correlation Paths", () => {
 
     expect(pathInForce(view, "app/appointment.created")).toBe("appointment.id");
     expect(onConfigChange).not.toHaveBeenCalled();
-    expect(view.queryByText("The start needs attention")).toBeNull();
   });
 
   // Unlimited compares no entities, so there is no value to compare and no input.
@@ -922,7 +936,6 @@ describe("LifecyclePanel Correlation Paths", () => {
     );
 
     expect(view.queryByLabelText("ops/nightly.swept")).toBeNull();
-    expect(view.queryByText("The start needs attention")).toBeNull();
   });
 });
 
@@ -947,12 +960,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
-    expect(
-      view.getByText(
-        "Optional. Track an Entity to match related runs by Entity ID. Add an eligibility rule to require current Entity data."
-      )
-    ).toBeTruthy();
-    chooseSelect(view, "Track runs by", "Appointment");
+    chooseSelect(view, "One run per", "Appointment");
 
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity).toEqual({
@@ -995,7 +1003,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
-    chooseSelect(view, "Track runs by", "Appointment");
+    chooseSelect(view, "One run per", "Appointment");
 
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity).toEqual({
@@ -1058,7 +1066,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       </ExtensionCatalogProvider>
     );
 
-    chooseSelect(view, "Track runs by", "Patient");
+    chooseSelect(view, "One run per", "Patient");
 
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity).toEqual({
@@ -1091,7 +1099,7 @@ describe("LifecyclePanel Entity eligibility", () => {
     ).toBeTruthy();
     expect(
       view
-        .getByRole("combobox", { name: "Track runs by" })
+        .getByRole("combobox", { name: "One run per" })
         .getAttribute("aria-invalid")
     ).toBe("true");
   });
@@ -1112,7 +1120,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
-    chooseSelect(view, "Track runs by", "Appointment");
+    chooseSelect(view, "One run per", "Appointment");
 
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity?.bindings).toEqual({
@@ -1120,9 +1128,13 @@ describe("LifecyclePanel Entity eligibility", () => {
         "ops/nightly.swept": "appointment",
       });
     });
+    // An Event with one binding needs no control, so the help names it.
+    fireEvent.click(view.getByRole("button", { name: "About One run per" }));
     expect(
-      view.getByText("Uses the appointment binding to get the Appointment ID.")
-    ).toBeTruthy();
+      view.getByRole("dialog", { name: "One run per" }).textContent
+    ).toContain(
+      "Nightly sweep uses the appointment binding to get the Appointment ID."
+    );
   });
 
   it("repairs bindings when Lifecycle Events are added or removed", async () => {
@@ -1171,7 +1183,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       <ControlledPanel initialConfig={configuredStart} />
     );
 
-    chooseSelect(view, "Track runs by", "Appointment");
+    chooseSelect(view, "One run per", "Appointment");
     fireEvent.click(
       await view.findByRole("button", { name: "Configure condition" })
     );
@@ -1201,7 +1213,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       <ControlledPanel initialConfig={configuredStart} />
     );
 
-    chooseSelect(view, "Track runs by", "Appointment");
+    chooseSelect(view, "One run per", "Appointment");
     fireEvent.click(
       await view.findByRole("button", { name: "Configure condition" })
     );
@@ -1292,14 +1304,15 @@ describe("LifecyclePanel Entity eligibility", () => {
     );
 
     for (const control of [
-      view.getByRole("combobox", { name: "Track runs by" }),
+      view.getByRole("combobox", { name: "One run per" }),
       view.getByRole("button", { name: "Configure condition" }),
-      view.getByRole("button", {
-        name: "Remove this rule",
-      }),
     ]) {
       expect(control.hasAttribute("disabled")).toBe(true);
     }
+    expect(view.queryByRole("button", { name: /^Remove One run per/ })).toBe(
+      null
+    );
+    expect(view.queryByRole("button", { name: "Add a rule" })).toBeNull();
     expect(
       view
         .getByRole("checkbox", { name: "Before starting a run" })
@@ -1362,7 +1375,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       ]);
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Remove this rule" }));
+    fireEvent.click(view.getByRole("button", { name: "Remove One run per" }));
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity).toBeUndefined();
       expect(rulesOf(latest).entityEligibility).toBeUndefined();
@@ -1370,47 +1383,102 @@ describe("LifecyclePanel Entity eligibility", () => {
   });
 });
 
-describe("LifecyclePanel refusals", () => {
-  // The panel runs the same check Publish refuses a workflow by, so the
-  // sentence is there before a builder waits for a toast to tell them.
-  it("shows the refusal Publish would answer with", () => {
-    const view = renderWithCatalog(
-      <ControlledPanel
-        initialConfig={{
-          lifecycleRules: {
-            startEvents: [],
-            cancelEvents: [],
-            concurrency: "unlimited",
-            allowManualStart: false,
-          },
-        }}
-      />
-    );
+/**
+ * The panel over the editor's issue list for one Lifecycle Node holding
+ * `config`, filled once from the collector the editor's collection pass runs,
+ * inside the provider that hands each refusal to the rule its check reads.
+ */
+function renderWithIssues(config: Record<string, unknown>) {
+  const nodes: WorkflowNode[] = [
+    {
+      id: "lifecycle_1",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: { label: "Start", type: "lifecycle", config },
+    },
+  ];
+  const store = createStore();
+  store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
+  store.set(
+    workflowIssuesAtom,
+    collectWorkflowIssues({
+      nodes,
+      edges: [],
+      catalog: testCatalog,
+      integrations: [],
+    })
+  );
+  const view = render(
+    <ExtensionCatalogProvider value={testCatalog}>
+      <JotaiProvider store={store}>
+        <FieldIssuesProvider nodeId="lifecycle_1">
+          <LifecyclePanel
+            config={config}
+            disabled={false}
+            onUpdateConfig={vi.fn()}
+          />
+        </FieldIssuesProvider>
+      </JotaiProvider>
+    </ExtensionCatalogProvider>
+  );
+  /** The rule labelled `name`, which is the section around its label. */
+  const rule = (name: string) => {
+    const section = view.getByRole("heading", { name }).closest("section");
+    if (!section) {
+      throw new Error(`no rule is labelled ${name}`);
+    }
+    return section;
+  };
+  return { view, rule };
+}
 
-    expect(view.getByText("The start needs attention")).toBeTruthy();
-    expect(
-      view.getByText(
-        "Nothing can start this workflow. Add a Start Event or a schedule, or allow manual starts."
-      )
-    ).toBeTruthy();
+describe("LifecyclePanel refusals", () => {
+  // The editor runs the same checks Publish refuses a workflow by, so the
+  // sentence is there before a builder waits for a toast to tell them.
+  it("shows the refusal Publish would answer with beneath Starts when", () => {
+    const { rule } = renderWithIssues({
+      lifecycleRules: {
+        startEvents: [],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        allowManualStart: false,
+      },
+    });
+
+    expect(rule("Starts when").textContent).toContain(
+      "Nothing can start this workflow. Add a Start Event or a schedule, or allow manual starts."
+    );
   });
 
   it("names an Event the catalog does not declare as the refusal it is", () => {
-    const view = renderWithCatalog(
-      <ControlledPanel
-        initialConfig={{
-          lifecycleRules: {
-            startEvents: ["app/appointment.moved"],
-            cancelEvents: [],
-            concurrency: "unlimited",
-          },
-        }}
-      />
-    );
+    const { rule } = renderWithIssues({
+      lifecycleRules: {
+        startEvents: ["app/appointment.moved"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+      },
+    });
 
-    expect(
-      view.getByText(/^No Event named "app\/appointment\.moved" is defined/)
-    ).toBeTruthy();
+    expect(rule("Starts when").textContent).toMatch(
+      /No Event named "app\/appointment\.moved" is defined/
+    );
+  });
+
+  // ADR-0007 refuses one Event holding both roles rather than picking a
+  // winner.
+  it("shows the refusal for an Event holding both roles", () => {
+    const { rule } = renderWithIssues({
+      lifecycleRules: {
+        startEvents: ["app/appointment.created"],
+        cancelEvents: ["app/appointment.created"],
+        concurrency: "unlimited",
+        allowManualStart: true,
+      },
+    });
+
+    expect(rule("Starts when").textContent).toContain(
+      'Event "app/appointment.created" cannot both start and cancel runs of this workflow. Give it one role, or start on one Event and cancel on another.'
+    );
   });
 });
 
@@ -1464,9 +1532,9 @@ describe("LifecyclePanel start filters", () => {
       />
     );
 
-    expect(view.getAllByRole("button", { name: "Add a filter" })).toHaveLength(
-      1
-    );
+    expect(
+      view.getAllByRole("button", { name: "Filter the arrivals" })
+    ).toHaveLength(1);
     expect(
       view.queryByRole("button", { name: "Filter each Event separately" })
     ).toBeNull();
@@ -1504,10 +1572,10 @@ describe("LifecyclePanel start filters", () => {
 
     // Two Start Events agreeing on no filter is still agreement, so one control
     // stands for both.
-    expect(view.getAllByRole("button", { name: "Add a filter" })).toHaveLength(
-      1
-    );
-    fireEvent.click(view.getByRole("button", { name: "Add a filter" }));
+    expect(
+      view.getAllByRole("button", { name: "Filter the arrivals" })
+    ).toHaveLength(1);
+    fireEvent.click(view.getByRole("button", { name: "Filter the arrivals" }));
 
     await waitFor(() => {
       const filters = rulesOf(latest).startFilters ?? {};
@@ -1539,7 +1607,7 @@ describe("LifecyclePanel start filters", () => {
 
     await waitFor(() => {
       expect(
-        view.getAllByRole("button", { name: "Add a filter" })
+        view.getAllByRole("button", { name: "Filter the arrivals" })
       ).toHaveLength(2);
     });
     expect(
@@ -1567,7 +1635,9 @@ describe("LifecyclePanel start filters", () => {
       })
     );
     fireEvent.click(
-      view.getAllByRole("button", { name: "Add a filter" })[0] as HTMLElement
+      view.getAllByRole("button", {
+        name: "Filter the arrivals",
+      })[0] as HTMLElement
     );
 
     await waitFor(() => {
@@ -1643,7 +1713,7 @@ describe("LifecyclePanel start filters", () => {
 
     expect(
       view
-        .getByRole("button", { name: "Add a filter" })
+        .getByRole("button", { name: "Filter the arrivals" })
         .hasAttribute("disabled")
     ).toBe(true);
   });
@@ -1661,7 +1731,7 @@ describe("LifecyclePanel start filters", () => {
       />
     );
 
-    fireEvent.click(view.getByRole("button", { name: "Add a filter" }));
+    fireEvent.click(view.getByRole("button", { name: "Filter the arrivals" }));
     await waitFor(() => {
       expect(rulesOf(latest).startFilters).toBeTruthy();
     });
@@ -1754,16 +1824,16 @@ describe("LifecyclePanel cancel filters", () => {
       />
     );
 
-    expect(view.getAllByRole("button", { name: "Add a filter" })).toHaveLength(
-      1
-    );
+    expect(
+      view.getAllByRole("button", { name: "Filter the arrivals" })
+    ).toHaveLength(1);
     expect(
       view.getByRole("button", {
         name: "Use a different filter for each cancel event",
       })
     ).toBeTruthy();
 
-    fireEvent.click(view.getByRole("button", { name: "Add a filter" }));
+    fireEvent.click(view.getByRole("button", { name: "Filter the arrivals" }));
 
     await waitFor(() => {
       const filters = rulesOf(latest).cancelFilters ?? {};

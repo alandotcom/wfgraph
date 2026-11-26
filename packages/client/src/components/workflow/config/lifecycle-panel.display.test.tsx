@@ -66,17 +66,12 @@ describe("LifecyclePanel display", () => {
         .textContent
     ).toContain("Start the newest run");
     expect(
-      view.getByRole("checkbox", { name: "Allow manual runs" })
+      view.getByRole("checkbox", { name: "Can be run by hand" })
     ).toBeTruthy();
     expect(
       view.getByRole("heading", { name: "Appointment created" })
     ).toBeTruthy();
     expect(view.getByRole("heading", { name: "Nightly sweep" })).toBeTruthy();
-    expect(
-      view.getByText(
-        "Start and Cancel Events use their Correlation Path values to identify related runs."
-      )
-    ).toBeTruthy();
   });
 
   it("offers no button that switches the panel's mode", () => {
@@ -104,7 +99,7 @@ describe("LifecyclePanel display", () => {
     // disable, so the refusal is carried by aria-disabled.
     expect(
       view
-        .getByRole("checkbox", { name: "Allow manual runs" })
+        .getByRole("checkbox", { name: "Can be run by hand" })
         .getAttribute("aria-disabled")
     ).toBe("true");
     expect(
@@ -117,9 +112,13 @@ describe("LifecyclePanel display", () => {
   it("opens a section's help on a click", () => {
     const view = renderPanel();
 
-    expect(view.queryByText(/A selected Start Event starts a run/)).toBeNull();
+    expect(view.queryByText(/Each arrival of a Start Event starts a run/)).toBe(
+      null
+    );
     fireEvent.click(view.getByRole("button", { name: "About Starts when" }));
-    expect(view.getByText(/A selected Start Event starts a run/)).toBeTruthy();
+    expect(
+      view.getByText(/Each arrival of a Start Event starts a run/)
+    ).toBeTruthy();
   });
 
   it("puts the concurrency setting in force at the top of its help", () => {
@@ -156,6 +155,11 @@ describe("LifecyclePanel display", () => {
       />
     );
 
+    fireEvent.click(
+      view.getByRole("button", {
+        name: "About If a run is already in progress",
+      })
+    );
     expect(
       view.getByText(
         "With no start or Cancel Events, the overlapping-run rule treats all manual runs as related."
@@ -163,31 +167,36 @@ describe("LifecyclePanel display", () => {
     ).toBeTruthy();
   });
 
-  it("shows the selected overlap outcome and keeps alternatives and manual-run details in help", () => {
+  it("keeps what each choice does and the manual-run details in help", () => {
     const view = renderPanel();
 
-    // The editor states the outcome; the summary above it names the choice.
-    expect(
-      view.getAllByText(/End related active runs, then start the new run/)
-    ).toHaveLength(1);
-    expect(view.queryByText(/Each arrival starts a separate run/)).toBeNull();
-    expect(view.queryByText(/The editor and API/)).toBeNull();
+    // The form holds the controls alone.
+    expect(view.queryByText(/End related active runs/)).toBeNull();
+    expect(view.queryByText(/the editor and API/)).toBeNull();
+    expect(view.queryByText(/Correlation Path values/)).toBeNull();
 
     fireEvent.click(
       view.getByRole("button", {
         name: "About If a run is already in progress",
       })
     );
-    expect(view.getByText(/Each arrival starts a separate run/)).toBeTruthy();
-
-    fireEvent.click(
-      view.getByRole("button", { name: "About Allow manual runs" })
-    );
     expect(
-      view.getByText(/The editor and API can start runs manually/)
+      view.getByText(/End related active runs, then start the new run/)
     ).toBeTruthy();
     expect(
-      view.getByText(/Entity tracking and Event Splits require selecting/)
+      view.getByText(
+        "Start and Cancel Events use their Correlation Path values to identify related runs."
+      )
+    ).toBeTruthy();
+
+    fireEvent.click(
+      view.getByRole("button", { name: "About Can be run by hand" })
+    );
+    expect(
+      view.getByText(/the editor and API can start runs by hand/)
+    ).toBeTruthy();
+    expect(
+      view.getByText(/Entity tracking and Event Splits need a Start Event/)
     ).toBeTruthy();
   });
 });

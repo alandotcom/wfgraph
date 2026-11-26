@@ -15,21 +15,33 @@ import {
   type Concurrency,
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { ConfigGroup, ConfigHelp } from "./config-section";
+import { ConfigGroup, ConfigHelp, RemoveGroupButton } from "./config-section";
 import {
   CONCURRENCY_OPTIONS,
   describeRelatedRuns,
   START_RULE_NAMES,
 } from "./lifecycle-policy-summary";
 
+/**
+ * "If a run is already in progress": what a newer start does to related runs
+ * in progress. The control is the dropdown alone; what each choice does, and
+ * which runs count as related, sit behind the label's info icon. With
+ * `onRemove`, the label row offers Remove, which puts the rule back to every
+ * arrival starting its own run.
+ */
 export function LifecycleConcurrencyGroup({
   rules,
   disabled,
   onConcurrencyChange,
+  onRemove,
+  triggerId,
 }: {
   rules: LifecycleRules;
   disabled: boolean;
   onConcurrencyChange: (value: Concurrency) => void;
+  onRemove?: (() => void) | undefined;
+  /** The element id of the dropdown, which focus moves to when the rule is added. */
+  triggerId?: string | undefined;
 }) {
   const catalog = useExtensionCatalog();
   const relatedRunsDescription = describeRelatedRuns(rules, catalog);
@@ -38,67 +50,63 @@ export function LifecycleConcurrencyGroup({
 
   return (
     <ConfigGroup
-      className="py-3 first:pt-0 last:pb-0"
-      help={<ConcurrencyHelp concurrency={rules.concurrency} />}
+      help={
+        <>
+          <ChosenConcurrencyHelp concurrency={rules.concurrency} />
+          {consequence === null ? null : (
+            <p data-slot="overlap-consequence">{consequence}</p>
+          )}
+          <p>{relatedRunsDescription}</p>
+        </>
+      }
       label={START_RULE_NAMES.overlapping}
       prominent
+      trailing={
+        onRemove ? (
+          <RemoveGroupButton
+            disabled={disabled}
+            label={START_RULE_NAMES.overlapping}
+            onRemove={onRemove}
+          />
+        ) : null
+      }
     >
-      <div className="space-y-2">
-        <p className="text-muted-foreground text-xs">
-          {relatedRunsDescription}
-        </p>
-        {/* A dropdown rather than a stack of radio cards, which is what every
-            other one-of-three setting in the panel uses. The three
-            descriptions live in this group's help popover, so the closed
-            control owes the reader nothing. */}
-        <Select
-          disabled={disabled}
-          items={CONCURRENCY_OPTIONS.map((option) => ({
-            label: option.label,
-            value: option.value,
-          }))}
-          onValueChange={whenChosen((value) => {
-            const chosen = readConcurrency(value);
-            if (chosen) {
-              onConcurrencyChange(chosen);
-            }
-          })}
-          value={rules.concurrency}
-        >
-          <SelectTrigger
-            aria-label={START_RULE_NAMES.overlapping}
-            className="w-full"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CONCURRENCY_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          {
-            CONCURRENCY_OPTIONS.find(
-              (option) => option.value === rules.concurrency
-            )?.description
+      <Select
+        disabled={disabled}
+        items={CONCURRENCY_OPTIONS.map((option) => ({
+          label: option.label,
+          value: option.value,
+        }))}
+        onValueChange={whenChosen((value) => {
+          const chosen = readConcurrency(value);
+          if (chosen) {
+            onConcurrencyChange(chosen);
           }
-        </p>
-        {consequence === null ? null : (
-          <p className="text-sm" data-slot="overlap-consequence">
-            {consequence}
-          </p>
-        )}
-      </div>
+        })}
+        value={rules.concurrency}
+      >
+        <SelectTrigger
+          aria-label={START_RULE_NAMES.overlapping}
+          className="w-full"
+          id={triggerId}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {CONCURRENCY_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </ConfigGroup>
   );
 }
 
 /**
- * Whether a person may start a run by hand, from the editor or the API. It
- * sits with the Start Events, since both answer what starts a run.
+ * "Can be run by hand": whether a person may start a run from the editor or
+ * the API. It sits with the Start Events, since both answer what starts a run.
  */
 export function LifecycleManualStartGroup({
   rules,
@@ -111,33 +119,29 @@ export function LifecycleManualStartGroup({
 }) {
   const manualStartId = useId();
   return (
-    <div className="space-y-2 border-t pt-3">
-      <p className="font-medium text-sm">Manual starts</p>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          checked={rules.allowManualStart === true}
-          disabled={disabled}
-          id={manualStartId}
-          onCheckedChange={onManualStartChange}
-        />
-        <div className="flex items-center gap-1">
-          <Label htmlFor={manualStartId}>Allow manual runs</Label>
-          <ConfigHelp label="Allow manual runs">
-            <ul className="list-disc space-y-1 pl-4">
-              <li>The editor and API can start runs manually.</li>
-              <li>When this is off, only Start Events can start runs.</li>
-              <li>
-                Entity tracking and Event Splits require selecting a Start
-                Event.
-              </li>
-            </ul>
-          </ConfigHelp>
-        </div>
-      </div>
-      <ManualRunPayloadNotice rules={rules} />
+    <div className="flex min-h-6 items-center gap-2">
+      <Checkbox
+        checked={rules.allowManualStart === true}
+        disabled={disabled}
+        id={manualStartId}
+        onCheckedChange={onManualStartChange}
+      />
+      <Label className="text-sm" htmlFor={manualStartId}>
+        {MANUAL_START_LABEL}
+      </Label>
+      <ConfigHelp label={MANUAL_START_LABEL}>
+        <p>When this is on, the editor and API can start runs by hand.</p>
+        <p>Entity tracking and Event Splits need a Start Event.</p>
+        {rules.startEvents.length > 0 ? null : (
+          <p>A run started by hand carries no Event data for later steps.</p>
+        )}
+      </ConfigHelp>
     </div>
   );
 }
+
+/** The label of the checkbox that allows runs started by hand. */
+const MANUAL_START_LABEL = "Can be run by hand";
 
 /**
  * The typed Concurrency a Select handed back, or nothing for a value the
@@ -148,33 +152,15 @@ function readConcurrency(value: string): Concurrency | undefined {
   return CONCURRENCY_OPTIONS.find((option) => option.value === value)?.value;
 }
 
-function ConcurrencyHelp({ concurrency }: { concurrency: Concurrency }) {
-  const chosenFirst = [
-    ...CONCURRENCY_OPTIONS.filter((option) => option.value === concurrency),
-    ...CONCURRENCY_OPTIONS.filter((option) => option.value !== concurrency),
-  ];
-
-  return (
-    <>
-      {chosenFirst.map((option) => (
-        <p key={option.value}>
-          <span className="font-medium text-foreground">{option.label}</span>{" "}
-          {option.description}
-        </p>
-      ))}
-    </>
+/** The choice in force, named as its option reads, with what it does. */
+function ChosenConcurrencyHelp({ concurrency }: { concurrency: Concurrency }) {
+  const option = CONCURRENCY_OPTIONS.find(
+    (entry) => entry.value === concurrency
   );
-}
-
-function ManualRunPayloadNotice({ rules }: { rules: LifecycleRules }) {
-  if (rules.startEvents.length > 0) {
-    return null;
-  }
-
-  return (
-    <p className="text-muted-foreground text-xs">
-      Manual runs do not include Event data. Add a Start Event if later steps
-      need fields from an Event.
+  return option ? (
+    <p>
+      <span className="font-medium text-foreground">{option.label}</span>{" "}
+      {option.description}
     </p>
-  );
+  ) : null;
 }

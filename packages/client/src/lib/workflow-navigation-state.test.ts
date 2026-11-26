@@ -15,7 +15,6 @@ import {
   withDesktopRevealLevel,
   withInspectedOrigin,
   withInspectorScroll,
-  withInspectorSection,
   withChosenExecution,
   withoutDraftSelections,
   withInspectedSelection,
@@ -443,41 +442,7 @@ describe("details column state", () => {
     expect(other.desktop.inspectorScroll).toEqual({ browse: 0, focus: 0 });
   });
 
-  it("keeps the inspected object's section and starts another object's over", () => {
-    const opened = withInspectorSection(
-      withInspectedSelection(EMPTY, nodeSelection("step_a")),
-      "entity-eligibility"
-    );
-    expect(opened.desktop.inspectorSection).toBe("entity-eligibility");
-    expect(withInspectorSection(opened, "entity-eligibility")).toBe(opened);
-
-    const scrolled = withInspectorScroll(
-      withInspectorScroll(opened, "browse", 90),
-      "focus",
-      240
-    );
-    expect(
-      withInspectorSection(scrolled, "validation").desktop.inspectorScroll
-    ).toEqual({ browse: 90, focus: 0 });
-
-    const cleared = withSelection(opened, EMPTY_SELECTION);
-    const again = withInspectedSelection(cleared, nodeSelection("step_a"));
-    expect(again.desktop.inspectorSection).toBe("entity-eligibility");
-
-    const other = withInspectedSelection(again, nodeSelection("step_b"));
-    expect(other.desktop.inspectorSection).toBeNull();
-    expect(
-      inspectionInGraph(
-        withInspectorSection(
-          withInspectedSelection(EMPTY, nodeSelection("gone")),
-          "validation"
-        ),
-        graph
-      ).desktop.inspectorSection
-    ).toBeNull();
-  });
-
-  it("keeps the inspected object's origin across its own section changes and clears it for another object", () => {
+  it("keeps the inspected object's origin and clears it for another object", () => {
     const origin = { nodeId: "split_a" };
     const opened = withInspectedOrigin(
       withInspectedSelection(EMPTY, nodeSelection("lifecycle_a")),
@@ -485,9 +450,6 @@ describe("details column state", () => {
     );
     expect(opened.desktop.inspectedOrigin).toBe(origin);
     expect(withInspectedOrigin(opened, origin)).toBe(opened);
-
-    const resectioned = withInspectorSection(opened, "start-events");
-    expect(resectioned.desktop.inspectedOrigin).toBe(origin);
 
     const other = withInspectedSelection(opened, nodeSelection("step_b"));
     expect(other.desktop.inspectedOrigin).toBeNull();
