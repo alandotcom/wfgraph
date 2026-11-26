@@ -806,6 +806,26 @@ sources, apart from the source checks each later batch records.
   `packages/core/src/backend/agent/chat.test.ts` and `step-loop.test.ts`
   cover the retry and its bound.
 
+### The floating outline and Inspector (packages at 4.1.2, branch feat/floating-inspector)
+
+- The editor drops its docked side columns. The canvas fills the editor, the
+  outline floats at its top left, and the Inspector is a card at the right
+  edge of the canvas that opens while something is selected. The rest of the
+  diff is under `packages/client/src`, plus two `@wfgraph/shared` helpers the
+  editor reads, and teaches an adopter nothing. `docs/embedding.md` renames
+  "Workspaces and columns" to "Workspaces and the canvas" and says the editor
+  shows an Action Link in its Inspector.
+- host-actions: the links paragraph names the Inspector, whose step view
+  (`packages/client/src/components/workflow/canvas-reveal/step-browse.tsx`)
+  renders a host action's links, as
+  `packages/client/src/components/workflow/inspector/inspector-contents.test.tsx`
+  checks. The domain map's link task says the same.
+- No change: wfgraph-core and the other skills, whose cited sections of
+  `docs/embedding.md` did not change. "Workspaces and the canvas" stays
+  without a skill, as recorded under "Assessed scope".
+- Checks: `intent validate` and `intent maintainer check`, recorded in the
+  review state.
+
 ### Remaining work
 
 1. Add discovery prompts for every skill, and executable task checks for
