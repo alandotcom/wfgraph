@@ -288,7 +288,8 @@ the status strip beneath it, and everything else floats over the canvas: the
 outline at the top left, the zoom controls at the bottom left, the agent's
 prompt line at the bottom, and the Inspector at the right edge while something
 is selected. Each of them floats inside the canvas box, so the box never
-changes size. The selected workspace uses a Graphite Ink fill with Paper text. Tone,
+changes size. React Flow's attribution, a 24px link in muted Caption type,
+sits at the top centre of the canvas, where none of them reach. The selected workspace uses a Graphite Ink fill with Paper text. Tone,
 rather than an accent stripe, marks the active workflow.
 
 The workflow workspace has two views: **Draft** and **Runs**. A

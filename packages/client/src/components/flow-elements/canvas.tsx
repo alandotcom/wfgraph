@@ -50,6 +50,11 @@ function ZoomPublisher() {
 export const Canvas = ({ children, ...props }: CanvasProps) => {
   return (
     <ReactFlow
+      // React Flow's attribution stays visible, as its maintainers ask of a
+      // project without a Pro subscription. The top centre is the one place
+      // on the canvas the outline, the zoom controls, the agent's line and the
+      // Inspector never reach, and the camera keeps cards 24px clear of it.
+      attributionPosition="top-center"
       deleteKeyCode={["Backspace", "Delete"]}
       // Group needs a multi-select; xyflow defaults this to Meta/Control only.
       multiSelectionKeyCode={["Meta", "Control", "Shift"]}

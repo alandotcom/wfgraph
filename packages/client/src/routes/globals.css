@@ -550,18 +550,40 @@
   text-align: left;
 }
 
-/* React Flow attribution styling */
+/* React Flow attribution styling. The link is the target, 24px tall so it
+   meets WCAG 2.5.8, and it centres on the canvas: React Flow offsets a
+   centred panel by its 15px margin, which the attribution sets to 0. */
 .react-flow__attribution {
   background: transparent !important;
   color: var(--muted-foreground) !important;
-  padding: 2px 4px !important;
+  padding: 0 !important;
   font-size: 0.75rem !important;
   opacity: 1 !important;
 }
 
+.react-flow__panel.react-flow__attribution.top.center {
+  transform: translateX(-50%);
+}
+
 .react-flow__attribution a {
+  position: relative;
+  display: block;
+  padding: 4px 8px;
+  line-height: 1rem;
   color: var(--muted-foreground) !important;
   opacity: 1 !important;
+}
+
+/* On a phone the link answers a finger 44px tall, reaching down into the
+   canvas, since React Flow's box clips anything above its top edge. */
+@media (width < theme(--breakpoint-md)) {
+  .react-flow__attribution a::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    bottom: -1.25rem;
+  }
 }
 
 .dark .react-flow__attribution {
