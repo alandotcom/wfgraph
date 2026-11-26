@@ -104,7 +104,19 @@ function renderAgent(variant: "canvas" | "phone" = "canvas") {
     screen.queryByRole("region", { name: "Agent conversation" });
   const type = (text: string) =>
     fireEvent.change(field(), { target: { value: text } });
-  return { store, field, conversation, type };
+  const lineState = () =>
+    document
+      .querySelector('[data-slot="agent-prompt-line"]')
+      ?.getAttribute("data-state");
+  return { store, field, conversation, type, lineState };
+}
+
+/**
+ * Lets the runtime load the stored thread, which it reads after mounting.
+ * Focus opens the conversation only once the thread holds messages.
+ */
+async function threadLoaded() {
+  await act(async () => {});
 }
 
 function storeThread(text: string) {
@@ -130,25 +142,96 @@ function storeThread(text: string) {
 }
 
 describe("WorkflowAgentView", () => {
-  it("rests as one prompt line, and focusing it opens the conversation", async () => {
-    const { field, conversation } = renderAgent();
-    expect(conversation()).toBeNull();
+  it("rests as a pill, grows on focus, and returns to the pill on blur while empty", () => {
+    const { field, conversation, lineState, type } = renderAgent();
+    expect(lineState()).toBe("pill");
 
     act(() => {
       field().focus();
     });
+    expect(lineState()).toBe("grown");
+    // An empty thread has nothing to show, so focus opens no conversation.
+    expect(conversation()).toBeNull();
 
-    expect(conversation()).not.toBeNull();
+    act(() => {
+      field().blur();
+    });
+    expect(lineState()).toBe("pill");
+
+    // Text keeps the line grown after it loses focus.
+    act(() => {
+      field().focus();
+    });
+    type("Add a Wait");
+    act(() => {
+      field().blur();
+    });
+    expect(lineState()).toBe("grown");
+  });
+
+  it("opens the empty conversation's suggestions on Enter in the empty line", async () => {
+    const { field, conversation, lineState } = renderAgent();
+    act(() => {
+      field().focus();
+    });
+    fireEvent.keyDown(field(), { key: "Enter" });
+
     expect(
       await within(conversation() as HTMLElement).findByText(
         "Explain this workflow"
       )
     ).toBeTruthy();
+    // An open conversation keeps the line grown without focus.
+    act(() => {
+      field().blur();
+    });
+    expect(lineState()).toBe("grown");
+  });
+
+  it("hides the selection chip at rest and shows it once grown", () => {
+    const { store, field } = renderAgent();
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+    });
+    const offer = () =>
+      screen.getByRole("button", { name: /^Attach .*Send 24-hour reminder$/ });
+    expect(offer().closest("[inert]")).not.toBeNull();
+
+    act(() => {
+      field().focus();
+    });
+    expect(offer().closest("[inert]")).toBeNull();
+  });
+
+  it("returns an empty grown line to the pill on Escape and gives up focus", () => {
+    const { store, field, lineState } = renderAgent();
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+      field().focus();
+    });
+    expect(lineState()).toBe("grown");
+
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(document.activeElement).not.toBe(field());
+    expect(lineState()).toBe("pill");
+  });
+
+  it("keeps the line grown on Escape while it holds text", () => {
+    const { field, lineState, type } = renderAgent();
+    act(() => {
+      field().focus();
+    });
+    type("Add a Wait");
+
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(document.activeElement).toBe(field());
+    expect(lineState()).toBe("grown");
   });
 
   it("collapses on Escape and on its close control, keeping the conversation", async () => {
     storeThread("Add a Slack step");
     const { field, conversation } = renderAgent();
+    await threadLoaded();
     act(() => {
       field().focus();
     });
@@ -177,6 +260,7 @@ describe("WorkflowAgentView", () => {
   it("reopens a collapsed conversation from the line that kept focus", async () => {
     storeThread("Add a Slack step");
     const { field, conversation, type } = renderAgent();
+    await threadLoaded();
     act(() => {
       field().focus();
     });
@@ -247,6 +331,7 @@ describe("WorkflowAgentView", () => {
     const { store, field, type } = renderAgent();
     act(() => {
       store.set(selectOnlyNodeAtom, "send");
+      field().focus();
     });
     const offer = await screen.findByRole("button", {
       name: /^Attach .*Send 24-hour reminder$/,
@@ -257,6 +342,8 @@ describe("WorkflowAgentView", () => {
       selector: '[data-slot="agent-attached-step"]',
     });
     expect(chip).toBeTruthy();
+    // The pressed chip leaves with its row, and focus returns to the line.
+    expect(document.activeElement).toBe(field());
     fireEvent.click(
       screen.getByRole("button", { name: /^Remove .*Send 24-hour reminder$/ })
     );
@@ -272,9 +359,10 @@ describe("WorkflowAgentView", () => {
   });
 
   it("sends an attached step with the message and shows it in the thread", async () => {
-    const { store, type, conversation } = renderAgent();
+    const { store, field, type, conversation } = renderAgent();
     act(() => {
       store.set(selectOnlyNodeAtom, "send");
+      field().focus();
     });
     fireEvent.click(
       await screen.findByRole("button", {
@@ -328,6 +416,7 @@ describe("WorkflowAgentView", () => {
   it("clears the thread and its stored copy on New conversation", async () => {
     storeThread("Add a Slack step");
     const { field } = renderAgent();
+    await threadLoaded();
     act(() => {
       field().focus();
     });
@@ -342,7 +431,9 @@ describe("WorkflowAgentView", () => {
   });
 
   it("covers the whole screen with a phone's open conversation, with Back", async () => {
-    const { field, conversation } = renderAgent("phone");
+    const { field, conversation, lineState } = renderAgent("phone");
+    // A phone keeps the full line below its main view.
+    expect(lineState()).toBe("grown");
     const agent = () =>
       document.querySelector<HTMLElement>('[data-slot="workflow-agent"]');
     expect(agent()?.className).not.toContain("fixed");
