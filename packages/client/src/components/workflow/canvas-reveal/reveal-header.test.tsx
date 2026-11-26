@@ -22,7 +22,10 @@ import { RevealHeader } from "./reveal-header";
 
 afterEach(resetAuthorizationGrantsForTests);
 
-function renderHeader(onClose: () => void = () => {}) {
+function renderHeader(
+  onClose: () => void = () => {},
+  selectedId: "send" | "group" = "send"
+) {
   installAuthorizationGrantsForTests(WfGraphOperationIds);
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
@@ -40,6 +43,22 @@ function renderHeader(onClose: () => void = () => {}) {
         position: { x: 0, y: 200 },
         data: { label: "Send reminder", type: "action", config: {} },
       },
+      {
+        id: "group",
+        type: "group",
+        position: { x: 0, y: 400 },
+        width: 400,
+        height: 300,
+        data: { label: "Follow-ups", type: "group" },
+      },
+      ...["first", "second"].map((id) => ({
+        id,
+        type: "action",
+        parentId: "group",
+        extent: "parent" as const,
+        position: { x: 0, y: 0 },
+        data: { label: id, type: "action" as const, config: {} },
+      })),
     ],
     edges: [
       {
@@ -51,7 +70,7 @@ function renderHeader(onClose: () => void = () => {}) {
     ],
   });
   showWorkspaceRoute(store, {});
-  act(() => store.set(selectOnlyNodeAtom, "send"));
+  act(() => store.set(selectOnlyNodeAtom, selectedId));
   render(
     <JotaiProvider store={store}>
       <QueryClientProvider client={new QueryClient()}>
@@ -106,6 +125,20 @@ describe("RevealHeader", () => {
     expect(
       store.get(nodesAtom).find((node) => node.id === "send")?.data.enabled
     ).toBe(false);
+  });
+
+  it("names a Group's kind in its ⋯ menu", async () => {
+    renderHeader(() => {}, "group");
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+
+    const items = (await screen.findAllByRole("menuitem")).map(
+      (item) => item.textContent
+    );
+    expect(items.some((item) => item?.startsWith("Duplicate group"))).toBe(
+      true
+    );
+    expect(items).toContain("Delete Group and steps");
+    expect(items.some((item) => item?.includes("Follow-ups"))).toBe(false);
   });
 
   it("offers no ⋯ menu while the canvas takes no edits", () => {
