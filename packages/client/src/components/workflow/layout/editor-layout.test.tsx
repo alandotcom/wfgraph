@@ -153,26 +153,39 @@ describe("EditorLayout", () => {
     expect(inspector()?.dataset.open).toBe("false");
   });
 
-  it("keeps the agent's box clear of the open card", () => {
+  it("keeps the agent's box in one place as the Inspector opens and closes, clear of the card", () => {
     setViewportWidth(1440);
     const store = renderLayout();
-    const composerRight = () =>
-      Number.parseFloat(
-        document.querySelector<HTMLElement>('[data-slot="agent-composer-box"]')
-          ?.style.right ?? ""
+    const composerBox = () => {
+      const box = document.querySelector<HTMLElement>(
+        '[data-slot="agent-composer-box"]'
       );
-    const closedRight = composerRight();
+      if (box === null) {
+        throw new Error("the agent's box did not render");
+      }
+      return box;
+    };
+    const placement = () => {
+      const { left, right, top, bottom } = getComputedStyle(composerBox());
+      return { left, right, top, bottom };
+    };
+    const closed = placement();
+    const box = composerBox();
 
     act(() => store.set(selectOnlyNodeAtom, "send"));
-
-    // The card covers at least its own width, and the box ends past all of it.
-    const covered = store.get(inspectorCoveredWidthAtom);
-    expect(covered).toBeGreaterThanOrEqual(
-      Number.parseFloat(inspector()?.style.width ?? "")
+    expect(inspector()?.dataset.open).toBe("true");
+    expect(composerBox()).toBe(box);
+    expect(placement()).toEqual(closed);
+    // The box ends past everything the open card covers, its inset included.
+    const card = getComputedStyle(inspector() ?? document.body);
+    expect(Number.parseFloat(closed.right)).toBeGreaterThan(
+      Number.parseFloat(card.width) + Number.parseFloat(card.right)
     );
-    expect(composerRight()).toBeGreaterThan(covered);
+
     act(() => store.set(clearSelectionAtom));
-    expect(composerRight()).toBe(closedRight);
+    expect(placement()).toEqual(closed);
+    act(() => store.set(selectOnlyNodeAtom, "wait"));
+    expect(placement()).toEqual(closed);
   });
 
   it("closes the Inspector while several steps are selected", () => {

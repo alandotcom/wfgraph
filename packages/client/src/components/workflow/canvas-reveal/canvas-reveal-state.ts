@@ -108,7 +108,7 @@ export const INSPECTOR_INSET_PX = 8;
 /**
  * The pixels the Inspector card covers at the right edge of the canvas,
  * counting its inset, while it is open, and 0 while it is closed. The canvas
- * camera keeps placed steps clear of it and the agent's box ends short of it.
+ * camera keeps placed steps clear of it.
  */
 export const inspectorCoveredWidthAtom = atom((get): number =>
   get(inspectorOpenAtom) ? INSPECTOR_WIDTH_PX + INSPECTOR_INSET_PX : 0
