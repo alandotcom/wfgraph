@@ -183,11 +183,14 @@ export function measureObstacles(canvas: HTMLElement): Rect[] {
 /**
  * The pixels covered at the right of the canvas element: by the review sheet,
  * which overlays the canvas from the editor's right edge, or by the Inspector
- * card, whichever covers more, and 0 while neither shows. The Inspector card
- * states its width with its inset, because it may still be sliding in when the
- * camera measures.
+ * card, whichever covers more. `inspectorWidth` is the card's covered width as
+ * `inspectorCoveredWidthAtom` publishes it, 0 while it is closed or on a
+ * phone. The card is not measured, because it may still be sliding in.
  */
-export function measureCoveredRightWidth(canvas: HTMLElement): number {
+export function measureCoveredRightWidth(
+  canvas: HTMLElement,
+  inspectorWidth: number
+): number {
   const sheet = document.querySelector('[data-slot="review-sheet"]');
   const sheetOverlap =
     sheet === null
@@ -197,12 +200,7 @@ export function measureCoveredRightWidth(canvas: HTMLElement): number {
           canvas.getBoundingClientRect().right -
             sheet.getBoundingClientRect().left
         );
-  const inspector = Number(
-    document
-      .querySelector<HTMLElement>('[data-slot="inspector-card"]')
-      ?.getAttribute("data-covers-width") ?? 0
-  );
-  return Math.max(sheetOverlap, Number.isFinite(inspector) ? inspector : 0);
+  return Math.max(sheetOverlap, inspectorWidth);
 }
 
 /** The box a placement must show, and the boxes it shows when they also fit. */

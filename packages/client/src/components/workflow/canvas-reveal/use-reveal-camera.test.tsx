@@ -29,6 +29,7 @@ import {
 } from "#src/lib/workflow-save-test-support";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { inspectorCoveredWidthAtom } from "./canvas-reveal-state";
 import { requestRevealPlacementAtom } from "./reveal-requests";
 import { useRevealCamera } from "./use-reveal-camera";
 import {
@@ -281,39 +282,35 @@ describe("useRevealCamera", () => {
   });
 
   it("shows a requested step beside the Inspector, and leaves one already beside it", async () => {
-    const float = document.createElement("section");
-    float.dataset.slot = "inspector-card";
-    float.dataset.coversWidth = "408";
-    document.body.append(float);
-    try {
-      const camera = renderCamera();
-      await camera.settle();
-      const addressId = workspaceAddressId(
-        camera.store.get(activeWorkspaceAddressAtom)
-      );
-      await camera.run(() =>
-        camera.store.set(requestRevealPlacementAtom, {
-          addressId,
-          nodeIds: ["near"],
-        })
-      );
-      expect(camera.moves).toEqual([]);
+    const camera = renderCamera();
+    await camera.settle();
+    // Selecting a step opens the Inspector card over the canvas's right edge.
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "near"));
+    const covered = camera.store.get(inspectorCoveredWidthAtom);
+    expect(covered).toBeGreaterThan(0);
+    const addressId = workspaceAddressId(
+      camera.store.get(activeWorkspaceAddressAtom)
+    );
+    await camera.run(() =>
+      camera.store.set(requestRevealPlacementAtom, {
+        addressId,
+        nodeIds: ["near"],
+      })
+    );
+    expect(camera.moves).toEqual([]);
 
-      await camera.run(() =>
-        camera.store.set(requestRevealPlacementAtom, {
-          addressId,
-          nodeIds: ["far"],
-        })
-      );
-      // The usable canvas ends 408px short of the 1200px edge, at 792px, and
-      // 24px of padding before that. The step's right edge with 64px of
-      // context is at 1364px.
-      expect(camera.moves).toHaveLength(1);
-      expect(camera.moves[0]?.x).toBeCloseTo(-(1364 - (792 - 24)));
-      expect(camera.moves[0]?.zoom).toBe(1);
-    } finally {
-      float.remove();
-    }
+    await camera.run(() =>
+      camera.store.set(requestRevealPlacementAtom, {
+        addressId,
+        nodeIds: ["far"],
+      })
+    );
+    // The usable canvas ends the card's covered width short of the 1200px
+    // edge, and 24px of padding before that. The step's right edge with 64px
+    // of context is at 1364px.
+    expect(camera.moves).toHaveLength(1);
+    expect(camera.moves[0]?.x).toBeCloseTo(-(1364 - (1200 - covered - 24)));
+    expect(camera.moves[0]?.zoom).toBe(1);
   });
 
   it("answers a request for another address once that address shows", async () => {
