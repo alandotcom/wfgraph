@@ -453,15 +453,17 @@ function LifecycleFilterEditor({
   );
 
   /**
-   * The fields a filter can actually compare a payload on.
+   * The field a new filter, rule or rule set starts on: the first field that a
+   * payload carries.
    *
-   * A shared filter is also offered the row naming the arriving Event, which is
-   * not one of them: it says which Event this is rather than what its payload
-   * carries. Seeding on it would open every shared filter as "Event name is
-   * nothing", and counting it would claim a vocabulary where there is none.
+   * A shared filter is also offered the row naming the arriving Event, which
+   * says which Event this is rather than what its payload carries. Seeding on it
+   * would open every shared filter, and every rule added to one, as "Event name
+   * is nothing". With no payload field there is no vocabulary to write a filter
+   * in, so nothing is seeded and the controls that add a rule are disabled.
    */
-  const payloadFields = useMemo(
-    () => fields.filter((field) => field.path !== EVENT_NAME_FIELD_PATH),
+  const seedField = useMemo(
+    () => fields.find((field) => field.path !== EVENT_NAME_FIELD_PATH) ?? null,
     [fields]
   );
 
@@ -473,7 +475,6 @@ function LifecycleFilterEditor({
   );
 
   const seedFilter = useCallback(() => {
-    const seedField = payloadFields[0];
     if (!seedField) {
       return;
     }
@@ -486,7 +487,7 @@ function LifecycleFilterEditor({
         })
       )
     );
-  }, [payloadFields, onChange]);
+  }, [seedField, onChange]);
 
   // With no filter every arrival counts, which the group's help says, so the
   // one control here is the one that adds a filter.
@@ -494,7 +495,7 @@ function LifecycleFilterEditor({
     return (
       <Button
         className="-ml-2 text-muted-foreground"
-        disabled={disabled || payloadFields.length === 0}
+        disabled={disabled || !seedField}
         id={seedButtonId}
         onClick={seedFilter}
         size="sm"
@@ -530,6 +531,7 @@ function LifecycleFilterEditor({
       label={FILTER_RULE_NAMES[role]}
       onChange={handleChange}
       revealUnfinished={revealUnfinished}
+      seedField={seedField}
       value={model}
     />
   );
