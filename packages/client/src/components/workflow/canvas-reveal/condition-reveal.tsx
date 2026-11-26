@@ -10,7 +10,14 @@ import {
 } from "#src/components/workflow/config/action-config";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
-import { NodeDetailsFields } from "#src/components/workflow/node-properties-form";
+import {
+  FieldIssueMessages,
+  FieldIssuesProvider,
+} from "#src/components/workflow/config/field-issues";
+import {
+  NodeDetailsFields,
+  UnplacedNodeIssues,
+} from "#src/components/workflow/node-properties-form";
 import { NodeControls } from "#src/components/workflow/step-controls";
 import { can } from "#src/lib/authorization";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
@@ -274,73 +281,82 @@ export function ConditionSummarySheet({
 
 /**
  * The inspector of a Condition: one sentence saying when it takes True, the
- * rules edited in place beneath it with the Condition's issues under them,
+ * rules edited in place beneath it with the issues that name them under them,
  * both branch destinations, every available input, then its Label and Notes
  * after a divider. Every edit writes to the graph store. Disabling and
  * deleting it are commands of the details header's menu and the context menu.
  */
 export function ConditionEditor({ subject }: RevealBodyProps) {
   const { nodeId } = subject;
-  const { node, fields, branches, issues, disabled } =
-    useConditionContext(nodeId);
+  const { node, fields, branches, disabled } = useConditionContext(nodeId);
   const { updateConfig } = useNodeConfigWriter(nodeId);
   if (!node || nodeId === null) {
     return null;
   }
 
   return (
-    <div className="pb-4">
-      <div className="px-4 pt-3" data-slot="condition-sentence">
-        <RulesSummary config={node.data.config} fields={fields} sentenceOnly />
-      </div>
-
-      <section
-        aria-label="Rule builder"
-        className="space-y-2 border-t px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-        id={CONDITION_RULES_TARGET_ID}
-        tabIndex={-1}
-      >
-        <ConditionFields
-          config={node.data.config ?? {}}
-          disabled={disabled}
-          fields={fields}
-          // Keyed to the node, so the builder's pickers start clean for each
-          // Condition.
-          key={nodeId}
-          nodeId={nodeId}
-          onUpdateConfig={updateConfig}
-        />
-        {/* Every issue of a Condition is about its rules, so each shows
-            beneath the rule builder. */}
-        {issues.length > 0 ? <NodeIssueList issues={issues} /> : null}
-      </section>
-
-      <Section title="Branches">
-        <div className="grid gap-2 sm:grid-cols-2">
-          {(["true", "false"] as const).map((branch) => (
-            <div className="space-y-1 rounded-md border p-3" key={branch}>
-              <p className="font-medium text-sm">{branchLabel(branch)}</p>
-              <BranchTargets branch={branch} targets={branches[branch]} />
-            </div>
-          ))}
+    <FieldIssuesProvider nodeId={nodeId}>
+      <div className="pb-4">
+        <div className="px-4 pt-3" data-slot="condition-sentence">
+          <RulesSummary
+            config={node.data.config}
+            fields={fields}
+            sentenceOnly
+          />
         </div>
-      </Section>
 
-      <Section headingId={INPUTS_HEADING_ID} title="Available inputs">
-        {fields.length === 0 ? (
-          <p className="text-muted-foreground text-xs">{NO_VALUES_MESSAGE}</p>
-        ) : (
-          <ul className="space-y-1">
-            {fields.map((field) => (
-              <ValueRow field={field} key={field.path} />
+        <section
+          aria-label="Rule builder"
+          className="space-y-2 border-t px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          id={CONDITION_RULES_TARGET_ID}
+          tabIndex={-1}
+        >
+          <ConditionFields
+            config={node.data.config ?? {}}
+            disabled={disabled}
+            fields={fields}
+            // Keyed to the node, so the builder's pickers start clean for each
+            // Condition.
+            key={nodeId}
+            nodeId={nodeId}
+            onUpdateConfig={updateConfig}
+          />
+          {/* A Condition's issues name its rules, stored under these two keys,
+            so they show beneath the rule builder. An empty rule set waits, as
+            an empty required field does, until a Run draft or Publish is
+            refused for it. */}
+          <FieldIssueMessages fieldKey={CONDITION_RULES_TARGET_ID} />
+          <FieldIssueMessages fieldKey="conditionModel" />
+          <UnplacedNodeIssues nodeId={nodeId} />
+        </section>
+
+        <Section title="Branches">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(["true", "false"] as const).map((branch) => (
+              <div className="space-y-1 rounded-md border p-3" key={branch}>
+                <p className="font-medium text-sm">{branchLabel(branch)}</p>
+                <BranchTargets branch={branch} targets={branches[branch]} />
+              </div>
             ))}
-          </ul>
-        )}
-      </Section>
+          </div>
+        </Section>
 
-      <div className="space-y-4 border-t px-4 pt-4">
-        <NodeDetailsFields disabled={disabled} node={node} />
+        <Section headingId={INPUTS_HEADING_ID} title="Available inputs">
+          {fields.length === 0 ? (
+            <p className="text-muted-foreground text-xs">{NO_VALUES_MESSAGE}</p>
+          ) : (
+            <ul className="space-y-1">
+              {fields.map((field) => (
+                <ValueRow field={field} key={field.path} />
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        <div className="space-y-4 border-t px-4 pt-4">
+          <NodeDetailsFields disabled={disabled} node={node} />
+        </div>
       </div>
-    </div>
+    </FieldIssuesProvider>
   );
 }
