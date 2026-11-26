@@ -314,11 +314,17 @@ const TEMPLATE_INSERT_HINT =
   "Type @ to insert a value from the Event or an earlier step.";
 
 /**
+ * The placeholder of a template field that has none of its own: the start of
+ * `TEMPLATE_INSERT_HINT`, short enough for one line at the narrowest Inspector.
+ */
+const TEMPLATE_INSERT_PLACEHOLDER = "Type @ to insert a value";
+
+/**
  * Renders a single base field: its label, its control, and the issues that
  * name it. Its help sits behind the info icon beside the label, so each
- * setting reads as its label and its control. A template field with no
- * placeholder of its own says in its placeholder that typing @ inserts a
- * value, and one with a placeholder says it in its help.
+ * setting reads as its label and its control. Every template field's help
+ * says how to insert a value, and one with no placeholder of its own says
+ * the short form of it in its placeholder.
  */
 function renderField(
   field: ActionConfigFieldBase,
@@ -343,15 +349,12 @@ function renderField(
     ? connectionDefaults[field.connectionDefaultKey] || field.placeholder
     : field.placeholder;
   const placeholder =
-    ownPlaceholder ?? (isTemplate ? TEMPLATE_INSERT_HINT : undefined);
+    ownPlaceholder ?? (isTemplate ? TEMPLATE_INSERT_PLACEHOLDER : undefined);
   const FieldRenderer = FIELD_RENDERERS[field.type];
-  // A template field whose placeholder is taken says in its help how to insert
-  // a value, since the `@` that opens the value picker is otherwise nowhere on
-  // screen.
-  const insertHint =
-    isTemplate && ownPlaceholder !== undefined
-      ? TEMPLATE_INSERT_HINT
-      : undefined;
+  // The placeholder goes once the field holds text, and a field with a
+  // placeholder of its own never shows the short form, so the help is where
+  // the whole sentence always is.
+  const insertHint = isTemplate ? TEMPLATE_INSERT_HINT : undefined;
   const helpSentences = compact([field.description, insertHint]);
   const help = helpSentences.join(" ");
   const label = field.label ?? field.key;
