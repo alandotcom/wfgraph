@@ -12,6 +12,7 @@ import { revealPlacementRequestAtom } from "#src/components/workflow/canvas-reve
 import { EditorLayout } from "./editor-layout";
 import {
   detailsFloatOpenAtom,
+  outlineFilterFocusRequestAtom,
   outlineHiddenAtom,
   phoneShowsMapAtom,
 } from "./editor-columns-store";
@@ -219,17 +220,13 @@ describe("EditorLayout", () => {
   });
 
   describe("Find a step", () => {
-    const filterField = () =>
-      document.querySelector<HTMLInputElement>(
-        'input[aria-label="Filter steps"]'
-      );
     const pressFind = () => {
       act(() => {
         fireEvent.keyDown(document.body, { key: "f", metaKey: true });
       });
     };
 
-    it("shows a hidden outline on Cmd+F and puts the cursor in its filter", () => {
+    it("shows a hidden outline on Cmd+F and asks it for its filter", () => {
       setViewportWidth(1440);
       const store = renderLayout();
       pressKey("[");
@@ -239,7 +236,7 @@ describe("EditorLayout", () => {
 
       expect(floatingOutline()).not.toBeNull();
       expect(store.get(outlineHiddenAtom)).toBe(false);
-      expect(document.activeElement).toBe(filterField());
+      expect(store.get(outlineFilterFocusRequestAtom)).toBe(true);
     });
 
     it("leaves a phone's map for the outline", () => {
@@ -252,7 +249,7 @@ describe("EditorLayout", () => {
       pressFind();
 
       expect(store.get(phoneShowsMapAtom)).toBe(false);
-      expect(document.activeElement).toBe(filterField());
+      expect(store.get(outlineFilterFocusRequestAtom)).toBe(true);
     });
 
     it("leaves Cmd+F to the outline while it is on screen", () => {

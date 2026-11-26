@@ -60,7 +60,7 @@ export function useOutlineControls(): OutlineControls {
       } else {
         setHidden(false);
       }
-      requestFilterFocus((count) => count + 1);
+      requestFilterFocus(true);
     },
   };
 }
