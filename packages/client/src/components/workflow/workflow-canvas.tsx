@@ -38,7 +38,6 @@ import {
   editorChordAllowed,
   keyboardLayerOpen,
 } from "#src/lib/editor-shortcuts";
-import { viewportAnimationDuration } from "#src/lib/motion";
 import {
   canvasGraphAtom,
   displayNodesAtom,
@@ -60,7 +59,6 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   isGeneratingAtom,
   showMinimapAtom,
-  workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
@@ -111,7 +109,6 @@ import {
   canvasSynchronizationKey,
   canvasViewportCorrectionKey,
   synchronizeCanvasGraph,
-  useFitWorkflowGraph,
   useSynchronizedCanvas,
 } from "./workflow-canvas-synchronization";
 import { useOpeningCamera } from "./use-opening-camera";
@@ -165,7 +162,6 @@ export function WorkflowCanvas() {
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
   const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
-  const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
   const currentWorkflowId = useAtomValueRawSync(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
   const onNodesChange = useSetAtom(onNodesChangeAtom);
@@ -329,14 +325,6 @@ export function WorkflowCanvas() {
           width: internalAnchorNode.measured.width,
         }
       : null,
-  });
-  useFitWorkflowGraph({
-    update: workflowGraphUpdate,
-    workflowId: currentWorkflowId,
-    fitView: () =>
-      fitView({
-        ...workflowFitViewOptions(viewportAnimationDuration()),
-      }),
   });
   useDomEvent(
     window,

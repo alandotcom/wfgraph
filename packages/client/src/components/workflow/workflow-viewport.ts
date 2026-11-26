@@ -60,7 +60,27 @@ function agentComposerCoveredHeight(): number {
 }
 
 /**
- * Every fit uses the same limits so a control cannot strand a large workflow.
+ * The screen pixels a fit leaves free at the bottom of the canvas box for the
+ * agent's prompt line, the row a selection adds to it and a gap above both, or
+ * 0 while the line does not show.
+ */
+export function agentComposerReservedHeight(): number {
+  const covered = agentComposerCoveredHeight();
+  return covered > 0
+    ? Math.round(covered + AGENT_CONTEXT_ROW_PX + AGENT_COMPOSER_FIT_GAP_PX)
+    : 0;
+}
+
+/**
+ * The lowest zoom any placement the person did not ask for may choose: opening
+ * a workflow or a view, Tidy layout, an agent's edit, a draft saved elsewhere,
+ * and a change of form factor. It is the lowest zoom at which every card still
+ * shows its title. Only Fit view and zooming by hand go below it.
+ */
+const WORKFLOW_AUTOMATIC_FIT_MIN_ZOOM = WORKFLOW_NUMBER_CARD_ZOOM;
+
+/**
+ * The limits Fit view uses, so the control cannot strand a large workflow.
  * While the agent's prompt line shows, the fit keeps the graph above it and
  * above the row a selection adds to it.
  */
@@ -72,17 +92,15 @@ export function workflowFitViewOptions(duration: number): {
   maxZoom: number;
   duration: number;
 } {
-  const covered = agentComposerCoveredHeight();
+  const reserved = agentComposerReservedHeight();
   return {
     padding:
-      covered > 0
+      reserved > 0
         ? {
             top: WORKFLOW_FIT_VIEW_PADDING,
             left: WORKFLOW_FIT_VIEW_PADDING,
             right: WORKFLOW_FIT_VIEW_PADDING,
-            bottom: `${Math.round(
-              covered + AGENT_CONTEXT_ROW_PX + AGENT_COMPOSER_FIT_GAP_PX
-            )}px`,
+            bottom: `${reserved}px`,
           }
         : WORKFLOW_FIT_VIEW_PADDING,
     minZoom: WORKFLOW_CANVAS_MIN_ZOOM,
@@ -132,25 +150,32 @@ function viewportShowsGraph(input: {
 /**
  * Where the camera opens a workflow, or a workspace view that has no
  * remembered camera, inside `usable`: the canvas pixels the floating controls
- * leave.
+ * leave. Every other automatic placement of the whole graph uses it too.
  *
  * The zoom fits the whole graph with the padding and the ceiling of zoom 1
- * that Fit view uses, and never goes below `WORKFLOW_NUMBER_CARD_ZOOM`, so a
- * workflow opens with every card showing its title. It never goes above
- * `zoomLimit`, which is that ceiling when a workflow opens and the current zoom
- * when a view changes, so a view change never zooms in. The Lifecycle card sits
- * at the top center of `usable` when the graph shows whole there. A graph that
- * fits but would clip at that anchor is centered. A graph that does not fit at
- * the compact tier's lowest zoom keeps the anchor and runs off the bottom edge;
- * Fit view still fits it whole.
+ * that Fit view uses, and never goes below `WORKFLOW_AUTOMATIC_FIT_MIN_ZOOM`,
+ * so every card shows its title. It never goes above `zoomLimit`, which is
+ * that ceiling when a workflow opens and the current zoom when a view changes,
+ * so a view change never zooms in. The Lifecycle card sits at the top center of
+ * `usable` when the graph shows whole there; with `lifecycle` null the top
+ * center of the graph takes its place. A graph that fits but would clip at
+ * that anchor is centered. A graph that does not fit at the floor keeps the
+ * anchor and runs off the bottom edge; Fit view still fits it whole.
  */
 export function openingViewport(input: {
   usable: Bounds;
   graphBounds: Bounds;
-  lifecycle: { nodePosition: { x: number; y: number }; nodeWidth: number };
+  lifecycle: {
+    nodePosition: { x: number; y: number };
+    nodeWidth: number;
+  } | null;
   zoomLimit: number;
 }): Viewport {
   const { usable, graphBounds } = input;
+  const anchor = input.lifecycle ?? {
+    nodePosition: { x: graphBounds.x, y: graphBounds.y },
+    nodeWidth: graphBounds.width,
+  };
   const fitted = getViewportForBounds(
     graphBounds,
     usable.width,
@@ -161,12 +186,12 @@ export function openingViewport(input: {
   );
   const zoom = Math.min(
     input.zoomLimit,
-    Math.max(fitted.zoom, WORKFLOW_NUMBER_CARD_ZOOM)
+    Math.max(fitted.zoom, WORKFLOW_AUTOMATIC_FIT_MIN_ZOOM)
   );
   const anchored = lifecycleAnchorViewport({
     canvasWidth: usable.width,
-    nodePosition: input.lifecycle.nodePosition,
-    nodeWidth: input.lifecycle.nodeWidth,
+    nodePosition: anchor.nodePosition,
+    nodeWidth: anchor.nodeWidth,
     top: usable.y + LIFECYCLE_TOP_PX,
     zoom,
   });
@@ -261,7 +286,8 @@ function axisShift(input: {
 /**
  * The viewport that places `bounds` (flow coordinates) inside `usable` (canvas
  * pixels). The zoom is kept when the bounds fit and otherwise
- * decreases just enough to fit them, scaled around their center. Each box in
+ * decreases just enough to fit them, scaled around their center, and no lower
+ * than `minZoom` (the canvas's own lowest zoom unless given). Each box in
  * `optionalBounds` then grows the placed box, in order, while the grown box
  * still fits at that zoom; one that does not fit is left out. Each axis moves
  * the least distance that brings the placed box, with `context` screen pixels
@@ -275,6 +301,7 @@ export function revealViewport(input: {
   optionalBounds?: readonly Bounds[] | undefined;
   padding?: number | undefined;
   context?: number | undefined;
+  minZoom?: number | undefined;
 }): Viewport {
   const { viewport, usable, bounds } = input;
   const padding = input.padding ?? REVEAL_PADDING_PX;
@@ -289,7 +316,7 @@ export function revealViewport(input: {
   );
   const zoom = Math.min(
     viewport.zoom,
-    Math.max(fitZoom, WORKFLOW_CANVAS_MIN_ZOOM)
+    Math.max(fitZoom, input.minZoom ?? WORKFLOW_CANVAS_MIN_ZOOM)
   );
   const centerX = bounds.x + bounds.width / 2;
   const centerY = bounds.y + bounds.height / 2;

@@ -1,6 +1,5 @@
 import {
   getNodesBounds,
-  getViewportForBounds,
   useReactFlow,
   useStore as useFlowStore,
   useStoreApi,
@@ -27,8 +26,10 @@ import {
 } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
+  agentComposerReservedHeight,
+  openingViewport,
   viewportFromWorldCamera,
-  workflowFitViewOptions,
+  WORKFLOW_FIT_VIEW_MAX_ZOOM,
   worldCameraFromViewport,
 } from "./workflow-viewport";
 
@@ -40,8 +41,9 @@ type CanvasSize = { width: number; height: number };
 
 /**
  * The camera a form factor change asked for: the saved camera of the slot
- * reached, or a fit of the graph when that slot has none. `sizeKey` is the
- * canvas size the change saw, which is still the size of the layout being left.
+ * reached, or the graph placed as a workflow opens when that slot has none.
+ * `sizeKey` is the canvas size the change saw, which is still the size of the
+ * layout being left.
  */
 type PendingPlacement = {
   placement: { kind: "restore"; camera: WorldCamera } | { kind: "fit" };
@@ -57,8 +59,8 @@ type PendingPlacement = {
  * `isCanvasPlaced` answers whether the canvas has made its first placement for
  * a workflow. Before that, the viewport is not a camera anyone chose.
  * `paintedNodes` are the nodes this render paints for the active address.
- * Moving to the other form factor where no camera is saved fits the camera to
- * them before paint.
+ * Moving to the other form factor where no camera is saved places the camera
+ * on them before paint, as `openingViewport` places a workflow that opens.
  *
  * The media query can report a form factor change before React Flow measures
  * the resized canvas. The camera the change asks for is placed at once and held
@@ -122,16 +124,25 @@ export function useWorkspaceCamera(input: {
     }
     // React Flow has not installed the nodes of an address just reached, so the
     // bounds come from the painted nodes themselves.
-    const options = workflowFitViewOptions(0);
+    const lifecycle = input.paintedNodes.find(
+      (node) => node.data.type === "lifecycle"
+    );
+    const lifecycleBox = lifecycle ? getNodesBounds([lifecycle]) : null;
     void setViewport(
-      getViewportForBounds(
-        getNodesBounds([...input.paintedNodes]),
-        size.width,
-        size.height,
-        options.minZoom,
-        options.maxZoom,
-        options.padding
-      ),
+      openingViewport({
+        usable: {
+          x: 0,
+          y: 0,
+          width: size.width,
+          height: Math.max(1, size.height - agentComposerReservedHeight()),
+        },
+        graphBounds: getNodesBounds([...input.paintedNodes]),
+        lifecycle: lifecycleBox && {
+          nodePosition: { x: lifecycleBox.x, y: lifecycleBox.y },
+          nodeWidth: lifecycleBox.width,
+        },
+        zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
+      }),
       { duration: 0 }
     );
   };

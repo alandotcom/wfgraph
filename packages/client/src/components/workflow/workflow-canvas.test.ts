@@ -10,7 +10,6 @@ import {
   lifecycleAnchorViewport,
   synchronizeCanvasGraph,
   synchronizedLifecycleAnchor,
-  useFitWorkflowGraph,
   useSynchronizedCanvas,
 } from "#src/components/workflow/workflow-canvas-synchronization";
 import { openingViewport } from "#src/components/workflow/workflow-viewport";
@@ -516,58 +515,6 @@ describe("useSynchronizedCanvas lifecycle anchor", () => {
       position: { x: 500, y: 20 },
       width: 192,
     });
-  });
-});
-
-describe("useFitAgentGraph", () => {
-  it("fits only new agent updates for the open workflow", async () => {
-    vi.useFakeTimers();
-    try {
-      const fitView = vi.fn(async () => true);
-      const { rerender } = renderHook(
-        ({ update, workflowId }) =>
-          useFitWorkflowGraph({
-            update,
-            workflowId,
-            fitView,
-          }),
-        {
-          initialProps: {
-            update: { workflowId: "workflow-a", revision: 1 },
-            workflowId: "workflow-a",
-          },
-        }
-      );
-
-      await act(() => vi.runAllTimersAsync());
-      expect(fitView).not.toHaveBeenCalled();
-
-      rerender({
-        update: { workflowId: "workflow-a", revision: 2 },
-        workflowId: "workflow-a",
-      });
-      await act(() => vi.runAllTimersAsync());
-
-      expect(fitView).toHaveBeenCalledOnce();
-
-      rerender({
-        update: { workflowId: "workflow-a", revision: 3 },
-        workflowId: "workflow-b",
-      });
-      await act(() => vi.runAllTimersAsync());
-
-      expect(fitView).toHaveBeenCalledOnce();
-
-      rerender({
-        update: { workflowId: "workflow-b", revision: 4 },
-        workflowId: "workflow-b",
-      });
-      await act(() => vi.runAllTimersAsync());
-
-      expect(fitView).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 

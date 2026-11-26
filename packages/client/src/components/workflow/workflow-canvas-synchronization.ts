@@ -2,7 +2,6 @@ import { useRef } from "react";
 import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkspaceKey } from "#src/lib/workflow-navigation-state";
-import type { WorkflowGraphUpdate } from "#src/lib/workflow-ui-store";
 export { lifecycleAnchorViewport } from "./workflow-viewport";
 
 type InternalLifecycleAnchor = {
@@ -147,27 +146,6 @@ export function awaitsRunGraph(input: {
     input.workspaceKey.executionId !== null &&
     input.runGraph === null
   );
-}
-
-/** Fit the full canvas after React Flow has installed a complete graph update. */
-export function useFitWorkflowGraph(input: {
-  update: WorkflowGraphUpdate | null;
-  workflowId: string | null;
-  fitView: () => Promise<boolean>;
-}): void {
-  const handledRevisionRef = useRef(input.update?.revision ?? 0);
-
-  useAfterPaint(input.update?.revision ?? 0, () => {
-    const update = input.update;
-    if (!update || update.revision <= handledRevisionRef.current) {
-      return;
-    }
-    handledRevisionRef.current = update.revision;
-    if (update.workflowId !== input.workflowId) {
-      return;
-    }
-    void input.fitView();
-  });
 }
 
 const pairedPresentations = new WeakMap<object, WeakMap<object, object>>();

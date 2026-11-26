@@ -234,6 +234,21 @@ describe("workflow viewport policy", () => {
     });
   });
 
+  it("anchors a graph with no Lifecycle card on the top center of the graph", () => {
+    expect(
+      openingViewport({
+        usable: { x: 0, y: 0, width: 1000, height: 800 },
+        graphBounds: { height: 40_000, width: 400, x: 200, y: 80 },
+        lifecycle: null,
+        zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
+      })
+    ).toEqual({
+      x: 500 - 400 * WORKFLOW_NUMBER_CARD_ZOOM,
+      y: 48 - 80 * WORKFLOW_NUMBER_CARD_ZOOM,
+      zoom: WORKFLOW_NUMBER_CARD_ZOOM,
+    });
+  });
+
   it("draws cards in three tiers: full where its 12px text reads at 12px, compact while a 21px title reads at 11px", () => {
     // The full card's 12px description draws at 12px or more.
     expect(12 * WORKFLOW_COMPACT_CARD_ZOOM).toBeGreaterThanOrEqual(12);

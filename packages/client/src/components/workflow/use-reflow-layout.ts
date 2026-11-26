@@ -7,8 +7,7 @@
  * topology authoring.
  */
 
-import { useReactFlow } from "@xyflow/react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
@@ -18,8 +17,8 @@ import {
   edgesAtom,
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
-import { viewportAnimationDuration } from "#src/lib/motion";
-import { workflowFitViewOptions } from "./workflow-viewport";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { workflowGraphUpdateAtom } from "#src/lib/workflow-ui-store";
 import { useTopologyAuthoring } from "./canvas-interaction";
 
 /**
@@ -52,7 +51,7 @@ export function useReflowLayout(): {
   const topologyAuthoring = useTopologyAuthoring();
   const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const catalog = useExtensionCatalog();
-  const { fitView } = useReactFlow();
+  const store = useStore();
 
   // One node has nothing to be arranged against, and the placeholder `add` node
   // is not one of them.
@@ -79,16 +78,16 @@ export function useReflowLayout(): {
       applyNodeLayout(laidOutNodes);
     }
 
-    // Next frame, because React Flow measures the moved nodes on the paint this
-    // one schedules and `fitView` is fitting around those measurements.
-    window.requestAnimationFrame(() => {
-      Promise.resolve(
-        fitView({
-          ...workflowFitViewOptions(viewportAnimationDuration()),
-        })
-      ).catch(() => undefined);
-    });
-  }, [applyNodeLayout, canReflow, catalog, layoutEdges, fitView, layoutNodes]);
+    // The canvas places its camera after each graph update, once React Flow
+    // holds the moved nodes, the way it places a workflow it opens.
+    const workflowId = store.get(currentWorkflowIdAtom);
+    if (workflowId !== null) {
+      store.set(workflowGraphUpdateAtom, {
+        workflowId,
+        revision: (store.get(workflowGraphUpdateAtom)?.revision ?? 0) + 1,
+      });
+    }
+  }, [applyNodeLayout, canReflow, catalog, layoutEdges, layoutNodes, store]);
 
   return { canReflow, reflow };
 }
