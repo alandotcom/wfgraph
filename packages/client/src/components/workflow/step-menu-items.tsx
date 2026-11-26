@@ -25,7 +25,12 @@ import {
   toggleGroupCollapsedAtom,
 } from "#src/lib/collapsed-groups";
 import { canUngroup } from "#src/lib/node-group";
-import { currentPlatform, isApplePlatform } from "#src/lib/shortcut-label";
+import {
+  currentPlatform,
+  type EditorShortcutLabels,
+  editorShortcutLabels,
+  isApplePlatform,
+} from "#src/lib/shortcut-label";
 import { deleteCanvasSelectionAtom } from "#src/lib/workflow-group-store";
 import {
   copySelectionAtom,
@@ -71,11 +76,6 @@ export type StepMenuItem = {
   destructive?: boolean | undefined;
 };
 
-/** A chord with this keyboard's modifier, such as ⌘D or Ctrl+D. */
-export function chord(key: string): string {
-  return isApplePlatform(currentPlatform()) ? `⌘${key}` : `Ctrl+${key}`;
-}
-
 /** "1 step" or "N steps". */
 function stepsNoun(count: number): string {
   return count === 1 ? "1 step" : `${count} steps`;
@@ -98,6 +98,7 @@ export function useStepMenuItems(input: {
 }): readonly StepMenuItem[] {
   const interaction = useCanvasInteraction();
   const canInsert = interaction.insertsNodes;
+  const keys = editorShortcutLabels(isApplePlatform(currentPlatform()));
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const collapsedGroupIds = useAtomValue(collapsedGroupIdsAtom);
@@ -134,6 +135,7 @@ export function useStepMenuItems(input: {
       });
     return bulkItems({
       selected,
+      keys,
       canInsert,
       grouping: analyzeGroupableSelection({
         nodes,
@@ -226,7 +228,7 @@ export function useStepMenuItems(input: {
       label: "Copy",
       icon: <Copy />,
       group: "arrange",
-      shortcut: chord("C"),
+      shortcut: keys.copy,
       disabled: isLifecycle,
       run: () => copySelection(nodeId),
     },
@@ -235,7 +237,7 @@ export function useStepMenuItems(input: {
       label: "Duplicate",
       icon: <CopyPlus />,
       group: "arrange",
-      shortcut: chord("D"),
+      shortcut: keys.duplicate,
       disabled: isLifecycle || !canInsert,
       run: () => showGraphEditRefusal(duplicateSelection(nodeId)),
     },
@@ -244,7 +246,7 @@ export function useStepMenuItems(input: {
       label: "Group",
       icon: <Group />,
       group: "arrange",
-      shortcut: chord("G"),
+      shortcut: keys.group,
       disabled: !grouping.ok,
       hint: grouping.ok ? undefined : grouping.error,
       run: () => groupSelected({ selectedIds: input.selectedIds }),
@@ -309,6 +311,7 @@ export function useStepMenuItems(input: {
  */
 function bulkItems(input: {
   selected: readonly WorkflowNode[];
+  keys: EditorShortcutLabels;
   canInsert: boolean;
   grouping: ReturnType<typeof analyzeGroupableSelection>;
   group: () => void;
@@ -330,7 +333,7 @@ function bulkItems(input: {
       label: `Group ${count}`,
       icon: <Group />,
       group: "arrange",
-      shortcut: chord("G"),
+      shortcut: input.keys.group,
       disabled: !grouping.ok,
       hint: grouping.ok ? undefined : grouping.error,
       run: input.group,
@@ -343,7 +346,7 @@ function bulkItems(input: {
         label: `Duplicate ${count}`,
         icon: <CopyPlus />,
         group: "arrange",
-        shortcut: chord("D"),
+        shortcut: input.keys.duplicate,
         disabled: !input.canInsert,
         run: input.duplicate,
       },
@@ -352,7 +355,7 @@ function bulkItems(input: {
         label: "Copy",
         icon: <Copy />,
         group: "arrange",
-        shortcut: chord("C"),
+        shortcut: input.keys.copy,
         run: input.copy,
       }
     );

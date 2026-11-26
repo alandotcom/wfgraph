@@ -12,13 +12,17 @@ import {
   pasteCopiedSelectionAtom,
 } from "#src/lib/workflow-graph-store";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
+import {
+  currentPlatform,
+  editorShortcutLabels,
+  isApplePlatform,
+} from "#src/lib/shortcut-label";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import { useCanvasInteraction } from "#src/components/workflow/canvas-interaction";
 import { useInsertStepOnEdge } from "#src/components/workflow/use-add-step";
 import {
-  chord,
   type StepMenuItem,
   startsGroup,
   useStepMenuItems,
@@ -242,7 +246,9 @@ export function WorkflowContextMenu({
             icon={<ClipboardPaste />}
             label="Paste"
             onClick={handlePaste}
-            shortcut={chord("V")}
+            shortcut={
+              editorShortcutLabels(isApplePlatform(currentPlatform())).paste
+            }
           />
         </>
       )}
