@@ -10,7 +10,6 @@ import {
   withMobileInspectorOverAddress,
   withMobileSheet,
   withMobileSheetScroll,
-  withMobileSheetSection,
   withoutTopMobileSheet,
   type MobileRevealLevel,
 } from "#src/lib/mobile-sheet-navigation";
@@ -27,7 +26,7 @@ import {
 
 /**
  * Open a mobile Reveal sheet for `inspected` in a named address, selecting that
- * object alone. `section` records the section a sectioned inspector shows.
+ * object alone.
  */
 export const openMobileSheetAtom = atom(
   null,
@@ -38,7 +37,6 @@ export const openMobileSheetAtom = atom(
       address: WorkspaceAddress;
       level: MobileRevealLevel;
       inspected: InspectedObject;
-      section?: string | null | undefined;
     }
   ) => {
     set(updateAddressNavigationAtom, input.address, (scope) =>
@@ -135,27 +133,6 @@ export const recordMobileSheetScrollAtom = atom(
   ) => {
     set(updateAddressNavigationAtom, input.address, (scope) =>
       withMobileSheetScroll(scope, input)
-    );
-  }
-);
-
-/**
- * Record the section the last mobile sheet of a named address shows. The write
- * is dropped when that sheet no longer shows `inspected`.
- */
-export const recordMobileSheetSectionAtom = atom(
-  null,
-  (
-    _get,
-    set,
-    input: {
-      address: WorkspaceAddress;
-      inspected: InspectedObject;
-      section: string;
-    }
-  ) => {
-    set(updateAddressNavigationAtom, input.address, (scope) =>
-      withMobileSheetSection(scope, input.inspected, input.section)
     );
   }
 );

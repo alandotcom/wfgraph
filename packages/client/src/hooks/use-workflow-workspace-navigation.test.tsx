@@ -236,12 +236,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
       );
       expect(configurationSheet()).toBeNull();
       expect(store.get(activeMobileSheetsAtom)).toEqual([
-        {
-          level: "summary",
-          inspected: null,
-          scroll: 0,
-          section: null,
-        },
+        { level: "summary", inspected: null, scroll: 0 },
       ]);
 
       click("Draft");

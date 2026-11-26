@@ -93,8 +93,8 @@ function OutletTargets({ row }: { row: EventSplitOutletRow }) {
 }
 
 /**
- * The primary action for one owner: the Lifecycle Node at its Start Events or
- * Cancel Events section, or the Wait node's inspector. Either jump records the
+ * The primary action for one owner: the start's form with focus on its Start
+ * Events or Cancel Events, or the Wait node's inspector. Either jump records the
  * Event Split `splitId` as the origin Back returns to. Below `md` the jump
  * opens a sheet over the Event Split's summary, and Back removes it.
  */

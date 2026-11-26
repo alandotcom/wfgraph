@@ -5,7 +5,6 @@ import {
   withMobileSequenceFrom,
   withMobileSheet,
   withMobileSheetScroll,
-  withMobileSheetSection,
   withoutTopMobileSheet,
 } from "#src/lib/mobile-sheet-navigation";
 import {
@@ -39,12 +38,7 @@ describe("mobile Reveal sheets", () => {
   it("opens a summary sheet when one object becomes the Draft selection", () => {
     const selected = withInspectedSelection(EMPTY, nodeSelection("send"));
     expect(selected.mobile.sheets).toEqual([
-      {
-        level: "summary",
-        inspected: node("send"),
-        scroll: 0,
-        section: null,
-      },
+      { level: "summary", inspected: node("send"), scroll: 0 },
     ]);
 
     const other = withInspectedSelection(selected, nodeSelection("wait"));
@@ -78,14 +72,11 @@ describe("mobile Reveal sheets", () => {
     const inspector = withMobileSheet(EMPTY, {
       level: "inspector",
       inspected: node("lifecycle"),
-      section: "cancel-events",
     });
     expect(inspector.selection).toEqual(nodeSelection("lifecycle"));
-    expect(
-      inspector.mobile.sheets.map((sheet) => [sheet.level, sheet.section])
-    ).toEqual([
-      ["summary", null],
-      ["inspector", "cancel-events"],
+    expect(inspector.mobile.sheets.map((sheet) => sheet.level)).toEqual([
+      "summary",
+      "inspector",
     ]);
   });
 
@@ -94,7 +85,6 @@ describe("mobile Reveal sheets", () => {
     const lifecycle = withMobileSheet(split, {
       level: "inspector",
       inspected: node("lifecycle"),
-      section: "start-events",
     });
     expect(lifecycle.selection).toEqual(nodeSelection("lifecycle"));
 
@@ -108,7 +98,7 @@ describe("mobile Reveal sheets", () => {
     expect(withoutTopMobileSheet(closed)).toBe(closed);
   });
 
-  it("keeps each sheet's scroll and section, apart from the desktop inspector", () => {
+  it("keeps each sheet's scroll, apart from the desktop inspector", () => {
     const summary = withInspectedSelection(EMPTY, nodeSelection("send"));
     const scrolled = withMobileSheetScroll(summary, {
       depth: 1,
@@ -145,24 +135,6 @@ describe("mobile Reveal sheets", () => {
       })
     ).toBe(back);
     expect(back.mobile.sheets[0].scroll).toBe(240);
-
-    const sectioned = withMobileSheetSection(
-      withMobileSheetScroll(inspector, {
-        depth: 2,
-        level: "inspector",
-        inspected: node("send"),
-        top: 30,
-      }),
-      node("send"),
-      "connections"
-    );
-    expect(sectioned.mobile.sheets[1]).toMatchObject({
-      section: "connections",
-      scroll: 0,
-    });
-    expect(withMobileSheetSection(sectioned, node("wait"), "other")).toBe(
-      sectioned
-    );
   });
 
   it("closes only the sheets showing an object the graph lost", () => {
@@ -206,12 +178,7 @@ describe("mobile Reveal sheets", () => {
   it("opens an address sheet once, and shows evidence over it without changing the selection", () => {
     const address = withMobileAddressSheet(EMPTY);
     expect(address.mobile.sheets).toEqual([
-      {
-        level: "summary",
-        inspected: null,
-        scroll: 0,
-        section: null,
-      },
+      { level: "summary", inspected: null, scroll: 0 },
     ]);
     expect(withMobileAddressSheet(address)).toBe(address);
 
@@ -269,16 +236,9 @@ describe("mobile Reveal sheets", () => {
   });
 
   it("opens one address sheet at an address reached from one with a sheet open", () => {
-    const source = [
-      {
-        level: "summary" as const,
-        inspected: null,
-        scroll: 30,
-        section: "changes",
-      },
-    ];
+    const source = [{ level: "summary" as const, inspected: null, scroll: 30 }];
     expect(withMobileSequenceFrom(EMPTY, source).mobile.sheets).toEqual([
-      { level: "summary", inspected: null, scroll: 0, section: null },
+      { level: "summary", inspected: null, scroll: 0 },
     ]);
 
     const open = withMobileAddressSheet(EMPTY);
@@ -292,18 +252,8 @@ describe("mobile Reveal sheets", () => {
       mobile: {
         ...EMPTY.mobile,
         sheets: [
-          {
-            level: "summary" as const,
-            inspected: null,
-            scroll: 0,
-            section: null,
-          },
-          {
-            level: "summary" as const,
-            inspected: null,
-            scroll: 12,
-            section: "changes",
-          },
+          { level: "summary" as const, inspected: null, scroll: 0 },
+          { level: "summary" as const, inspected: null, scroll: 12 },
         ],
       },
     };
@@ -311,13 +261,13 @@ describe("mobile Reveal sheets", () => {
     expect(
       pushed.mobile.sheets.map((sheet) => [
         sheet.level,
-        sheet.section,
+        sheet.scroll,
         sheet.inspected?.id ?? null,
       ])
     ).toEqual([
-      ["summary", null, null],
-      ["summary", "changes", null],
-      ["inspector", null, "send"],
+      ["summary", 0, null],
+      ["summary", 12, null],
+      ["inspector", 0, "send"],
     ]);
   });
 });

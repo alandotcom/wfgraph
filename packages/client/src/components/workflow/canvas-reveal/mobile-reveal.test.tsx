@@ -59,6 +59,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { lifecycleRuleTargetId } from "./lifecycle-reveal-model";
 import { MobileReveal, MobileRevealCovered } from "./mobile-reveal";
 
 const catalog: ExtensionCatalog = {
@@ -354,6 +355,12 @@ describe("mobile Reveal focus and camera", () => {
     const { view, select } = await renderMobile();
     await select("split");
     fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
+    // The form opens with focus on the Start Event picker.
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe(
+        lifecycleRuleTargetId("start-events")
+      )
+    );
     fireEvent.click(view.getByRole("button", { name: "Back to Split" }));
     await waitFor(() =>
       expect(document.activeElement?.textContent).toBe("Open start Events")
@@ -406,35 +413,64 @@ describe("mobile Reveal for complex nodes", () => {
     expect(sheet()?.dataset.level).toBe("summary");
   });
 
-  it("opens a Lifecycle section full screen and remembers the section", async () => {
-    const { view, store, sheet, select } = await renderMobile();
+  it("summarizes the start, then edits it full screen in the desktop form", async () => {
+    const { view, sheet, select } = await renderMobile();
     await select("lifecycle-1");
 
-    // A rule the start has not set opens from "Add a rule", and the section
-    // list holds what is set beside the section open now.
-    const trigger = view.getByRole("button", { name: "Add a rule" });
+    // The summary is a plain list of what is set, with one way into the form.
+    const summary = view.getByRole("region", { name: "Start details" });
+    expect(
+      within(summary).getByText("Starts when Appointment created arrives.")
+    ).toBeTruthy();
+    expect(
+      within(summary)
+        .getAllByRole("button")
+        .map((button) => button.textContent)
+    ).not.toContain("Edit");
+    expect(within(summary).queryByRole("button", { name: "Add a rule" })).toBe(
+      null
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Edit start" }));
+    expect(sheet()?.dataset.level).toBe("inspector");
+    expect(view.queryByRole("navigation", { name: "Start rules" })).toBeNull();
+    const inspector = view.getByRole("region", { name: "Start details" });
+    expect(
+      within(inspector).getByRole("heading", { name: "Starts when" })
+    ).toBeTruthy();
+
+    const trigger = within(inspector).getByRole("button", {
+      name: "Add a rule",
+    });
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     fireEvent.keyUp(trigger, { key: "ArrowDown" });
     fireEvent.click(view.getByRole("menuitem", { name: "Stop a run when…" }));
-    expect(sheet()?.dataset.level).toBe("inspector");
-    const list = view.getByRole("navigation", { name: "Start rules" });
     expect(
-      within(list)
-        .getAllByRole("button")
-        .map((entry) => entry.textContent)
-    ).toEqual(["Starts when1", "Stop a run when"]);
-    expect(
-      view
-        .getByRole("button", { name: /^Stop a run when/ })
-        .getAttribute("aria-current")
-    ).toBe("true");
-    expect(store.get(activeMobileSheetsAtom).at(-1)?.section).toBe(
-      "cancel-events"
-    );
+      await within(inspector).findByRole("heading", { name: "Stop a run when" })
+    ).toBeTruthy();
+  });
 
-    fireEvent.click(view.getByRole("button", { name: /^Starts when/ }));
-    expect(store.get(activeMobileSheetsAtom).at(-1)?.section).toBe(
-      "start-events"
+  it("shows a Publish refusal beneath its rule in the phone's form", async () => {
+    const { view, store, select } = await renderMobile();
+    store.set(workflowIssuesAtom, [
+      {
+        kind: "invalid_lifecycle_rules",
+        severity: "blocking",
+        nodeId: "lifecycle-1",
+        nodeLabel: "Start",
+        check: "rules",
+        message: "Choose what starts this workflow.",
+      },
+    ]);
+    await select("lifecycle-1");
+
+    // The summary's issue opens the form at the rule it is about.
+    fireEvent.click(
+      view.getByRole("button", { name: "Choose what starts this workflow." })
+    );
+    const heading = await view.findByRole("heading", { name: "Starts when" });
+    expect(heading.closest("section")?.textContent).toContain(
+      "Choose what starts this workflow."
     );
   });
 

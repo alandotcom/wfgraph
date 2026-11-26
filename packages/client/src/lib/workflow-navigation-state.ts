@@ -420,7 +420,7 @@ export function withDesktopRevealLevel(
  * When the selection comes to hold one object it did not hold alone before,
  * the mobile sequence starts over at that object's summary sheet. A different
  * object than the one inspected becomes the inspected object, and its
- * inspector scroll, section and way back start over. A selection holding no
+ * inspector scroll and way back start over. A selection holding no
  * single object closes the mobile sheets.
  */
 export function withInspectedSelection(
@@ -504,7 +504,7 @@ export function withInspectedOrigin(
 
 /**
  * The workspace without an inspected object the graph no longer holds, and without
- * the scroll and section recorded for it, on either form factor.
+ * the scroll recorded for it, on either form factor.
  */
 export function inspectionInGraph(
   workspace: WorkspaceNavigation,

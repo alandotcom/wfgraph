@@ -37,8 +37,7 @@ import { activeChosenExecutionAtom } from "#src/lib/workflow-workspace-navigatio
 import { ConditionEditor, ConditionSummarySheet } from "./condition-reveal";
 import { EventSplitBrowse } from "./event-split-reveal";
 import { GroupEditor, GroupSummarySheet } from "./group-browse";
-import { LifecycleSummarySheet } from "./lifecycle-browse";
-import { LifecycleEditor, LifecycleFocus } from "./lifecycle-focus";
+import { LifecycleEditor, LifecycleSummarySheet } from "./lifecycle-browse";
 import type { MobileRevealState } from "./canvas-reveal-state";
 import type { MobileSheetControls } from "./mobile-sheet-header";
 import {
@@ -143,9 +142,7 @@ export type RevealUnwind = (input: {
   subject: RevealSubject;
   level: RevealLevel;
   /**
-   * What asked: the Back control, or Escape. The Lifecycle kind's Escape
-   * closes a section open for editing before it steps back, and its Back steps
-   * back at once.
+   * What asked: the Back control, or Escape.
    */
   trigger: "back" | "escape";
   store: Store;
@@ -409,8 +406,8 @@ const GROUP_KIND: RevealKind = {
 
 /**
  * The Draft Lifecycle Node: its rules as one always-editable form. A phone
- * shows a summary on a summary sheet, and each section's Edit opens the
- * sectioned full-screen editor at that section.
+ * shows what the start has set on a summary sheet, and **Edit start** opens
+ * the same form full screen.
  */
 const LIFECYCLE_KIND: RevealKind = {
   id: "lifecycle",
@@ -422,7 +419,8 @@ const LIFECYCLE_KIND: RevealKind = {
   unwind: unwindToInspectedOrigin,
   mobile: {
     Summary: LifecycleSummarySheet,
-    Inspector: LifecycleFocus,
+    Inspector: LifecycleEditor,
+    inspectorLabel: "Edit start",
   },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
