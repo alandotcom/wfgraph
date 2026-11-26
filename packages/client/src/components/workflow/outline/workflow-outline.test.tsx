@@ -19,10 +19,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import {
-  outlineRowElementId,
-  WorkflowOutline,
-} from "#src/components/workflow/outline/workflow-outline";
+import { outlineRowElementId } from "#src/components/workflow/outline/outline-row-view";
+import { WorkflowOutline } from "#src/components/workflow/outline/workflow-outline";
 import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import { commandPaletteAtom } from "#src/lib/command-palette-store";
 import type { ExecutionLog } from "#src/lib/execution-logs";

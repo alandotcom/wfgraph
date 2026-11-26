@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
+import { outlineRowElementId } from "#src/components/workflow/outline/outline-row-view";
 import { focusStepRowOrCard } from "./step-focus-landing";
 
 /** An outline row for `nodeId` inside a floating outline, and its card. */
