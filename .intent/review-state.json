@@ -836,16 +836,16 @@
       ]
     },
     "source:packages/client/src/routes/workflows/[workflowId]/page.tsx": {
-      "fingerprint": "745ce2814b5ffac6e96a73c1b5213b96158cc1c31ba7d16bc9d17ab700fa8f31",
+      "fingerprint": "fc395e920ad0dccc23f59dfec79587512c6bc404894b33afa6bd9cda163d17fe",
       "snapshot": {
-        "packages/client/src/routes/workflows/[workflowId]/page.tsx": "50ad10a2b72f0067b00779f849d2ac514c2399348368ef5fcbd43d1d9290dd25"
+        "packages/client/src/routes/workflows/[workflowId]/page.tsx": "9b671adea2fc85b80b38c1343c598d7ba08bfa1f58a12f8a832a933806f054a8"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Opening the editor lands focus on the outline's first row without a focus ring. Editor focus behaviour no published skill teaches.",
       "evidence": [
-        "packages/client/src/routes/workflows/[workflowId]/page.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/routes/workflows/[workflowId]/page.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/core/src/backend/agent/chat.test.ts": {
@@ -9114,16 +9114,16 @@
       ]
     },
     "source:packages/client/DESIGN.md": {
-      "fingerprint": "047420d65cc4c6089ff707a4c09ecac68b728ed14d3886b764f453b35a770d69",
+      "fingerprint": "d7c1c7154e341db53972d5c8a39a1be65f5345d0b214fc8fa71a3942e3b67e03",
       "snapshot": {
-        "packages/client/DESIGN.md": "f3e9fe5659199675dbd46cd31d127797547782cbab6a9d179a3b7ae997576f1f"
+        "packages/client/DESIGN.md": "1493d0e0603363a4c61dd14771250e796a949fa242fc57b3dcd1a7bbbdd59aec"
       },
-      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
+      "reason": "DESIGN.md now records the Hide agent control's 24px target and the 20px gap above the line, the phone step list's 44px rows and the toolbar's hit areas, the attribution at the top centre, and the 24px targets of connections, the + controls and the issue count. It is the editor's design vocabulary and no published skill's source.",
       "evidence": [
         "packages/client/DESIGN.md",
-        "skills grep for placeholder and template field at cccb8f05"
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/PRODUCT.md": {
@@ -9189,42 +9189,42 @@
       ]
     },
     "source:packages/client/src/components/agent/workflow-agent.test.tsx": {
-      "fingerprint": "ab7b8bf261a81c1b1cb23647dc0e754a7104c508c160bb8d6802e800ffa4a1d1",
+      "fingerprint": "03e61f8a1dbb4069b37c8b9395d338339e9f08f9756a2dca56bffdcd196c55ad",
       "snapshot": {
-        "packages/client/src/components/agent/workflow-agent.test.tsx": "34aec0384e6802743c940ea17fa9c92f2cdca27cdbacf537803cdffc11ca398b"
+        "packages/client/src/components/agent/workflow-agent.test.tsx": "4bb6413670f3d8e62111e0072c2b92e38d67e51f104e1f24c2038a2b8d937399"
       },
-      "head": "d4b84535445900a3306327eda3f3e28a13769163",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
+      "reason": "The chip-row test asserts the row is absent at rest, since the row now unmounts instead of closing inert. A client test that no skill describes.",
       "evidence": [
-        "packages/client/src/components/agent/workflow-agent.test.tsx is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
-        "git show c07dca24 --stat lists this file in the client feature commit"
+        "packages/client/src/components/agent/workflow-agent.test.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/agent/workflow-agent.tsx": {
-      "fingerprint": "fb7ece90f3bbc5bc7103fddc9f5ff3b480e5b122267cd967a15adb02db2b69da",
+      "fingerprint": "55a95adebf3ce13bfddee6b029573385b0d117d70981a1f2d8c1cdd35fe15e06",
       "snapshot": {
-        "packages/client/src/components/agent/workflow-agent.tsx": "d0a1cde9cc4cb736d95ece3a7778a5d7efff64f4b7f62683fd4b998784cfc9ce"
+        "packages/client/src/components/agent/workflow-agent.tsx": "680e19f74b85dc256b268df07f184891b2f19fd5707ff15cd3eba80835f6834c"
       },
-      "head": "d4b84535445900a3306327eda3f3e28a13769163",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
+      "reason": "The prompt line grows by a Motion layout animation instead of width and grid-template-rows transitions, the Hide agent control has a 24px target clear of the field, and the chip row carries a data-slot for its touch areas. Hiding, showing and the line's place are unchanged, so the build-agent skill's prompt-line sentences stay true.",
       "evidence": [
-        "packages/client/src/components/agent/workflow-agent.tsx is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
-        "git show c07dca24 --stat lists this file in the client feature commit"
+        "packages/client/src/components/agent/workflow-agent.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/flow-elements/canvas.tsx": {
-      "fingerprint": "5a5b1e192786e078d792e9a95d8fd73563e683439fbf829262e8208581501acc",
+      "fingerprint": "00775002d13f63b69af1256c6f6aa263e03b0ff315b632d9f0cd6b0d1b3cc691",
       "snapshot": {
-        "packages/client/src/components/flow-elements/canvas.tsx": "5726850186453ed756fb22ef88d4baa333fe597ce2b377895ac7e19bf30c5dba"
+        "packages/client/src/components/flow-elements/canvas.tsx": "cf8f2dc6b405dac68e6b77eb3360f1e0807b7520588bb546895da2c32fadaae3"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "React Flow's attribution moves to the top centre of the canvas. An editor layout detail no published skill teaches.",
       "evidence": [
-        "packages/client/src/components/flow-elements/canvas.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/flow-elements/canvas.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/flow-elements/compact-card.test.ts": {
@@ -9361,15 +9361,16 @@
       ]
     },
     "source:packages/client/src/components/flow-elements/edge.tsx": {
-      "fingerprint": "e6f3e65741bb8895f1c0710b437d791d3cb044c22196af4cbfe33d8b4b700cca",
+      "fingerprint": "09cf7fce21e22e2d18d8724fd784db5d87bef99b25e996dd524878161c8c7981",
       "snapshot": {
-        "packages/client/src/components/flow-elements/edge.tsx": "8c98d726cbc4c4e1ddb7956c64a6656b609074617c90ccf8b92be954efb388c5"
+        "packages/client/src/components/flow-elements/edge.tsx": "1dc34079430d2715fca880b66d767eb8e47ab2a0a1965ee4bdc46fc0a370633a"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "A connection's interaction stroke and its + control gain 24px hit areas. Editor canvas internals no published skill teaches.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/flow-elements/edge.tsx"
+        "packages/client/src/components/flow-elements/edge.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/flow-elements/node-issue-badge.tsx": {
@@ -11242,15 +11243,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/nodes/outlet-add-step.tsx": {
-      "fingerprint": "97c3caf1c01e75adbfc1c78e197e781c5f8cc4c21b726bd5e9c1b8b77232369d",
+      "fingerprint": "cf08f9ebf9ae903f9e0ccafe3963cb43cd3286929c6790b0904a96bfa6598ab5",
       "snapshot": {
-        "packages/client/src/components/workflow/nodes/outlet-add-step.tsx": "0a61036337aca501a6a8daa872b5876bcb5626732d94d252ec141a7506eeda57"
+        "packages/client/src/components/workflow/nodes/outlet-add-step.tsx": "e42bc005fa828e054b7574b94ce8c2fa8fd02cb7661392d44b67c5524c10eddd"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "The outlet's + control gains a 24px hit area from its top edge. Editor canvas internals no published skill teaches.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/nodes/outlet-add-step.tsx"
+        "packages/client/src/components/workflow/nodes/outlet-add-step.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/workflow/nodes/outlet-label.tsx": {
@@ -11354,16 +11356,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/outline/workflow-outline.tsx": {
-      "fingerprint": "7fd0a0fed8334892730a439a508987997f951254cf4f263c17dbf101945f41e1",
+      "fingerprint": "062c37e2a58fdf05468d9f0761ae8cbe31c993fd30a56ef17a73e7146a7b81c9",
       "snapshot": {
-        "packages/client/src/components/workflow/outline/workflow-outline.tsx": "0a477c7c18823eaabbda18571d0e6792e202d08b0712179eca8479c92d3c92fb"
+        "packages/client/src/components/workflow/outline/workflow-outline.tsx": "f96bd4fe566f188c71d7eabd576749a40ec0918526c76cf59cc1779d7d01ffc1"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A row's focus tints its card only when the row is focus-visible, so the editor's quiet focus on open tints nothing. Editor outline behaviour no published skill teaches.",
       "evidence": [
-        "packages/client/src/components/workflow/outline/workflow-outline.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/outline/workflow-outline.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/workflow/publication-chip.test.tsx": {
@@ -11561,16 +11563,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/step-focus-landing.ts": {
-      "fingerprint": "48390a3d5739c3b1ff643c02766034866ffd57e01bc154bae5caf7a0fb75526d",
+      "fingerprint": "3238d8c5acfa3eabcdad469e67f459636935e1f0820e3441713dc051f004a056",
       "snapshot": {
-        "packages/client/src/components/workflow/step-focus-landing.ts": "b7b1ea129286222d9339a3ed66f488dafddddacd0cc63741f17eee86f978b37b"
+        "packages/client/src/components/workflow/step-focus-landing.ts": "ec9b44ce04f57e2e5aeb5b137409e72b2755457b93a747055f2e93b33d565fc6"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "focusOutlineCurrentRow takes focusVisible: false for a landing nobody asked for. An editor focus helper no published skill teaches.",
       "evidence": [
-        "packages/client/src/components/workflow/step-focus-landing.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/step-focus-landing.ts",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/workflow/template-text.tsx": {
@@ -11862,15 +11864,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-issues-chip.tsx": {
-      "fingerprint": "bda45c77edf0becb5e6114a993d83dbcfa91ffe93a46671f6f4edc23ef193f82",
+      "fingerprint": "f9e20d1b7727cb1e3477a549ee69c424b7c35b0b6a9e486b583de1e8fb5bf95d",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-issues-chip.tsx": "f1fb0a24baa5eb2ffdad317578650c442f2201e1046bb2aa7206a9c4d96460ea"
+        "packages/client/src/components/workflow/workflow-issues-chip.tsx": "a96d692b14241d1fd6d858051a57af0771afbec2a269fc1acb030dd6ab308faa"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "The status strip's issue count gains a 24px hit area, 44px on a phone. Editor styling no published skill teaches.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/workflow/workflow-issues-chip.tsx"
+        "packages/client/src/components/workflow/workflow-issues-chip.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-layout.ts": {
@@ -12044,16 +12047,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-toolbar.tsx": {
-      "fingerprint": "8082a0a249e44e532fb75a3e7dc9de78e8982144a37ef5bf12d0b06160d1cb12",
+      "fingerprint": "0ae4cff0e6a32deb32359bbd69b15ce79e0c6d471351124351a5d6a4160897f0",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-toolbar.tsx": "d527749e16ddd1338df44b77e72c584495ad89d2b5e4cc25810f54fe345f9858"
+        "packages/client/src/components/workflow/workflow-toolbar.tsx": "babe601c030e8cacdc1430f9be7a9a380c7f64cd8d7b800268dbe64636918a8f"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "The toolbar carries data-slot=\"editor-toolbar\" for its phone hit areas. Editor styling no published skill teaches.",
       "evidence": [
-        "packages/client/src/components/workflow/workflow-toolbar.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/workflow-toolbar.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-version-history.test.tsx": {
@@ -13446,28 +13449,29 @@
       ]
     },
     "source:packages/client/src/routes/globals.css": {
-      "fingerprint": "d1d503cd8513c206e17ef9d7f4eb103e349c493a8e6ec2dccce70aab8970b500",
+      "fingerprint": "f036b9b5e0b58c1480dc65cfb447fd31ba7538eb9e248e1afd396ea199cf1ce7",
       "snapshot": {
-        "packages/client/src/routes/globals.css": "33d7f2408d92a44a6b4e4e3b2c05b1ec572174dee77ca3b8b0016c5908290ead"
+        "packages/client/src/routes/globals.css": "232919de1402a5b90a208585f93c2c15cc51d1c6b0a5c0513013e0b95bb104a4"
       },
-      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
+      "reason": "Phone hit areas for the toolbar and the agent's line, 24px hit areas for connections and the + controls, and the attribution's position and size. Editor styles no published skill teaches.",
       "evidence": [
         "packages/client/src/routes/globals.css",
-        "skills grep for placeholder and template field at cccb8f05"
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/routes/workflows/[workflowId]/editor-open-focus.test.tsx": {
-      "fingerprint": "ac04d75c68fd00014556ac135f940a738e37f97412dd3c148d2212d286b51cba",
+      "fingerprint": "2e3a23d6fa9fcbaf1631f1a3fcc94ea5953529e6a984c38e353856f3ee0e7c28",
       "snapshot": {
-        "packages/client/src/routes/workflows/[workflowId]/editor-open-focus.test.tsx": "95002565059a2be2ffcaaabeb411bd996095ae20cfcb5c82898fea4a12419cfc"
+        "packages/client/src/routes/workflows/[workflowId]/editor-open-focus.test.tsx": "f3998b2019bf923c432c146bdf2915dfcba75992c70abd9ca0a4e90941903383"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "A test that opening the editor focuses the first outline row with focusVisible: false. A client test no skill describes.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/routes/workflows/[workflowId]/editor-open-focus.test.tsx"
+        "packages/client/src/routes/workflows/[workflowId]/editor-open-focus.test.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/routes/workflows/[workflowId]/page.test.tsx": {
@@ -14303,29 +14307,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/outline/outline-filter.tsx": {
-      "fingerprint": "3446ed78270afd6e66a5c724f09f93542c4b10accdbcaa16eff9e1293564e61e",
+      "fingerprint": "a483f6345fa1154c04d283a26378a28950f77d7074497c7ca2f0ee1ff23196ff",
       "snapshot": {
-        "packages/client/src/components/workflow/outline/outline-filter.tsx": "689fccbb791bcaa7fce9fd9a49ea438012877722a24a8d20a896d977cf9e8452"
+        "packages/client/src/components/workflow/outline/outline-filter.tsx": "86f0e1518df114155764371d6412fe5f617c5881bf2e6cb349f46f28d56e10be"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "The phone's Filter steps field is 44px tall at 1rem. Editor outline styling no published skill teaches.",
       "evidence": [
-        "packages/client/src/components/workflow/outline/outline-filter.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/outline/outline-filter.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/workflow/outline/outline-row-view.tsx": {
-      "fingerprint": "cb372efbf0c40be5ee018c28e30ccf986352304f1d3ebeebd7a3140b68d8bd7f",
+      "fingerprint": "6b7e591dafc61b24fa34da54478c6a9a881d9f48bf7a553d9b38401e4c0313dd",
       "snapshot": {
-        "packages/client/src/components/workflow/outline/outline-row-view.tsx": "9f602db5d04867cce47de669e7b8a53ad4583207a18869d7ba23b60b113a8173"
+        "packages/client/src/components/workflow/outline/outline-row-view.tsx": "ac3be407f2d52d6ea4ee2e448664eff97f56524ea54893030bfca4551351d1f1"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "9cc749b42f1b8668d76a58df70a9c6b7661683fa",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "Outline rows and folding headings are 44px on a phone, a folding heading is 24px on desktop, and the fold chevron has a hit area. Editor outline styling no published skill teaches.",
       "evidence": [
-        "packages/client/src/components/workflow/outline/outline-row-view.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/outline/outline-row-view.tsx",
+        "skills grep for attribution, focus ring, Hide agent, touch target, 44px, hit area and step list at 9cc749b4 finds none; the build-agent skill's prompt-line sentences stay true"
       ]
     },
     "source:packages/client/src/components/workflow/outline/runs-outline.test.tsx": {
