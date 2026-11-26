@@ -6,8 +6,9 @@
  * to a value stored on the Connection, so a blank box showing only a generic
  * example told a builder nothing about what the send would actually use. The
  * decision is `renderField`'s, so it is the same for every control: these cover
- * the template field, whose placeholder is a span inside a contenteditable, and
- * the plain text field, whose placeholder is a DOM attribute.
+ * the template field, whose contenteditable names its placeholder as
+ * `aria-placeholder`, and the plain text field, whose placeholder is a DOM
+ * attribute.
  */
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -83,7 +84,9 @@ function renderFields(input: {
 
   return {
     templatePlaceholder: () =>
-      container.querySelector("[data-placeholder]")?.textContent,
+      container
+        .querySelector("[role=textbox][aria-placeholder]")
+        ?.getAttribute("aria-placeholder"),
     attributePlaceholder: (key: string) =>
       container.querySelector(`#${key}`)?.getAttribute("placeholder"),
     withConnectionDefaults: (connectionDefaults: Record<string, string>) => {

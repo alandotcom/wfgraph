@@ -868,9 +868,28 @@ describe("Template badge editing", () => {
     await seedTemplateContext();
   });
 
-  it("does not read its own placeholder back as the value", async () => {
-    // An empty unfocused field shows prompt text, which lives in the same
-    // contentEditable as anything the user types.
+  it("keeps the same placeholder and editor contents when an empty field takes focus", async () => {
+    // The field's box follows what it draws. A placeholder swapped out on
+    // focus changed the box under the pointer and moved every field below it.
+    const view = renderWithCatalog(
+      <PlaceholderTemplateBadgeInput onValueChange={() => {}} />
+    );
+
+    const textbox = view.getByRole("textbox");
+    const placeholderAtRest = view.getByText("Enter a subject line");
+    const editorAtRest = textbox.innerHTML;
+
+    fireEvent.focus(textbox);
+
+    expect(view.getByText("Enter a subject line")).toBe(placeholderAtRest);
+    expect(textbox.innerHTML).toBe(editorAtRest);
+    expect(textbox.contains(placeholderAtRest)).toBe(false);
+    expect(textbox.getAttribute("aria-placeholder")).toBe(
+      "Enter a subject line"
+    );
+  });
+
+  it("hides the placeholder once the field holds text, and reads none of it back", async () => {
     let latestValue = "";
     const view = renderWithCatalog(
       <PlaceholderTemplateBadgeInput
@@ -886,6 +905,7 @@ describe("Template badge editing", () => {
     fireEvent.input(textbox);
 
     await waitFor(() => expect(latestValue).toBe("H"));
+    expect(view.queryByText("Enter a subject line")).toBeNull();
   });
 
   it("keeps what is being typed when a node is renamed", async () => {

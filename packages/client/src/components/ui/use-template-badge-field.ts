@@ -25,14 +25,17 @@ import {
  * Two things still reach the DOM from React, because neither has a DOM event to
  * hang off: the parent supplying a different value while the user is elsewhere,
  * and a node being renamed so the badge labels change under the field.
+ *
+ * The placeholder is not part of the editor. `showsPlaceholder` says when the
+ * component should draw it, over the editor and out of the layout, so focusing
+ * an empty field changes nothing the editor draws and the field keeps its box.
  */
 export function useTemplateBadgeField(input: {
   value: string;
   onChange?: ((value: string) => void) | undefined;
-  placeholder?: string | undefined;
   multiline?: boolean | undefined;
 }) {
-  const { value, onChange, placeholder, multiline } = input;
+  const { value, onChange, multiline } = input;
 
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
@@ -46,6 +49,9 @@ export function useTemplateBadgeField(input: {
   const knownTextRef = useRef(value);
 
   const [isFocused, setIsFocused] = useState(false);
+  // Whether the editor is empty while it has focus, when the handlers below own
+  // its text and `value` may not have caught up with the last keystroke.
+  const [isEmptyWhileFocused, setIsEmptyWhileFocused] = useState(value === "");
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteAnchor, setAutocompleteAnchor] =
     useState<TemplateAutocompleteAnchor>({
@@ -72,26 +78,20 @@ export function useTemplateBadgeField(input: {
     [multiline, catalog]
   );
 
-  // What the field should be showing: its text, and the placeholder that stands
-  // in while there is none. Both are drawn into the same contenteditable, and a
-  // field falling back to a Connection value gets a new placeholder with its
-  // text unchanged, so keying on the text alone would leave the old hint in the
-  // DOM. Paired rather than concatenated, because either half can hold whatever
-  // separator the other would have used.
-  const shownText = JSON.stringify([value, placeholder]);
-
   // The parent handed over different text while the user was somewhere else.
   // While the field is focused the key is frozen, because the handlers below
   // are already keeping the DOM current and a redraw would fight the caret.
-  useAfterCommit(isFocused ? FOCUSED : shownText, () => {
+  useAfterCommit(isFocused ? FOCUSED : value, () => {
     if (!isFocused) {
-      editorRef.current?.render(value, {
-        focused: false,
-        nodes,
-        placeholder,
-      });
+      editorRef.current?.render(value, { focused: false, nodes });
     }
   });
+
+  /** Record the text the handlers just put in the editor. */
+  const rememberText = useCallback((text: string) => {
+    knownTextRef.current = text;
+    setIsEmptyWhileFocused(text === "");
+  }, []);
 
   // Badge labels follow node labels. A rename produces no DOM event, so this is
   // the one genuine render-to-DOM sync left in these components.
@@ -160,7 +160,7 @@ export function useTemplateBadgeField(input: {
     const before = findTemplateTokens(knownTextRef.current).length;
     const after = findTemplateTokens(nextValue).length;
 
-    knownTextRef.current = nextValue;
+    rememberText(nextValue);
     onChange?.(nextValue);
 
     if (before === after) {
@@ -169,8 +169,8 @@ export function useTemplateBadgeField(input: {
     }
 
     setShowAutocomplete(false);
-    editor.render(nextValue, { focused: true, nodes, placeholder });
-  }, [nodes, onChange, placeholder, syncAutocomplete]);
+    editor.render(nextValue, { focused: true, nodes });
+  }, [nodes, onChange, rememberText, syncAutocomplete]);
 
   const handleAutocompleteSelect = useCallback(
     (template: string) => {
@@ -186,7 +186,7 @@ export function useTemplateBadgeField(input: {
       );
       const nextValue = beforeAt + template + afterFilter;
 
-      knownTextRef.current = nextValue;
+      rememberText(nextValue);
       onChange?.(nextValue);
 
       setShowAutocomplete(false);
@@ -199,28 +199,21 @@ export function useTemplateBadgeField(input: {
         caretOffset: beforeAt.length + template.length,
         focused: true,
         nodes,
-        placeholder,
       });
     },
-    [atSignPosition, autocompleteFilter, nodes, onChange, placeholder]
+    [atSignPosition, autocompleteFilter, nodes, onChange, rememberText]
   );
 
+  // Focusing draws nothing: the editor already holds what it shows, and a
+  // redraw would throw away the caret position the click just established.
   const handleFocus = useCallback(() => {
     setIsFocused(true);
 
     // What the field holds is what the DOM holds, not what the last render's
     // prop said. Placing the caret can refocus the container, and reading the
-    // prop there would redraw with a value that has not caught up yet.
-    const currentText = editorRef.current?.readText() ?? value;
-    knownTextRef.current = currentText;
-
-    // Focusing swaps placeholder text for a caret, and that is the only thing
-    // it changes. Redrawing a field that already has content would throw away
-    // the caret position the click just established.
-    if (!currentText) {
-      editorRef.current?.render("", { focused: true, nodes, placeholder });
-    }
-  }, [nodes, value, placeholder]);
+    // prop there would be reading a value that has not caught up yet.
+    rememberText(editorRef.current?.readText() ?? value);
+  }, [rememberText, value]);
 
   const handleBlur = useCallback(() => {
     // Delayed so a click on an autocomplete option still counts as a selection.
@@ -260,17 +253,16 @@ export function useTemplateBadgeField(input: {
       const text = editor.readText();
       const nextValue = text.slice(0, badge.start) + text.slice(badge.end);
 
-      knownTextRef.current = nextValue;
+      rememberText(nextValue);
       onChange?.(nextValue);
       setShowAutocomplete(false);
       editor.render(nextValue, {
         caretOffset: badge.start,
         focused: true,
         nodes,
-        placeholder,
       });
     },
-    [nodes, onChange, placeholder]
+    [nodes, onChange, rememberText]
   );
 
   /**
@@ -341,6 +333,7 @@ export function useTemplateBadgeField(input: {
     closeAutocomplete: useCallback(() => setShowAutocomplete(false), []),
     nodes,
     showAutocomplete,
+    showsPlaceholder: isFocused ? isEmptyWhileFocused : value === "",
   };
 }
 

@@ -61,12 +61,8 @@ export function TemplateBadgeTextarea({
     handleKeyDown,
     handlePaste,
     showAutocomplete,
-  } = useTemplateBadgeField({
-    value,
-    onChange,
-    placeholder,
-    multiline: true,
-  });
+    showsPlaceholder,
+  } = useTemplateBadgeField({ value, onChange, multiline: true });
   const selectedNodeId = useAtomValue(selectedNodeAtom);
   const autocompleteRows = useTemplateAutocompleteRows({
     currentNodeId: selectedNodeId || undefined,
@@ -82,7 +78,7 @@ export function TemplateBadgeTextarea({
           // Matches the shared Textarea: same fill, padding and type size, and
           // on focus a border shift plus the 2px ring-ring halo every other
           // control in the panel draws.
-          "flex w-full rounded-md border border-input bg-input/20 px-2 py-2 text-base transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring md:text-xs/relaxed dark:bg-input/30",
+          "relative flex w-full rounded-md border border-input bg-input/20 px-2 py-2 text-base transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring md:text-xs/relaxed dark:bg-input/30",
           invalid &&
             "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
           disabled && "cursor-not-allowed opacity-50",
@@ -96,6 +92,7 @@ export function TemplateBadgeTextarea({
           aria-describedby={describedBy}
           aria-invalid={invalid || undefined}
           aria-labelledby={labelledBy}
+          aria-placeholder={placeholder}
           aria-required={required || undefined}
           className="w-full whitespace-pre-wrap break-words outline-none"
           contentEditable={!disabled}
@@ -121,6 +118,17 @@ export function TemplateBadgeTextarea({
           role="textbox"
           suppressContentEditableWarning
         />
+        {placeholder && showsPlaceholder ? (
+          // Drawn over the editor and out of the layout, on one line, so the
+          // field keeps one box whether it is focused, empty or typed in. The
+          // textbox carries the same words as `aria-placeholder`.
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-2 top-2 truncate text-muted-foreground"
+          >
+            {placeholder}
+          </span>
+        ) : null}
       </div>
 
       <TemplateAutocomplete
