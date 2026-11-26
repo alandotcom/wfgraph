@@ -208,13 +208,15 @@ describe("WorkflowAgentView", () => {
       store.set(selectOnlyNodeAtom, "send");
     });
     const offer = () =>
-      screen.getByRole("button", { name: /^Attach .*Send 24-hour reminder$/ });
-    expect(offer().closest("[inert]")).not.toBeNull();
+      screen.queryByRole("button", {
+        name: /^Attach .*Send 24-hour reminder$/,
+      });
+    expect(offer()).toBeNull();
 
     act(() => {
       field().focus();
     });
-    expect(offer().closest("[inert]")).toBeNull();
+    expect(offer()).not.toBeNull();
   });
 
   it("returns an empty grown line to the pill on Escape and gives up focus", () => {
