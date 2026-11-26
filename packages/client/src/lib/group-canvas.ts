@@ -23,7 +23,8 @@ import {
 
 export type CanvasGraph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
 export type PaintedCanvasGraph = CanvasGraph & {
-  anchor: { nodeId: string; pinToTop: boolean } | null;
+  /** The Lifecycle card, which the camera's placements anchor on. */
+  anchor: { nodeId: string } | null;
   /** Only painted frames have measurements that must not be stored. */
   projectedNodeIds: ReadonlySet<string>;
 };
@@ -121,7 +122,7 @@ export function workflowCanvasGraph(
   input: CanvasGraph & { collapsedGroupIds: ReadonlySet<string> }
 ): PaintedCanvasGraph {
   const lifecycle = input.nodes.find((node) => node.data.type === "lifecycle");
-  const anchor = lifecycle ? { nodeId: lifecycle.id, pinToTop: true } : null;
+  const anchor = lifecycle ? { nodeId: lifecycle.id } : null;
   const frameIds = new Set(
     input.nodes.filter(isGroupNode).map((node) => node.id)
   );
