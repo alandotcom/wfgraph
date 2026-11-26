@@ -34,46 +34,73 @@ export type LifecycleSectionId =
   | "connections";
 
 /**
+ * The element id of the first control of `section`'s group in the Start's
+ * form, which takes focus when the rule is added or a jump opens it: the
+ * Event picker of "Starts when" or "Stop a run when", the dropdown of
+ * overlapping runs, Add schedule, or the Entity picker. Each group sets it on
+ * its own first control from the section it is given.
+ */
+export function lifecycleRuleTargetId(section: LifecycleSectionId): string {
+  return `lifecycle-rule-${section}`;
+}
+
+/**
+ * The element id of the first "Filter the arrivals" control of the Start or
+ * Cancel Events group `section`.
+ */
+export function lifecycleFilterTargetId(section: LifecycleSectionId): string {
+  return `${lifecycleRuleTargetId(section)}-filter`;
+}
+
+/**
  * The rules "Add a rule" offers, each by the name its section or form heading
- * carries, with the section that edits it. A Start Filter is written in the
- * "Starts when" section, and the Entity and its eligibility rule share one
- * section.
+ * carries, with the section that edits it and the element focus moves to when
+ * it is chosen. A Start Filter is written in the "Starts when" section, at its
+ * first "Filter the arrivals", and the Entity and its eligibility rule share
+ * one section.
  */
 const LIFECYCLE_RULE_CHOICES = [
   {
     id: "start-filter",
     label: `${START_RULE_NAMES.startFilter}…`,
     section: "start-events",
+    targetId: lifecycleFilterTargetId("start-events"),
   },
   {
     id: "cancel-events",
     label: `${START_RULE_NAMES.stop}…`,
     section: "cancel-events",
+    targetId: lifecycleRuleTargetId("cancel-events"),
   },
   {
     id: "overlapping-runs",
     label: `${START_RULE_NAMES.overlapping}…`,
     section: "overlapping-runs",
+    targetId: lifecycleRuleTargetId("overlapping-runs"),
   },
   {
     id: "schedule",
     label: `${START_RULE_NAMES.schedule}…`,
     section: "schedule",
+    targetId: lifecycleRuleTargetId("schedule"),
   },
   {
     id: "entity",
     label: `${START_RULE_NAMES.entity}…`,
     section: "entity-eligibility",
+    targetId: lifecycleRuleTargetId("entity-eligibility"),
   },
   {
     id: "eligibility",
     label: `${START_RULE_NAMES.eligibility}…`,
     section: "entity-eligibility",
+    targetId: lifecycleRuleTargetId("entity-eligibility"),
   },
 ] as const satisfies ReadonlyArray<{
   id: string;
   label: string;
   section: LifecycleSectionId;
+  targetId: string;
 }>;
 
 export type LifecycleRuleChoice = (typeof LIFECYCLE_RULE_CHOICES)[number];
@@ -166,22 +193,6 @@ const RULE_DEFAULTS: Readonly<
     entityEligibility: undefined,
   },
 };
-
-/**
- * What a rule from "Add a rule" or a jump to a section moves focus to: a
- * section, or the Start Filter, which the "Starts when" rule holds.
- */
-export type LifecycleRuleTarget = LifecycleSectionId | "start-filter";
-
-/**
- * The element id of the first control of a rule in the Start's form, which
- * takes focus when the rule is added or a jump opens it: the Event picker of
- * "Starts when" or "Stop a run when", the dropdown of overlapping runs, Add
- * schedule, the Entity picker, or the first "Filter the arrivals".
- */
-export function lifecycleRuleTargetId(target: LifecycleRuleTarget): string {
-  return `lifecycle-rule-${target}`;
-}
 
 /** The element id of "Add a rule", where focus goes when a rule is removed. */
 export const LIFECYCLE_ADD_RULE_ID = "lifecycle-add-rule";

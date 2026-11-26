@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "#src/components/ui/select";
 import { whenChosen } from "#src/lib/select-choice";
+import { lifecycleRuleTargetId } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
 import type { ScheduleIssue } from "@wfgraph/shared/lifecycle/cron-schedule";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { ConfigGroup, RemoveGroupButton } from "./config-section";
@@ -42,7 +43,7 @@ import {
   readWeekday,
   unsavedScheduleMessage,
 } from "./lifecycle-schedule";
-import type { ScheduleEditor } from "./use-lifecycle-rules-editor";
+import type { LifecycleRuleGroupProps } from "./use-lifecycle-rules-editor";
 
 /** How many upcoming fire times each schedule lists. */
 const READOUT_FIRES = 3;
@@ -56,18 +57,12 @@ const READOUT_FIRES = 3;
  * which clears every schedule.
  */
 export function LifecycleScheduleGroup({
-  schedules,
+  editor,
+  section,
   disabled,
   onRemove,
-  addButtonId,
-}: {
-  schedules: ScheduleEditor;
-  disabled: boolean;
-  onRemove?: (() => void) | undefined;
-  /** The element id of Add schedule, which focus moves to when the rule is added. */
-  addButtonId?: string | undefined;
-}) {
-  const { rows, unsaved, setRows, isSaved } = schedules;
+}: LifecycleRuleGroupProps<"schedule">) {
+  const { rows, unsaved, setRows, isSaved } = editor.schedules;
   const zones = useMemo(
     () => timeZoneChoices(rows.map((row) => row.timeZone)),
     [rows]
@@ -126,7 +121,7 @@ export function LifecycleScheduleGroup({
         ))}
         <Button
           disabled={disabled}
-          id={addButtonId}
+          id={lifecycleRuleTargetId(section)}
           onClick={() =>
             setRows([
               ...rows,
