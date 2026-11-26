@@ -367,7 +367,7 @@ export function EditorColumns({
     const field = document.querySelector<HTMLInputElement>(
       '[data-column="outline"] input[aria-label="Filter steps"]'
     );
-    field?.focus();
+    field?.focus({ preventScroll: true });
     field?.select();
   });
   const { shapes } = controls;

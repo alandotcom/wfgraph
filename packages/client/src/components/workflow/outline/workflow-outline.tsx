@@ -272,6 +272,7 @@ export function WorkflowOutline({
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const treeRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
 
   const selectedIds = reviewShown ? [] : selection.nodeIds;
@@ -306,14 +307,17 @@ export function WorkflowOutline({
       `#${CSS.escape(outlineRowElementId(key))}`
     ) ?? null;
 
+  // The selected row scrolls into view inside the list alone. Every focus move
+  // passes `preventScroll`, so nothing outside the list ever scrolls to a row.
   useAfterPaint(selectedKey, () => {
-    if (selectedKey !== null) {
-      rowElement(selectedKey)?.scrollIntoView?.({ block: "nearest" });
+    const row = selectedKey === null ? null : rowElement(selectedKey);
+    if (row && scrollerRef.current) {
+      scrollRowIntoList(scrollerRef.current, row);
     }
   });
   useAfterCommit(focusRequest, () => {
     if (focusRequest > 0 && activeKey !== null) {
-      rowElement(activeKey)?.focus();
+      rowElement(activeKey)?.focus({ preventScroll: true });
     }
   });
 
@@ -326,7 +330,7 @@ export function WorkflowOutline({
       editorChordAllowed(event, { inTextFields: true })
     ) {
       event.preventDefault();
-      filterRef.current?.focus();
+      filterRef.current?.focus({ preventScroll: true });
       filterRef.current?.select();
     }
   });
@@ -572,7 +576,10 @@ export function WorkflowOutline({
           value={filter}
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pt-1 pb-3">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-1.5 pt-1 pb-3"
+        ref={scrollerRef}
+      >
         {graph === null ? (
           <p className="px-3 py-3 text-muted-foreground text-sm">
             Open a run to see what it did at each step.
@@ -652,6 +659,21 @@ export function WorkflowOutline({
       </div>
     </div>
   );
+}
+
+/**
+ * Scroll `scroller` the least distance that shows `row` whole. It sets the
+ * list's own `scrollTop` and nothing else, where `scrollIntoView` would also
+ * scroll every scrollable ancestor up to the document.
+ */
+function scrollRowIntoList(scroller: HTMLElement, row: HTMLElement): void {
+  const list = scroller.getBoundingClientRect();
+  const shown = row.getBoundingClientRect();
+  if (shown.top < list.top) {
+    scroller.scrollTop -= list.top - shown.top;
+  } else if (shown.bottom > list.bottom) {
+    scroller.scrollTop += shown.bottom - list.bottom;
+  }
 }
 
 /** Pixels of the row's own left padding, before any nesting. */
