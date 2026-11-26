@@ -525,8 +525,9 @@ one line: the field and the value share the free width, the operator takes
 less, and the remove button keeps its own slot at the end. Then come the steps
 its True and False outlets continue to, or a line saying a disconnected branch
 ends the run, every value its rules can compare, and after a divider the label
-and notes. Every issue of a Condition is about its rules, so each shows beneath
-the rule builder, and the workflow's issue list puts focus in the rule builder.
+and notes. A Condition's issues name its rules, so each shows beneath the rule
+builder, and an empty rule set waits there as an empty required field does. The
+workflow's issue list puts focus in the rule builder.
 Placing a Condition sets the zoom from its card and both outlet handles, and
 keeps each True and False label on its outgoing edges inside the usable canvas
 too when the label fits at that zoom. A label on an edge to a distant step stays

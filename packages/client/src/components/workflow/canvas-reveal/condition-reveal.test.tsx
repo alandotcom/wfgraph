@@ -404,7 +404,7 @@ describe("Condition inspector", () => {
     );
   });
 
-  it("marks unreadable rules and shows the issue beneath the rule builder", async () => {
+  it("marks unreadable rules, and holds an empty-rules issue until a run or publish is refused", async () => {
     const { view, store, sentence } = await renderCondition({
       config: { conditionModel: "{not json", condition: "" },
     });
@@ -425,7 +425,9 @@ describe("Condition inspector", () => {
     expect(sentence()).toContain("The rules can't be read.");
     expect(view.getByText("1 issue")).toBeTruthy();
     const builder = view.getByRole("region", { name: "Rule builder" });
-    expect(builder.textContent).toContain("Condition is required.");
+    // An empty required field says nothing beneath itself before anyone has
+    // been refused for it; the header already counts it.
+    expect(builder.textContent).not.toContain("Condition is required.");
     expect(builder.textContent).toContain("Condition model must be valid JSON");
   });
 
