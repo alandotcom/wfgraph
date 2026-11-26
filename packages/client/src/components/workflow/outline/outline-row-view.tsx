@@ -114,7 +114,7 @@ export function OutlineRowView({
   showsTime: boolean;
   onChoose: (event: MouseEvent) => void;
   onContextMenu: (event: MouseEvent) => void;
-  onFocus: () => void;
+  onFocus: (event: FocusEvent<HTMLElement>) => void;
   onLeave: () => void;
   onPoint: () => void;
   onToggle: () => void;

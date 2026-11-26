@@ -113,4 +113,21 @@ describe("WorkflowEditor when it opens", () => {
     const [row] = await view.findAllByRole("treeitem");
     await waitFor(() => expect(document.activeElement).toBe(row));
   });
+
+  it("lands on that row without a focus ring, since nothing is selected", async () => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    try {
+      const view = await renderEditorPage();
+
+      const [row] = await view.findAllByRole("treeitem");
+      await waitFor(() => expect(document.activeElement).toBe(row));
+      const rowCalls = focus.mock.contexts.flatMap((element, index) =>
+        element === row ? [focus.mock.calls[index]?.[0]] : []
+      );
+      expect(rowCalls).toEqual([{ preventScroll: true, focusVisible: false }]);
+    } finally {
+      focus.mockRestore();
+    }
+  });
 });
