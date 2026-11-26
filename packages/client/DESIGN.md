@@ -767,7 +767,8 @@ graph share the column height.
 
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 the workflow's menu under its name, and **Settings** form the leading group.
-The workflow's menu holds **Rename**, **Duplicate workflow**, **Copy workflow
+The workflow's menu opens with the workflow's description in Caption type
+when it has one, then holds **Rename**, **Duplicate workflow**, **Copy workflow
 ID** and **Delete workflow**. Pause, Version history and Review changes are in
 the publication chip's menu, beside the state they change.
 **Settings** holds what is about the app: **Connections**, **Theme** and
