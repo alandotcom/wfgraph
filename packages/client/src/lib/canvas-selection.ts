@@ -32,7 +32,8 @@ export function sameSelection(
  * Write a selection. A chosen run node execution is kept only while the
  * selection holds its node alone, so selecting anything else never shows a
  * stale execution. A selection that no longer holds the inspected object alone
- * ends the jump `inspectedOrigin` recorded, so the origin is cleared.
+ * ends the jump `inspectedOrigin` recorded, so the origin is cleared. Any
+ * change forgets a closed Inspector card, so the next subject opens it.
  */
 export function withSelection(
   scope: WorkspaceNavigation,
@@ -48,9 +49,11 @@ export function withSelection(
   return {
     ...scope,
     selection,
-    desktop: keepsOrigin
-      ? scope.desktop
-      : { ...scope.desktop, inspectedOrigin: null },
+    desktop: {
+      ...scope.desktop,
+      inspectedOrigin: keepsOrigin ? scope.desktop.inspectedOrigin : null,
+      dismissedSubjectKey: null,
+    },
     chosenExecution:
       chosenExecution !== null &&
       singleSelectedNodeId(selection) === chosenExecution.nodeId

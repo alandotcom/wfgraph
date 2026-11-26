@@ -312,9 +312,14 @@ export function removeRunsRevealRpc() {
   resetAuthorizationGrantsForTests();
 }
 
-/** Press Escape where the Reveal keyboard handler listens. */
-function escape() {
-  fireEvent.keyDown(document.body, { key: "Escape" });
+/**
+ * Press Escape on `target`, by default the element that holds focus or else
+ * the page body. The Inspector answers only an Escape from inside its card.
+ */
+function escape(target?: Element | null) {
+  fireEvent.keyDown(target ?? document.activeElement ?? document.body, {
+    key: "Escape",
+  });
 }
 
 export async function renderRunsReveal(search: WorkflowRouteSearch) {

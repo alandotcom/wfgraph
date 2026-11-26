@@ -28,6 +28,13 @@ export function useRevealKeyboard(input: {
   hasOverlays: boolean;
   /** The surface Escape must come from: the details panel or a phone's canvas area. */
   area: RefObject<HTMLElement | null>;
+  /**
+   * Whether an Escape while focus sits on the page body counts as one from
+   * `area`. A phone's sheets take it, since nothing else on a phone answers
+   * Escape. The Inspector card does not, because focus on the body is outside
+   * the card. True when unset.
+   */
+  pageBodyCounts?: boolean | undefined;
   onUnwind: () => void;
 }): void {
   useDomEvent(
@@ -44,7 +51,7 @@ export function useRevealKeyboard(input: {
       }
       const target = event.target instanceof Element ? event.target : null;
       const inArea =
-        target === document.body ||
+        (target === document.body && input.pageBodyCounts !== false) ||
         (target !== null && input.area.current?.contains(target) === true);
       if (!inArea || (target !== null && escapeOwnedByControl(target))) {
         return;

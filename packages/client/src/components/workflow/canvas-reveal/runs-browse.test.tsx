@@ -58,10 +58,11 @@ describe("Runs Browse run list and selected run", () => {
       view: "runs",
     });
 
-    // Runs opens no run by itself: the list shows, and the route stays put.
+    // Runs opens no run by itself: the list shows, the route stays put, and
+    // the run list opens no Inspector.
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(router.state.location.search).toEqual({ view: "runs" });
-    expect(title()).toBe("Runs");
+    expect(title()).toBeUndefined();
 
     await show({ view: "runs", executionId: "exec_b" });
     // The run is named by its Entity Value, and its Event is a detail row.
@@ -96,7 +97,7 @@ describe("Runs Browse run list and selected run", () => {
       view: "runs",
     });
     await waitFor(() => expect(rows()).toHaveLength(2));
-    expect(title()).toBe("Runs");
+    expect(title()).toBeUndefined();
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
     expect(view.getByRole("button", { name: "Refresh" })).toBeTruthy();
 
@@ -125,7 +126,7 @@ describe("Runs Browse run list and selected run", () => {
 
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(router.state.location.search).toEqual({ view: "runs" });
-    expect(title()).toBe("Runs");
+    expect(title()).toBeUndefined();
   });
 
   it("projects each run's pinned graph and restores that run's selection", async () => {
@@ -189,13 +190,36 @@ describe("Runs Browse run list and selected run", () => {
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
   });
 
-  it("puts focus on the Reveal title when the run left behind has no row", async () => {
+  it("keeps the run open on Escape after the card's X closed it", async () => {
+    served.items = [
+      execution("exec_b", "completed"),
+      execution("exec_a", "completed"),
+    ];
+    const { view, router, title, escape } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_a",
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_a")));
+
+    fireEvent.click(view.getByRole("button", { name: "Close" }));
+    // Nothing is selected, so the closed card hands focus nowhere, and it
+    // falls to the page body.
+    escape(document.body);
+    await afterPaint();
+
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_a",
+    });
+  });
+
+  it("puts focus on the list's first row when the run left behind has no row", async () => {
     served.items = [
       execution("exec_live", "completed"),
       execution("exec_old", "superseded"),
     ];
     served.supersededCount = 1;
-    const { aside, title, rows, back } = await renderRunsReveal({
+    const { title, rows, back } = await renderRunsReveal({
       view: "runs",
       executionId: "exec_old",
     });
@@ -203,12 +227,8 @@ describe("Runs Browse run list and selected run", () => {
 
     back();
     await waitFor(() => expect(rows()).toHaveLength(1));
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        aside()?.querySelector('[data-slot="reveal-title"]')
-      )
-    );
-    expect(title()).toBe("Runs");
+    await waitFor(() => expect(document.activeElement).toBe(rows()[0]));
+    expect(title()).toBeUndefined();
   });
 
   it("keeps the scroll a focused row set in place of the stored list scroll", async () => {

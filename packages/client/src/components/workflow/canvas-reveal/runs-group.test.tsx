@@ -145,10 +145,14 @@ describe("Runs Group summary", () => {
     expect(title()).toBe(runHeading("exec_e"));
     expect(view.queryByTestId("runs-group-summary")).toBeNull();
 
-    // The run overview returns to the run list.
-    escape();
-    await waitFor(() => expect(title()).toBe("Runs"));
-    expect(router.state.location.search).toEqual({ view: "runs" });
+    // Focus went back to the step's card on the canvas. An Escape from inside
+    // the card returns the run overview to the run list, which opens no
+    // Inspector.
+    escape(aside());
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "runs" })
+    );
+    expect(title()).toBeUndefined();
   });
 
   it("shows a terminal Group as Completed once the run completed, and Back returns to the run with focus on the card", async () => {

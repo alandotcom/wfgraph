@@ -14,7 +14,6 @@ import {
   type WorkflowIssuesOverlayInput,
 } from "#src/components/overlays/workflow-issues-overlay";
 import { OverlayContainer } from "#src/components/overlays/overlay-container";
-import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import {
   groupWorkflowIssuesForOverlay,
@@ -36,7 +35,11 @@ import {
   useOverlay,
 } from "#src/components/overlays/overlay-provider";
 import { DetailsPanel } from "#src/components/workflow/details/details-panel";
-import { canvasRevealAtom } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
+import {
+  canvasRevealAtom,
+  dismissInspectorAtom,
+  inspectorOpenAtom,
+} from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { revealFieldRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import {
   type RevealKind,
@@ -80,6 +83,7 @@ import {
 import {
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
+  openInspectorAtom,
   openNodeRevealFromOriginAtom,
   setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
@@ -631,9 +635,7 @@ describe("details panel keyboard and focus", () => {
     expect(document.activeElement).toBe(card);
 
     // The Inspector card slides away on that same Escape.
-    await act(async () => {
-      store.set(inspectorOpenAtom, true);
-    });
+    expect(store.get(inspectorOpenAtom)).toBe(true);
     const label = view.getByLabelText("Label");
     label.focus();
     await escape(label);
@@ -644,6 +646,37 @@ describe("details panel keyboard and focus", () => {
       nodeIds: ["send"],
       edgeIds: [],
     });
+  });
+
+  it("closes on its X as on Escape, handing focus to the step's card and keeping the selection", async () => {
+    const { view, store, select } = await renderReveal();
+    const card = view.getByText("Send reminder card");
+    await select("send");
+    view.getByLabelText("Label").focus();
+
+    fireEvent.click(view.getByRole("button", { name: "Close" }));
+
+    expect(document.activeElement).toBe(card);
+    expect(store.get(inspectorOpenAtom)).toBe(false);
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
+  });
+
+  it("answers no Escape while the card is closed", async () => {
+    const { view, store, select, escape } = await renderReveal();
+    await select("send");
+    await act(async () => {
+      store.set(dismissInspectorAtom);
+    });
+    const label = view.getByLabelText("Label");
+    label.focus();
+
+    await escape(label);
+    await escape(document.body);
+
+    // Nothing unwound: the card stays closed on the same selection, and
+    // nothing moved focus out of the field.
+    expect(document.activeElement).toBe(label);
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
   });
 
   it("offers Back only where a jump began, and Back returns there", async () => {
@@ -978,15 +1011,15 @@ describe("details panel subjects and focus return", () => {
     expect(document.activeElement).toBe(second);
   });
 
-  it("gives the run list a header with its title and no Back", async () => {
-    const { view, store, level } = await renderReveal({ view: "runs" });
+  it("shows nothing for the run list, which the outline holds", async () => {
+    const { view, store, aside } = await renderReveal({ view: "runs" });
     await act(async () => {
       store.set(executionOverlayGraphAtom, { nodes: [NODES[0]], edges: [] });
     });
-    await waitFor(() => expect(level()).toBe("browse"));
 
-    expect(view.getByRole("heading", { name: "Runs" })).toBeTruthy();
-    expect(view.queryByRole("button", { name: "Back" })).toBeNull();
+    expect(store.get(inspectorOpenAtom)).toBe(false);
+    expect(view.queryByRole("heading")).toBeNull();
+    expect(aside()?.textContent).toBe("");
   });
 
   it("keeps the scroll of a field an issue focused over the stored scroll", async () => {
@@ -1031,6 +1064,29 @@ describe("details panel subjects and focus return", () => {
     expect(body?.scrollTop).toBe(320);
     vi.restoreAllMocks();
   });
+  it("holds a field request while the card is closed and answers it once a press opens it", async () => {
+    const { store, select } = await renderReveal();
+    await select("send");
+    await act(async () => {
+      store.set(dismissInspectorAtom);
+    });
+
+    await act(async () => {
+      store.set(revealFieldRequestAtom, { nodeId: "send", targetId: "to" });
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(document.activeElement?.id).not.toBe("to");
+    expect(store.get(revealFieldRequestAtom)).not.toBeNull();
+
+    await act(async () => {
+      store.set(openInspectorAtom, store.get(activeWorkspaceAddressAtom));
+    });
+    await waitFor(() => expect(document.activeElement?.id).toBe("to"));
+    expect(store.get(revealFieldRequestAtom)).toBeNull();
+  });
+
   it("leaves a requested field already in view where it is, and focuses it without scrolling", async () => {
     const { store, select, aside } = await renderReveal();
     await select("send");

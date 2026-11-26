@@ -348,10 +348,14 @@ bottom edges, 340px wide, on the card surface with a hairline border, a 14px
 radius and shadow-lg. It opens when something is selected: a step, a
 connection, a Group, the Lifecycle node, or in Runs an open run or a run node.
 Two or more selected steps close it, since their commands are the context
-menu's. It closes when the selection clears, on its **Close**
-control, and on Escape with nothing left to step back through, which returns
-focus to the selected step's outline row. Pressing a step on the
-canvas or its outline row opens it again. Selecting something else while it is
+menu's. It closes when the selection clears, and on its **Close** control or
+Escape with nothing left to step back through, which both hand focus to the
+step's outline row, or to its card on the canvas when the outline does not
+show it, and keep the selection. Closed that way it stays closed on that
+object until something else is selected or the step is pressed again: a click
+or Enter on its card, a click on its outline row, or finding it from the
+command palette. A closed card answers no keys, and an Escape is the card's
+only when it comes from inside the card. Selecting something else while it is
 open replaces its content in place, and the card does not move or resize. In
 Draft with nothing selected, and on the run list, there is no card; the
 workflow's issues are reached from the issues chip. It floats, so the canvas
@@ -649,9 +653,9 @@ its heading takes focus.
 
 Escape and **Back** take one step back as the shown object's kind defines it.
 In Draft, Escape inside the Inspector belongs to an open select,
-combobox, menu, autocomplete, or dialog first, and then hands focus back to the
-selected step's outline row, or to the selected object on the canvas when the
-outline does not show it.
+combobox, menu, autocomplete, or dialog first, and then closes the card as
+**Close** does. A jump inside the card, such as an Event Split's action or
+Back, moves focus to the new object's title.
 For the Lifecycle node or a Wait opened from an Event Split, Back and that last
 Escape select the Event Split again. The way back lasts while the source stays
 selected alone; selecting anything else ends it, and Back is then no longer

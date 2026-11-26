@@ -1,16 +1,16 @@
-import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import type { ReactNode } from "react";
 import {
-  type CanvasRevealState,
   canvasRevealAtom,
+  inspectorOpenAtom,
+  inspectorSubjectAtom,
 } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { MobileRevealCovered } from "#src/components/workflow/canvas-reveal/mobile-reveal";
 import { placementNodeIds } from "#src/components/workflow/canvas-reveal/reveal-geometry";
 import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
-import { inspectorOpenAtom, phoneShowsMapAtom } from "./editor-columns-store";
+import { phoneShowsMapAtom } from "./editor-columns-store";
 import {
   useFindStepShortcut,
   useOutlineControls,
@@ -28,26 +28,6 @@ const INSPECTOR_INSET_PX = 8;
  * zoom controls in the bottom-left corner, in pixels.
  */
 const OUTLINE_BOTTOM_CLEARANCE_PX = 184;
-
-/**
- * Whether the Inspector has something to show on desktop: a Draft subject
- * other than several steps, or in Runs an open run. The run list is the
- * floating outline's, so its address is no subject here. Several selected
- * steps have no editor of their own; their commands are the context menu's.
- */
-function inspectorHasSubject(
-  reveal: CanvasRevealState,
-  selectedNodeCount: number
-): boolean {
-  const { key } = reveal.address;
-  if (key.workspace === "runs" && key.executionId === null) {
-    return false;
-  }
-  if (key.workspace === "draft" && selectedNodeCount > 1) {
-    return false;
-  }
-  return reveal.subject !== null;
-}
 
 /**
  * The outline floating at the top left of the canvas: plain rows over the
@@ -149,33 +129,33 @@ function ComposerBox({
 }
 
 /**
- * Opens the Inspector when the details panel comes to hold a subject, or a
- * different one, and closes it when the subject goes. Each opening asks the
- * canvas camera to show the subject's nodes beside the card, which moves the
- * camera only when the card would cover them. A phone has no card.
+ * Each time the Inspector card opens on a subject, including again after its
+ * X closed it and when a phone widens to show the card, asks the canvas camera
+ * to show the subject's nodes beside the card. The camera moves only when the
+ * card would cover them. A phone has no card.
  */
-function useInspectorFollowsSubject(input: { enabled: boolean }): boolean {
+function useInspectorPlacement(input: { enabled: boolean }): void {
   const store = useStore();
-  const [open, setOpen] = useAtom(inspectorOpenAtom);
   const requestPlacement = useSetAtom(requestRevealPlacementAtom);
-  const reveal = useAtomValue(canvasRevealAtom);
-  const selectedNodeCount = useAtomValue(activeSelectionAtom).nodeIds.length;
-  const hasSubject = inspectorHasSubject(reveal, selectedNodeCount);
-  const subjectKey = hasSubject
-    ? `${reveal.addressId}|${reveal.subject?.key ?? ""}`
-    : null;
-  useAfterCommit(subjectKey, () => {
-    if (!input.enabled) {
+  const open = useAtomValue(inspectorOpenAtom);
+  const { addressId } = useAtomValue(canvasRevealAtom);
+  const subject = useAtomValue(inspectorSubjectAtom);
+  const openSubjectKey =
+    input.enabled && open ? `${addressId}|${subject?.key ?? ""}` : null;
+  useAfterCommit(openSubjectKey, () => {
+    if (openSubjectKey === null) {
       return;
     }
-    setOpen(subjectKey !== null);
-    const { addressId, subject } = store.get(canvasRevealAtom);
-    const nodeIds = placementNodeIds(subject?.placement);
-    if (subjectKey !== null && nodeIds.length > 0) {
-      requestPlacement({ addressId, nodeIds });
+    const nodeIds = placementNodeIds(
+      store.get(inspectorSubjectAtom)?.placement
+    );
+    if (nodeIds.length > 0) {
+      requestPlacement({
+        addressId: store.get(canvasRevealAtom).addressId,
+        nodeIds,
+      });
     }
   });
-  return open && hasSubject;
 }
 
 /**
@@ -258,7 +238,8 @@ export function EditorLayout({
   const showsMap = useAtomValue(phoneShowsMapAtom);
   useOutlineShortcut(controls);
   useFindStepShortcut(controls);
-  const inspectorOpen = useInspectorFollowsSubject({ enabled: !isMobile });
+  const inspectorOpen = useAtomValue(inspectorOpenAtom);
+  useInspectorPlacement({ enabled: !isMobile });
   if (isMobile) {
     return (
       <div

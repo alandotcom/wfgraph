@@ -34,6 +34,7 @@ import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupLabel } from "#src/lib/workflow-graph-types";
 import {
   type RevealLevel,
+  showsRunList,
   workspaceAddressId,
 } from "#src/lib/workflow-navigation-state";
 import {
@@ -271,7 +272,7 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
     unwindLevel();
     return;
   }
-  if (key.workspace !== "runs" || key.executionId === null) {
+  if (key.workspace !== "runs" || showsRunList(key)) {
     unwindLevel();
     return;
   }
@@ -290,8 +291,8 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
 /**
  * Runs in the Inspector, at both levels. Browse shows the run the route
  * opens with its summary, waits, exit and failure details, journey, and
- * activity, or with no run open a line pointing at the run list in the
- * outline. Focus shows the evidence of the node the run inspects. The run
+ * activity. With no run open a phone's sheet shows a line pointing at the run
+ * list; at `md` and wider the run list opens no Inspector. Focus shows the evidence of the node the run inspects. The run
  * overview stays mounted, hidden, while Focus shows, so returning keeps its
  * state; each overview's scroll is kept per address.
  */
@@ -419,7 +420,8 @@ export function RunsBody({ subject, level, mobile }: RevealBodyProps) {
       screen.kind === "loading-list" ||
       screen.kind === "run-unavailable" ? (
         // The run list, its loading and failure states, and a run that could
-        // not be loaded are the outline's, so this body says where to go.
+        // not be loaded are the outline's, so this body says where to go. Only
+        // a phone's run list sheet and a run that failed to load reach it.
         <p className="px-3 py-3 text-muted-foreground text-sm">
           {screen.kind === "run-unavailable"
             ? "This run's summary shows here once it loads."

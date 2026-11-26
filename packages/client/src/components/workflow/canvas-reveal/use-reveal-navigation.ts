@@ -17,10 +17,10 @@ import {
 } from "#src/lib/mobile-sheet-store";
 import {
   inspectRunNodeAtom,
+  openInspectorAtom,
   openNodeRevealFromOriginAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import {
   requestRevealPlacementAtom,
   revealFieldRequestAtom,
@@ -37,9 +37,12 @@ type RunNodeInspection = {
 /**
  * The inspector actions of the viewport's form factor. At `md` and wider they
  * act on the Inspector, which opens by itself when the selection gives it a
- * subject, so most of them only write a selection; below `md` they act on the mobile Reveal
- * sequence and the configuration sheet. Each action names the address it acts
- * on.
+ * subject, so most of them only write a selection. Each one a press runs also
+ * opens the card again after its X or Escape closed it on the same subject:
+ * `openNode`, `openSection`, `openInspector`, `showPressedNode`,
+ * `inspectRunNode` and `pressRunCanvasNode`. Below `md` they act on the mobile
+ * Reveal sequence and the configuration sheet. Each action names the address
+ * it acts on.
  */
 export type RevealNavigation = {
   /**
@@ -69,8 +72,8 @@ export type RevealNavigation = {
     origin?: InspectedOrigin | undefined;
   }) => void;
   /**
-   * Show the inspector of `address`: its sheet below `md`. The Inspector
-   * follows the selection, so on desktop this does nothing.
+   * Show the inspector of `address`: its sheet below `md`, or the Inspector
+   * card for the subject the selection already gives it.
    */
   openInspector: (address: WorkspaceAddress) => void;
   /**
@@ -91,7 +94,7 @@ export type RevealNavigation = {
   /**
    * Show a node pressed on a canvas outside a run, or chosen elsewhere, once
    * the selection is written. Below `md` the address opens its inspector. The
-   * Inspector already shows the selection.
+   * Inspector already shows the selection, and opens again if it was closed.
    */
   showPressedNode: (input: {
     address: WorkspaceAddress;
@@ -181,17 +184,21 @@ export function useRevealNavigation(): RevealNavigation {
         },
       };
     }
+    const openInspector = (address: WorkspaceAddress) =>
+      store.set(openInspectorAtom, address);
     const inspectRunNode: RevealNavigation["inspectRunNode"] = ({
       opensEvidence,
       ...input
-    }) =>
+    }) => {
+      openInspector(input.address);
       store.set(inspectRunNodeAtom, { ...input, opensFocus: opensEvidence });
+    };
     const openNode: RevealNavigation["openNode"] = ({
       address,
       nodeId,
       origin,
     }) => {
-      store.set(inspectorOpenAtom, true);
+      openInspector(address);
       if (origin !== undefined) {
         store.set(openNodeRevealFromOriginAtom, { address, nodeId, origin });
         return;
@@ -211,10 +218,10 @@ export function useRevealNavigation(): RevealNavigation {
         openNode({ address, nodeId, origin });
         store.set(revealFieldRequestAtom, { nodeId, targetId });
       },
-      openInspector: () => {},
+      openInspector,
       showSwitchedWorkspace: () => {},
       followSelection: () => {},
-      showPressedNode: () => {},
+      showPressedNode: ({ address }) => openInspector(address),
       inspectRunNode,
       pressRunCanvasNode: (input) => {
         recordRunCanvasPress(input);

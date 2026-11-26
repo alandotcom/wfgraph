@@ -81,18 +81,23 @@ export function RunsColumn() {
   } = useAddressBodyScroll(screen.kind === "list" ? address : null, null);
 
   // A focused row has scrolled the list to itself, and that position replaces
-  // the stored one. With the row gone, the Inspector's title takes focus.
+  // the stored one. With the row gone, a phone's run list sheet takes focus on
+  // its title, and at `md` and wider, where the run list opens no Inspector,
+  // the list's first row takes it.
   const answerRowFocus = (focused: boolean) => {
     runs.clearRowFocus();
     if (focused) {
       adoptScroll();
       return;
     }
-    document
-      .querySelector<HTMLElement>(
-        '[data-slot="details-panel"] [data-slot="reveal-title"], [data-slot="mobile-reveal"] [data-slot="reveal-title"]'
+    (
+      document.querySelector<HTMLElement>(
+        '[data-slot="mobile-reveal"] [data-slot="reveal-title"]'
+      ) ??
+      listScrollRef.current?.querySelector<HTMLElement>(
+        '[data-testid="workflow-run-summary-row"]'
       )
-      ?.focus({ preventScroll: true });
+    )?.focus({ preventScroll: true });
   };
 
   return (
