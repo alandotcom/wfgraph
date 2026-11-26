@@ -17,6 +17,7 @@ import { cn } from "@wfgraph/shared/utils";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import { useInsertStepOnEdge } from "#src/components/workflow/use-add-step";
 import {
+  chord,
   type StepMenuItem,
   startsGroup,
   useStepMenuItems,
@@ -238,7 +239,7 @@ export function WorkflowContextMenu({
             icon={<ClipboardPaste />}
             label="Paste"
             onClick={handlePaste}
-            shortcut={shortcutLabel("V")}
+            shortcut={chord("V")}
           />
         </>
       )}
@@ -256,13 +257,6 @@ type MenuItemProps = {
   hint?: string | undefined;
   shortcut?: string | undefined;
 };
-
-function shortcutLabel(key: string): string {
-  const apple =
-    typeof navigator !== "undefined" &&
-    /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
-  return apple ? `⌘${key}` : `Ctrl+${key}`;
-}
 
 /** One row of a step's commands, with the rule above it that starts its group. */
 function StepMenuRow({
