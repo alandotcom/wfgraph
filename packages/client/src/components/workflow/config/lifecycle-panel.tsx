@@ -12,6 +12,7 @@ import {
   LIFECYCLE_ADD_RULE_ID,
   type LifecycleRuleChoice,
   type LifecycleSectionId,
+  lifecycleRuleIsSet,
   lifecycleSectionShown,
   offeredLifecycleRules,
   type RemovableLifecycleSection,
@@ -40,13 +41,27 @@ import {
 export { CONCURRENCY_OPTIONS } from "./lifecycle-policy-summary";
 
 /**
+ * The rules a person chose from "Add a rule" whose controls show before they
+ * hold a value, with the stored rules value they were last checked against.
+ * `stored` is the `lifecycleRules` value of the config at the form's last own
+ * write or choice, so a different value there means a write from outside the
+ * form, such as Undo or the build agent, replaced the rules since.
+ */
+type AddedRules = {
+  stored: unknown;
+  choices: readonly LifecycleRuleChoice[];
+};
+
+/**
  * The Start's one form: every rule the start has set, each as its controls
  * under one label, always editable, with "Add a rule" at the end. "Starts
  * when" and "Can be run by hand" always show; any other rule shows once it is
  * set (`lifecycleSectionShown`) or once a person adds it from "Add a rule",
- * which shows its controls in place before they hold a value. Every control
- * writes the complete Lifecycle Rules object, and opening the form persists
- * nothing.
+ * which shows its controls in place before they hold a value. A rule added
+ * that way stays while the person empties it again, and leaves once a write
+ * from outside the form, such as Undo or the build agent, leaves it unset.
+ * Every control writes the complete Lifecycle Rules object, and opening the
+ * form persists nothing.
  *
  * `focusTarget` moves focus to an element by id without scrolling anything
  * that does not have to: into a rule a person just added, and to "Add a rule"
@@ -64,24 +79,43 @@ export function LifecyclePanel({
   disabled: boolean;
   focusTarget?: ((targetId: string) => void) | undefined;
 }) {
-  const editor = useLifecycleRulesEditor({ config, onUpdateConfig });
+  const stored = config.lifecycleRules;
+  const [added, setAdded] = useState<AddedRules>({ stored, choices: [] });
+  const editor = useLifecycleRulesEditor({
+    config,
+    onUpdateConfig: (patch) => {
+      // The form's own write keeps every added rule, set or not.
+      setAdded({ stored: patch.lifecycleRules, choices: addedChoices });
+      onUpdateConfig(patch);
+    },
+  });
   const { rules, catalog } = editor;
-  // Rules a person added from "Add a rule" that may hold no value yet. Each
-  // shows until it is removed, so its controls do not vanish while empty.
-  const [added, setAdded] = useState<readonly LifecycleSectionId[]>([]);
+  const addedChoices =
+    added.stored === stored
+      ? added.choices
+      : added.choices.filter((choice) => lifecycleRuleIsSet(choice, rules));
   const shown = (section: LifecycleSectionId) =>
-    added.includes(section) ||
+    addedChoices.some((choice) => choice.section === section) ||
     lifecycleSectionShown({ section, rules, catalog });
   const removeRule = (section: RemovableLifecycleSection) =>
     disabled
       ? undefined
       : () => {
           editor.setRules(withoutLifecycleRule(rules, section));
-          setAdded(added.filter((entry) => entry !== section));
+          setAdded((current) => ({
+            ...current,
+            choices: current.choices.filter(
+              (choice) => choice.section !== section
+            ),
+          }));
           focusTarget?.(LIFECYCLE_ADD_RULE_ID);
         };
   const addRule = (choice: LifecycleRuleChoice) => {
-    setAdded(uniq([...added, choice.section]));
+    // "Starts when" always shows, so a choice it edits, such as a Start
+    // Filter, only moves focus, and stays offered until its rule is set.
+    if (choice.section !== "start-events") {
+      setAdded({ stored, choices: uniq([...addedChoices, choice]) });
+    }
     focusTarget?.(choice.targetId);
   };
 
@@ -136,7 +170,7 @@ export function LifecyclePanel({
       ) : null}
       {disabled ? null : (
         <AddRuleMenu
-          exclude={added}
+          exclude={addedChoices}
           onChoose={addRule}
           rules={rules}
           triggerId={LIFECYCLE_ADD_RULE_ID}
@@ -146,25 +180,23 @@ export function LifecyclePanel({
   );
 }
 
-const NO_SECTIONS: readonly LifecycleSectionId[] = [];
-
 /**
- * "Add a rule": each rule not set yet, named for what it does. A rule whose
- * section `exclude` names is left out, since its controls already show.
+ * "Add a rule": each rule not set yet, named for what it does, leaving out
+ * the choices `exclude` names, whose controls already show.
  */
 function AddRuleMenu({
   rules,
   onChoose,
-  exclude = NO_SECTIONS,
+  exclude,
   triggerId,
 }: {
   rules: LifecycleRules;
   onChoose: (choice: LifecycleRuleChoice) => void;
-  exclude?: readonly LifecycleSectionId[] | undefined;
-  triggerId?: string | undefined;
+  exclude: readonly LifecycleRuleChoice[];
+  triggerId: string;
 }) {
   const offered = offeredLifecycleRules(rules).filter(
-    (choice) => !exclude.includes(choice.section)
+    (choice) => !exclude.some((entry) => entry.id === choice.id)
   );
   if (offered.length === 0) {
     return null;
