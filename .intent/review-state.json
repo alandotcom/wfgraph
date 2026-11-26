@@ -9151,15 +9151,16 @@
       ]
     },
     "source:packages/client/src/components/agent/workflow-agent.test.tsx": {
-      "fingerprint": "0407081b5e67d87a6a640eb634012907d99d68da4161db3e31602839af337197",
+      "fingerprint": "42d6c36d7cb67a667e73092afb292e1fcbf6dd47c38e5f44ab2af8d1edcf4627",
       "snapshot": {
-        "packages/client/src/components/agent/workflow-agent.test.tsx": "5f1f4aa0415b654a76f5dfb3e2350b095f5876a131e3135e45e9aedfe2549590"
+        "packages/client/src/components/agent/workflow-agent.test.tsx": "42d14fc1152b26126eaa2c4617ff5d318aba6a3019555dee2c5bb7d668ca0ae9"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "e7ec0d30899c12c96c586963a4276c54dab20913",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "A test of the editor's build agent line in @wfgraph/client, which no published skill covers. The change gives one case its own workflow id and save API and resets the shared store when the case ends; it changes no behaviour an adopter sees.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/agent/workflow-agent.test.tsx"
+        "git diff 3b99bc72..e7ec0d30 -- packages/client/src/components/agent/workflow-agent.test.tsx",
+        "pnpm run test: 7170 passed, 239 skipped"
       ]
     },
     "source:packages/client/src/components/agent/workflow-agent.tsx": {
