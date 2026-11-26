@@ -5,7 +5,7 @@
  * once per worker and registers no hooks of its own.
  */
 
-import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
+import { EditorOutline } from "#src/components/workflow/outline/editor-outline";
 import {
   QueryClient,
   QueryClientProvider,
@@ -27,7 +27,7 @@ import { vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import {
   MobileReveal,
   MobileRevealCovered,
@@ -349,10 +349,10 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
           <ExecutionOverlaySync />
           <WorkspaceRouteSync />
           <RunStatusProjection />
-          <div data-testid="outline-column">
-            <OutlineColumn />
+          <div data-testid="editor-outline">
+            <EditorOutline />
           </div>
-          <DetailsPanel />
+          <InspectorContents />
           <MobileReveal />
         </div>
       </>
@@ -391,7 +391,9 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
   await view.findByTestId("canvas-area");
 
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
+    view.container.querySelector<HTMLElement>(
+      '[data-slot="inspector-contents"]'
+    );
   const title = () =>
     aside()?.querySelector("header h2")?.textContent ?? undefined;
   const rows = () => view.queryAllByTestId("workflow-run-summary-row");

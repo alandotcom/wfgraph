@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import {
   MobileReveal,
   MobileRevealCovered,
@@ -148,7 +148,7 @@ async function renderEditor(initialSearch = "") {
         <MobileRevealCovered>
           <WorkflowCanvas />
         </MobileRevealCovered>
-        <DetailsPanel />
+        <InspectorContents />
         <MobileReveal />
       </div>
     ),

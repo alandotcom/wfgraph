@@ -50,7 +50,7 @@ import {
 } from "#src/lib/workflow-save-test-support";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { contextMenuAtom } from "#src/components/workflow/workflow-context-menu";
-import { outlineFilterFocusRequestAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { outlineFilterFocusRequestAtom } from "#src/components/workflow/layout/editor-layout-store";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,

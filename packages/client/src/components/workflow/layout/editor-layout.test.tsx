@@ -25,7 +25,7 @@ import {
   outlineFilterFocusRequestAtom,
   outlineHiddenAtom,
   phoneShowsMapAtom,
-} from "./editor-columns-store";
+} from "./editor-layout-store";
 import { useOutlineControls } from "./use-outline-controls";
 
 /**
@@ -66,7 +66,7 @@ function renderLayout() {
       <EditorLayout
         canvas={<div data-testid="canvas" />}
         composer={<div data-testid="composer" />}
-        details={<span>Details body</span>}
+        inspector={<span>Inspector body</span>}
         outline={
           <>
             <span>Outline body</span>
@@ -330,7 +330,7 @@ describe("EditorLayout", () => {
     const store = renderLayout();
 
     expect(screen.getByText("Outline body")).toBeTruthy();
-    expect(screen.queryByText("Details body")).toBeNull();
+    expect(screen.queryByText("Inspector body")).toBeNull();
     expect(screen.getByTestId("phone-sheets")).toBeTruthy();
     expect(screen.getByTestId("canvas").closest("[inert]")).not.toBeNull();
 

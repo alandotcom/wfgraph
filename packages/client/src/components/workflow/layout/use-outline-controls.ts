@@ -9,7 +9,7 @@ import {
   outlineFilterFocusRequestAtom,
   outlineHiddenAtom,
   phoneShowsMapAtom,
-} from "./editor-columns-store";
+} from "./editor-layout-store";
 
 export type OutlineControls = {
   /** Whether the outline is on screen: floating over the canvas, or a phone's main view. */

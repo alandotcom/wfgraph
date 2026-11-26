@@ -109,7 +109,7 @@
   --foreground: oklch(0.145 0 0);
   /* The page behind the inset editor shell. Solved for the step against the two
      surfaces the shell shows at its own edge: Paper at the menu bar and the
-     canvas (1.12:1) and Panel at the strip and the rail (1.08:1), which is the
+     canvas (1.12:1) and Panel at the status strip (1.08:1), which is the
      shallower of the two and the one that has to survive.
 
      It is its own step on the ramp rather than a reuse of `--muted`, because a

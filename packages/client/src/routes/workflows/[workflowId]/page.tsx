@@ -7,12 +7,12 @@ import {
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
-import { EditorLayout } from "#src/components/workflow/columns/editor-layout";
-import { EditorShell } from "#src/components/workflow/columns/editor-shell";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { EditorLayout } from "#src/components/workflow/layout/editor-layout";
+import { EditorShell } from "#src/components/workflow/layout/editor-shell";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import { WorkflowAgent } from "#src/components/agent/workflow-agent";
-import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
-import { RunStoppedStepSelection } from "#src/components/workflow/outline/run-stopped-step";
+import { EditorOutline } from "#src/components/workflow/outline/editor-outline";
+import { RunStoppedStepSelection } from "#src/components/workflow/run-stopped-step";
 import { ReviewSheet } from "#src/components/workflow/review/review-sheet";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync";
@@ -81,7 +81,7 @@ function WorkflowNotFound() {
 
 /**
  * The page for a workflow the server did not return. Like the not-found page
- * it draws none of the editor, whose title, outline, details and status strip
+ * it draws none of the editor, whose title, outline, Inspector and status strip
  * would describe a workflow that never loaded. Try again reloads the page,
  * which runs the route's load again.
  */
@@ -157,10 +157,10 @@ const WorkflowEditor = () => {
             </MobileRevealCovered>
           }
           composer={<WorkflowAgent />}
-          details={<DetailsPanel />}
-          outline={<OutlineColumn />}
+          inspector={<InspectorContents />}
+          outline={<EditorOutline />}
           phone={
-            // Below `md` details are a sequence of sheets over the outline
+            // Below `md` a step opens in a sequence of sheets over the outline
             // or the canvas.
             <MobileReveal />
           }

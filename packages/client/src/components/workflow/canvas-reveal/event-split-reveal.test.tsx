@@ -53,7 +53,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import { LIFECYCLE_CANCELED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 
 const catalog: ExtensionCatalog = {
   entities: [],
@@ -180,7 +180,7 @@ async function renderEventSplit(input: {
     component: () => (
       <div className="relative" data-testid="canvas-area">
         <FakeCanvas />
-        <DetailsPanel />
+        <InspectorContents />
       </div>
     ),
   });
@@ -211,7 +211,9 @@ async function renderEventSplit(input: {
     store.set(selectOnlyNodeAtom, "split");
   });
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
+    view.container.querySelector<HTMLElement>(
+      '[data-slot="inspector-contents"]'
+    );
   const region = (name: string) => {
     const section = within(
       view.getByRole("complementary", { name: "Event Split inspector" })

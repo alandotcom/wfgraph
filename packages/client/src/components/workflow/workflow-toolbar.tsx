@@ -11,7 +11,7 @@ import {
 } from "#src/components/ui/dropdown-menu";
 import { Map as MapIcon, MoreHorizontal } from "lucide-react";
 import { useAtom, useAtomValue } from "jotai";
-import { phoneShowsMapAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { phoneShowsMapAtom } from "#src/components/workflow/layout/editor-layout-store";
 import { Menubar } from "@base-ui/react/menubar";
 import { UserMenu } from "#src/components/workflows/user-menu";
 import {

@@ -24,10 +24,10 @@ import {
   runHeading,
   served,
 } from "#src/components/workflow/canvas-reveal/runs-reveal.test-support";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
-import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
-import { RunStoppedStepSelection } from "#src/components/workflow/outline/run-stopped-step";
+import { EditorOutline } from "#src/components/workflow/outline/editor-outline";
+import { RunStoppedStepSelection } from "#src/components/workflow/run-stopped-step";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
@@ -39,7 +39,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { outlineHiddenAtom } from "./editor-columns-store";
+import { outlineHiddenAtom } from "./editor-layout-store";
 import { EditorLayout } from "./editor-layout";
 
 beforeEach(() => {
@@ -78,8 +78,8 @@ async function renderEditorInRuns(input: {
         <RunStoppedStepSelection />
         <EditorLayout
           canvas={<div data-testid="canvas" />}
-          details={<DetailsPanel />}
-          outline={<OutlineColumn />}
+          inspector={<InspectorContents />}
+          outline={<EditorOutline />}
         />
       </>
     ),

@@ -34,7 +34,7 @@ function twoSteps() {
   );
 }
 
-describe("RunsColumn", () => {
+describe("RunsOutline", () => {
   it("lists the runs in the outline and opens no Inspector for the list", async () => {
     served.items = [
       execution("exec_b", "completed"),
@@ -53,7 +53,7 @@ describe("RunsColumn", () => {
     fireEvent.click(view.getByRole("button", { name: "Back to runs" }));
     await waitFor(() => expect(rows()).toHaveLength(2));
 
-    const column = view.getByTestId("outline-column");
+    const column = view.getByTestId("editor-outline");
     expect(
       within(column).getAllByTestId("workflow-run-summary-row")
     ).toHaveLength(2);
@@ -132,7 +132,7 @@ describe("RunsColumn", () => {
       executionId: "exec_v",
     });
     await waitFor(() => expect(title()).toBe(runHeading("exec_v")));
-    const column = view.getByTestId("outline-column");
+    const column = view.getByTestId("editor-outline");
     await waitFor(() =>
       expect(
         within(column).getByText(

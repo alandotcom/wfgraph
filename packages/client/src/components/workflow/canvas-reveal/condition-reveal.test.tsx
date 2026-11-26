@@ -65,7 +65,7 @@ import {
   serializeConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { InspectorContents } from "#src/components/workflow/inspector/inspector-contents";
 import { canvasRevealAtom } from "./canvas-reveal-state";
 import { ConditionSummarySheet } from "./condition-reveal";
 
@@ -211,7 +211,7 @@ async function renderCondition(input: {
     component: () => (
       <div className="relative" data-testid="canvas-area">
         <div data-testid="workflow-canvas" tabIndex={-1} />
-        <DetailsPanel />
+        <InspectorContents />
         <ShowIssuesButton />
         {input.summarySheet ? (
           <SummarySheet focusField={input.summarySheet} />
@@ -247,7 +247,9 @@ async function renderCondition(input: {
     store.set(selectOnlyNodeAtom, "condition");
   });
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
+    view.container.querySelector<HTMLElement>(
+      '[data-slot="inspector-contents"]'
+    );
   const region = () =>
     view.getByRole("complementary", { name: "Condition inspector" });
   const section = (title: string) => {
