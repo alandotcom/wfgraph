@@ -121,9 +121,11 @@ export function DetailsPanel() {
    * The one way the Inspector closes, for its X and for Escape with nothing
    * left to unwind. Focus goes back to the subject's outline row or card, or
    * else to the canvas element the kind names, before the card slides away
-   * and leaves the selection as it is.
+   * and leaves the selection as it is. A field request still waiting is
+   * dropped with the card.
    */
   const closeInspector = () => {
+    setFieldRequest(null);
     const landed =
       subject?.nodeId != null && focusStepRowOrCard(subject.nodeId);
     if (!landed && subject && kind) {
@@ -143,7 +145,12 @@ export function DetailsPanel() {
     }
     showLevel(next);
   };
+  // A field request the subject being left has not answered yet, such as a
+  // jump to the start's Events undone at once, belongs to that subject, so
+  // Back and Escape drop it rather than answer it the next time the start
+  // opens.
   const unwind = (trigger: "back" | "escape") => {
+    setFieldRequest(null);
     if (subject && kind?.unwind) {
       kind.unwind({
         subject,
