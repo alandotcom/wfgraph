@@ -248,8 +248,8 @@ describe("mobile Reveal for an ordinary step", () => {
     );
 
     fireEvent.click(view.getByRole("button", { name: "Edit step" }));
-    expect(sheet()?.dataset.level).toBe("inspector");
-    expect(levels()).toEqual(["summary", "inspector"]);
+    expect(sheet()?.dataset.level).toBe("full");
+    expect(levels()).toEqual(["summary", "full"]);
     expect(view.getByRole("button", { name: "Back to Summary" })).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Back to Summary" }));
@@ -336,7 +336,7 @@ describe("mobile Reveal focus and camera", () => {
     act(() => {
       store.set(openMobileSheetAtom, {
         address: store.get(activeWorkspaceAddressAtom),
-        level: "inspector",
+        level: "full",
         inspected: { kind: "node", id: "wait" },
       });
     });
@@ -406,7 +406,7 @@ describe("mobile Reveal for complex nodes", () => {
     ).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Edit rules" }));
-    expect(sheet()?.dataset.level).toBe("inspector");
+    expect(sheet()?.dataset.level).toBe("full");
     expect(view.getByRole("region", { name: "Rule builder" })).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Back to Summary" }));
@@ -432,7 +432,7 @@ describe("mobile Reveal for complex nodes", () => {
     );
 
     fireEvent.click(view.getByRole("button", { name: "Edit start" }));
-    expect(sheet()?.dataset.level).toBe("inspector");
+    expect(sheet()?.dataset.level).toBe("full");
     expect(view.queryByRole("navigation", { name: "Start rules" })).toBeNull();
     const inspector = view.getByRole("region", { name: "Start details" });
     expect(
@@ -483,7 +483,7 @@ describe("mobile Reveal for complex nodes", () => {
     expect(view.queryByRole("button", { name: "Edit step" })).toBeNull();
 
     fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
-    expect(sheet()?.dataset.level).toBe("inspector");
+    expect(sheet()?.dataset.level).toBe("full");
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["lifecycle-1"]);
 
     fireEvent.click(view.getByRole("button", { name: "Back to Split" }));

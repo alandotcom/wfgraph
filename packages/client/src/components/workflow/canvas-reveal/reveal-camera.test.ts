@@ -9,7 +9,7 @@ describe("mobileSheetCameraStep", () => {
   const sheet = (
     depth: number,
     id: string,
-    level: "summary" | "inspector" = "summary"
+    level: "summary" | "full" = "summary"
   ): MobileSheetCameraSlot => ({
     addressId: address,
     sheet: { depth, level, inspected: { kind: "node", id } },
@@ -41,7 +41,7 @@ describe("mobileSheetCameraStep", () => {
     expect(
       mobileSheetCameraStep({
         shown: sheet(1, "a"),
-        next: sheet(2, "a", "inspector"),
+        next: sheet(2, "a", "full"),
       })
     ).toBe("keep");
     expect(
@@ -61,7 +61,7 @@ describe("mobileSheetCameraStep", () => {
   it("places an address sheet over the bottom of the canvas and keeps the camera under an address inspector", () => {
     const addressSheet = (
       depth: number,
-      level: "summary" | "inspector"
+      level: "summary" | "full"
     ): MobileSheetCameraSlot => ({
       addressId: address,
       sheet: { depth, level, inspected: null },
@@ -75,7 +75,7 @@ describe("mobileSheetCameraStep", () => {
     expect(
       mobileSheetCameraStep({
         shown: addressSheet(1, "summary"),
-        next: addressSheet(2, "inspector"),
+        next: addressSheet(2, "full"),
       })
     ).toBe("keep");
   });

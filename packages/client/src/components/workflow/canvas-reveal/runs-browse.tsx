@@ -211,13 +211,13 @@ export function useOpenRunList(): () => void {
 export function RunsMobileHeader({ state, controls }: MobileKindHeaderProps) {
   const model = useRunsHeaderModel(
     state.subject,
-    state.level === "inspector" ? "focus" : "browse"
+    state.level === "full" ? "focus" : "browse"
   );
   return (
     <MobileSheetHeader
       backLabel={model.backLabel}
       controls={controls}
-      inspectorLabel={MOBILE_EVIDENCE_LABEL}
+      fullSheetLabel={MOBILE_EVIDENCE_LABEL}
       status={model.status}
       title={model.title}
     />

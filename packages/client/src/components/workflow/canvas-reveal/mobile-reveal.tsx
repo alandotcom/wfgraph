@@ -24,7 +24,7 @@ import type {
 import { activeRevealPresentationAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   closeMobileSheetAtom,
-  openMobileInspectorOverAddressAtom,
+  openMobileFullSheetOverAddressAtom,
   openMobileSheetAtom,
 } from "#src/lib/mobile-sheet-store";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -111,11 +111,11 @@ function useSheetHeading(
 }
 
 /**
- * The inspector below `md`, in every workspace: a sequence of sheets that the
- * navigation state records per scope. A summary sheet shows over the bottom of
- * the canvas, which stays pannable and zoomable above it, and an inspector
- * sheet covers the canvas. A sheet about an object shows the kind's summary or
- * inspector body, and an address sheet shows the address itself, such as a run
+ * What stands in for the Inspector below `md`, in every workspace: a sequence
+ * of sheets that the navigation state records per scope. A summary sheet shows
+ * over the bottom of the canvas, which stays pannable and zoomable above it,
+ * and a full sheet covers the canvas. A sheet about an object shows the kind's
+ * summary or full body, and an address sheet shows the address itself, such as a run
  * list or a run. Back and Escape remove one sheet, restoring the sheet beneath with
  * its selection, scroll and camera, or answer through the kind's
  * `mobile.unwind`, as Runs does when Back leaves a run for its run list.
@@ -130,8 +130,8 @@ export function MobileReveal() {
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const openSheet = useSetAtom(openMobileSheetAtom);
-  const openInspectorOverAddress = useSetAtom(
-    openMobileInspectorOverAddressAtom
+  const openFullSheetOverAddress = useSetAtom(
+    openMobileFullSheetOverAddressAtom
   );
   const closeSheet = useSetAtom(closeMobileSheetAtom);
   const fieldRequest = useAtomValue(revealFieldRequestAtom);
@@ -139,7 +139,7 @@ export function MobileReveal() {
   const { hasOverlays } = useOverlay();
   // Narrowing past the breakpoint hides the Inspector. Draft's sheets
   // follow the same selection by themselves. In Runs the run's sheet picks the
-  // selected node up, so one inspector is on screen at any width.
+  // selected node up, so one of the two is on screen at any width.
   useAfterCommit(isMobile, () => {
     if (
       isMobile &&
@@ -191,8 +191,8 @@ export function MobileReveal() {
   });
   useMobileSheetCamera({ state, sheet: sheetRef });
 
-  // A field request is answered once its step shows the inspector, or its
-  // summary when the step offers no inspector.
+  // A field request is answered once its step shows the full sheet, or its
+  // summary when the step offers no full sheet.
   useAfterPaint(
     `${fieldRequest?.nodeId ?? ""}|${fieldRequest?.targetId ?? ""}|${sheetKey ?? ""}`,
     () => {
@@ -200,7 +200,7 @@ export function MobileReveal() {
         fieldRequest === null ||
         state === null ||
         state.subject.nodeId !== fieldRequest.nodeId ||
-        (state.level !== "inspector" && state.subject.offersInspectorSheet)
+        (state.level !== "full" && state.subject.offersFullSheet)
       ) {
         return;
       }
@@ -224,7 +224,7 @@ export function MobileReveal() {
     }
     unwind({
       subject: state.subject,
-      level: state.level === "inspector" ? "focus" : "browse",
+      level: state.level === "full" ? "focus" : "browse",
       // A phone's Back and Escape each remove one sheet.
       trigger: "back",
       store,
@@ -247,23 +247,22 @@ export function MobileReveal() {
     return null;
   }
 
-  const isInspector = state.level === "inspector";
-  const Inspector = mobile?.Inspector ?? kind.Focus;
-  const offersInspector =
-    state.subject.offersInspectorSheet && Inspector !== null;
-  const openInspector = (targetId?: string) => {
+  const isFull = state.level === "full";
+  const FullBody = mobile?.Full ?? kind.Focus;
+  const offersFull = state.subject.offersFullSheet && FullBody !== null;
+  const openFullSheet = (targetId?: string) => {
     const { subject, address } = state;
-    if (!offersInspector) {
+    if (!offersFull) {
       return;
     }
     if (targetId !== undefined && subject.nodeId !== null) {
       setFieldRequest({ nodeId: subject.nodeId, targetId });
     }
     if (inspected !== null) {
-      openSheet({ address, level: "inspector", inspected });
+      openSheet({ address, level: "full", inspected });
     } else if (subject.nodeId !== null) {
-      // An address sheet opens the inspector of the node its address inspects.
-      openInspectorOverAddress({
+      // An address sheet opens the full sheet of the node its address inspects.
+      openFullSheetOverAddress({
         address,
         inspected: { kind: "node", id: subject.nodeId },
       });
@@ -271,23 +270,21 @@ export function MobileReveal() {
   };
   const controls: MobileSheetControls = {
     back,
-    openInspector:
-      offersInspector && !isInspector ? () => openInspector() : null,
+    openFullSheet: offersFull && !isFull ? () => openFullSheet() : null,
     titleRef,
   };
-  const level: RevealLevel = isInspector ? "focus" : "browse";
-  const Body =
-    isInspector && Inspector ? Inspector : (mobile?.Summary ?? kind.Browse);
+  const level: RevealLevel = isFull ? "focus" : "browse";
+  const Body = isFull && FullBody ? FullBody : (mobile?.Summary ?? kind.Browse);
   const body = (
     <Body
       focusField={(targetId) => {
-        if (isInspector) {
+        if (isFull) {
           if (targetId !== undefined && state.subject.nodeId !== null) {
             setFieldRequest({ nodeId: state.subject.nodeId, targetId });
           }
           return;
         }
-        openInspector(targetId);
+        openFullSheet(targetId);
       }}
       frame={frame}
       key={state.subject.kind}
@@ -307,7 +304,7 @@ export function MobileReveal() {
           // the selected step while focus is on a control inside the sheet.
           "mobile-reveal nokey absolute z-20 flex flex-col overflow-hidden bg-card",
           "pr-[env(safe-area-inset-right,0px)] pl-[env(safe-area-inset-left,0px)]",
-          isInspector
+          isFull
             ? "inset-0"
             : "inset-x-0 bottom-0 max-h-[min(60%,28rem)] rounded-t-xl border-t shadow-lg"
         )}
@@ -328,7 +325,7 @@ export function MobileReveal() {
           <MobileSheetHeader
             backLabel={draftBackLabel(state, nodes, catalog)}
             controls={controls}
-            inspectorLabel={mobile?.inspectorLabel}
+            fullSheetLabel={mobile?.fullSheetLabel}
             status={heading.status}
             title={heading.title}
           />
@@ -363,11 +360,11 @@ export function MobileReveal() {
 }
 
 /**
- * The canvas beneath the mobile Reveal sequence. While the full-screen
- * inspector covers it, it leaves keyboard and screen reader navigation. `contents` keeps the wrapper out of the layout.
+ * The canvas beneath the mobile Reveal sequence. While the full sheet covers
+ * it, it leaves keyboard and screen reader navigation. `contents` keeps the wrapper out of the layout.
  */
 export function MobileRevealCovered({ children }: { children: ReactNode }) {
-  const covered = useShownMobileReveal()?.level === "inspector";
+  const covered = useShownMobileReveal()?.level === "full";
   return (
     <div className="contents" data-slot="mobile-reveal-covered" inert={covered}>
       {children}

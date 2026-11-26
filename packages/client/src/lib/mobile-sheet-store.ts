@@ -7,7 +7,7 @@
 import { atom } from "jotai";
 import {
   withMobileAddressSheet,
-  withMobileInspectorOverAddress,
+  withMobileFullSheetOverAddress,
   withMobileSheet,
   withMobileSheetScroll,
   withoutTopMobileSheet,
@@ -57,10 +57,10 @@ export const openMobileAddressSheetAtom = atom(
 );
 
 /**
- * Show the inspector of `inspected` over the address sheet of a named address,
+ * Show the full sheet of `inspected` over the address sheet of a named address,
  * as run node evidence shows over its run. The selection is left as it is.
  */
-export const openMobileInspectorOverAddressAtom = atom(
+export const openMobileFullSheetOverAddressAtom = atom(
   null,
   (
     _get,
@@ -68,7 +68,7 @@ export const openMobileInspectorOverAddressAtom = atom(
     input: { address: WorkspaceAddress; inspected: InspectedObject }
   ) => {
     set(updateAddressNavigationAtom, input.address, (scope) =>
-      withMobileInspectorOverAddress(scope, input.inspected)
+      withMobileFullSheetOverAddress(scope, input.inspected)
     );
   }
 );
