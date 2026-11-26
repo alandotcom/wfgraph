@@ -7,11 +7,12 @@ import {
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
-import { EditorColumns } from "#src/components/workflow/columns/editor-columns";
+import { EditorLayout } from "#src/components/workflow/columns/editor-layout";
 import { EditorShell } from "#src/components/workflow/columns/editor-shell";
-import { DetailsColumn } from "#src/components/workflow/details/details-column";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import { WorkflowAgent } from "#src/components/agent/workflow-agent";
 import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
+import { RunStoppedStepSelection } from "#src/components/workflow/outline/run-stopped-step";
 import { ReviewSheet } from "#src/components/workflow/review/review-sheet";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync";
@@ -130,34 +131,36 @@ const WorkflowEditor = () => {
 
   return (
     <EditorShell>
-      {/* Route → pinned-graph overlay. Outside the details column so it
-              outlives the Runs view; `RunStatusProjection` reads what it writes. */}
+      {/* Route → pinned-graph overlay. Outside the Inspector so it outlives
+          the Runs view; `RunStatusProjection` reads what it writes. */}
       <ExecutionOverlaySync />
       {/* Route → workspace address, and route recovery. After the overlay
-              sync, so recovery in the same commit reads a run graph the
-              overlay sync has already dropped. */}
+          sync, so recovery in the same commit reads a run graph the overlay
+          sync has already dropped. */}
       <WorkspaceRouteSync />
-      {/* Open run → one evidence status per node, which step cards and
-              Group cards both read. */}
+      {/* Open run → one evidence status per node, which step cards and Group
+          cards both read. */}
       <RunStatusProjection />
+      {/* A failed or waiting run opens on the step it stopped at. */}
+      <RunStoppedStepSelection />
 
       {currentWorkflowId && (
         <WorkflowDraftSync workflowId={currentWorkflowId} />
       )}
 
       <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
-      {/* The columns, with the status strip below. The toolbar is above
-              this column so its centred search control measures the editor
-              shell. */}
+      {/* The canvas with what floats over it, and the status strip below. The
+          toolbar is above this column so its centred search control measures
+          the editor shell. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <EditorColumns
+        <EditorLayout
           canvas={
             <MobileRevealCovered>
               <WorkflowCanvas canEdit={canUpdate} />
             </MobileRevealCovered>
           }
           composer={<WorkflowAgent />}
-          details={<DetailsColumn />}
+          details={<DetailsPanel />}
           outline={<OutlineColumn />}
           phone={
             // Below `md` details are a sequence of sheets over the outline
@@ -165,9 +168,9 @@ const WorkflowEditor = () => {
             <MobileReveal />
           }
           overlay={
-            // The review sheet covers the details column and reaches over
-            // the canvas while it is open, and covers the screen below
-            // `md`.
+            // The review sheet reaches over the canvas and the Inspector from
+            // the editor's right edge while it is open, and covers the screen
+            // below `md`.
             <ReviewSheet />
           }
         />

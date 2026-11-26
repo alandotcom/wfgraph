@@ -1,12 +1,11 @@
-import { useAtomValue, useStore } from "jotai";
+import { useAtomValue } from "jotai";
 import { ArrowLeft } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import { useOpenRunList } from "#src/components/workflow/canvas-reveal/runs-browse";
 import { useAddressBodyScroll } from "#src/components/workflow/canvas-reveal/use-address-body-scroll";
-import { ColumnHeader } from "#src/components/workflow/columns/editor-columns";
 import {
   type ConfirmRequest,
   RunsListActions,
@@ -26,26 +25,19 @@ import {
   RunUnavailableMessage,
 } from "#src/components/workflow/workflow-runs";
 import { WorkflowRunsList } from "#src/components/workflow/workflow-runs-list";
-import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
+import { useDomEvent } from "#src/hooks/effects";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import type { ExecutionLog } from "#src/lib/execution-logs";
 import { testRunSkip } from "#src/lib/test-run-skip";
-import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
-import {
-  activeSelectionAtom,
-  activeWorkspaceAddressAtom,
-  inspectRunNodeAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { cn } from "@wfgraph/shared/utils";
 import { WorkflowOutline } from "./workflow-outline";
 
 /**
- * The left column in Runs. With no run open it lists the workflow's runs,
+ * The outline in Runs. With no run open it lists the workflow's runs,
  * newest first, each named by its Entity, with Refresh and "Delete all runs".
  * With a run open it is that run's outline under a header naming the run, with
- * Back to the list; J and K open the next and previous run in the list. A run
- * that failed or is waiting opens with the step it stopped at selected, so its
- * reason and its action are already in the details column.
+ * Back to the list; J and K open the next and previous run in the list.
  */
 export function RunsColumn() {
   const runs = useWorkflowRuns();
@@ -54,8 +46,6 @@ export function RunsColumn() {
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const { screen } = runs;
   const openRun = screen.kind === "run" ? screen.run.execution : null;
-
-  useSelectStoppedStep(openRun);
 
   useDomEvent(document, "keydown", (event) => {
     const key = event.key.toLowerCase();
@@ -91,7 +81,7 @@ export function RunsColumn() {
   } = useAddressBodyScroll(screen.kind === "list" ? address : null, null);
 
   // A focused row has scrolled the list to itself, and that position replaces
-  // the stored one. With the row gone, the details column's title takes focus.
+  // the stored one. With the row gone, the Inspector's title takes focus.
   const answerRowFocus = (focused: boolean) => {
     runs.clearRowFocus();
     if (focused) {
@@ -107,7 +97,10 @@ export function RunsColumn() {
 
   return (
     <>
-      <ColumnHeader side="outline">
+      <div
+        className="flex h-9 shrink-0 items-center gap-2 px-2"
+        data-slot="runs-header"
+      >
         {listShown || loadingList ? (
           <>
             <h2 className="min-w-0 flex-1 truncate font-medium text-sm">
@@ -142,7 +135,7 @@ export function RunsColumn() {
             ) : null}
           </>
         )}
-      </ColumnHeader>
+      </div>
       {openRun?.versionKind === "published" &&
       openRun.versionNumber !== null ? (
         // Each version numbers its own steps, so a run of an earlier version
@@ -236,45 +229,4 @@ function testSkippedNodeIds(run: {
       )
       .map((log) => log.nodeId)
   );
-}
-
-/**
- * Select the step an opening run stopped at, once per run: the step that
- * failed in a failed run, or the Wait a waiting run is parked on, with its
- * evidence in the details column. The canvas already places that step in
- * view when the run opens, so this asks for no camera move. A run that has
- * a selection, or that ended any other way, opens as it is.
- */
-function useSelectStoppedStep(
-  openRun: { id: string; status: string } | null
-): void {
-  const store = useStore();
-  const overlay = useAtomValue(executionOverlayGraphAtom);
-  const handledRunId = useRef<string | null>(null);
-  const stoppedNodeId = overlay?.stoppedNodeId ?? null;
-  const key =
-    openRun === null || overlay === null
-      ? null
-      : `${openRun.id}|${openRun.status}|${stoppedNodeId ?? ""}`;
-  useAfterCommit(key, () => {
-    if (openRun === null || overlay === null) return;
-    if (handledRunId.current === openRun.id) return;
-    if (openRun.status !== "failed" && openRun.status !== "waiting") {
-      // A run still running may yet stop; one that ended never will.
-      if (openRun.status !== "running") {
-        handledRunId.current = openRun.id;
-      }
-      return;
-    }
-    if (stoppedNodeId === null) return;
-    handledRunId.current = openRun.id;
-    if (store.get(activeSelectionAtom).nodeIds.length > 0) return;
-    store.set(inspectRunNodeAtom, {
-      address: store.get(activeWorkspaceAddressAtom),
-      nodeId: stoppedNodeId,
-      executionLogId: null,
-      selectsNode: true,
-      opensFocus: true,
-    });
-  });
 }

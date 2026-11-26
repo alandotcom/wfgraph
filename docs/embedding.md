@@ -237,7 +237,7 @@ fallback without exposing the exception text.
 
 Workflow Graph renders no preview of what a node will send. A host that wants one serves the
 page itself and declares an Action Link to it with `links` on `defineAction`. The editor
-shows each link in its details column while a step running that action is selected. The
+shows each link in its Inspector while a step running that action is selected. The
 page reads the node's saved draft
 with `app.workflows.readDraftNode`.
 
@@ -397,26 +397,23 @@ const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
   is the same call with a different bundle.
 - Each of the two packages is independent of the other.
 
-### Workspaces and columns
+### Workspaces and the canvas
 
 The editor shows a workflow in two workspaces. **Draft** edits the workflow, and **Runs**
-inspects its runs. Each workspace is three columns: the outline of the workflow in run
-order on the left, the canvas in the centre, and the details column on the right. The
-details column shows the selected object's editor, or with nothing selected the workflow's
-own details and issues; in Runs it shows the run list, a run, or a run node's evidence. The
-build agent is a prompt line at the bottom of the canvas. **Publish** opens a review sheet over the
-details column that lists each edit the draft makes to the published version, in the order
-a run reaches it, and ends in the decision to publish. Version history opens what each past
+inspects its runs. In each workspace the canvas fills the editor below the toolbar, and the
+rest floats over it. The outline, the workflow in run order, floats at the top left as plain
+rows; in Runs it is the run list or the open run's outline. The Inspector is a card at the
+right edge of the canvas that opens while something is selected and shows that object's
+editor; in Runs it shows the open run or a run node's evidence. The build agent is a prompt
+line at the bottom of the canvas. **Publish** opens a review sheet over the right of the
+canvas that lists each edit the draft makes to the published version, in the order a run
+reaches it, and ends in the decision to publish. Version history opens what each past
 version changed in the same sheet.
 
-A person can resize each side column by dragging or with the arrow keys on its inner edge,
-and collapse either one with the control in its header, `[` for the outline or `]` for
-details. The browser remembers the widths and collapsed columns in a cookie. At 1360px and
-wider both side columns dock; from 900px to 1359px the outline docks and details is a
-rail. While details is a rail, selecting something slides details in over the right of
-the canvas without resizing it, and the camera moves only when that panel would cover
-the selection. Nothing in the details column changes the saved draft except the edits
-made in it.
+`[` hides and shows the outline, except the run list, which always shows. Selecting
+something never resizes the canvas, and the camera moves only when the Inspector would
+cover the selection. Nothing in the Inspector changes the saved draft except the edits made
+in it.
 
 The editor keeps the workspace address in the page's query string: `view` (`runs`,
 absent for Draft) and `executionId`. Browser Back and Forward move between those

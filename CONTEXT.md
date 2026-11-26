@@ -465,17 +465,24 @@ after its own authorization.
 
 ### Editor
 
-**Details column**:
-The editor's inspector, the right of its three columns, always present beside
-the canvas. With an object selected it holds that object's editor; with
-nothing selected in Draft it holds the workflow's own details and issues. In
-Runs it holds the run list or a run at Browse, and a run node's evidence at
-Focus. Draft, each run, and each entered
-Group remember their own inspected object, scroll position, and camera. While
-the review sheet Publish opens is on screen, it covers the details column. On a
-phone a sequence of sheets takes its place.
-_Avoid_: Canvas Reveal (the retired panel that floated over the canvas),
-sidebar, inspector panel
+**Inspector**:
+The card floating at the right edge of the canvas that holds the selected
+object's editor, or in Runs an open run at Browse and a run node's evidence at
+Focus. It has one shape: it opens while there is a subject and closes when the
+subject goes, on its close control, or on Escape with nothing left to step back
+through. Draft with nothing selected and the run list show no Inspector. Draft,
+each run, and each entered Group remember their own inspected object, scroll
+position, and camera. While the review sheet Publish opens is on screen, it
+covers the Inspector. On a phone a sequence of sheets takes its place.
+_Avoid_: details column, Canvas Reveal (the retired panel that floated over the
+canvas), sidebar, inspector panel
+
+**Outline**:
+The workflow in run order, one row per step, floating as plain rows at the top
+left of the canvas: what starts a run, the numbered steps and an Add a step row
+at each open end. In Runs it is the run list, or the open run's outline. A row
+and its canvas card answer the same gestures. On a phone it is the main view.
+_Avoid_: outline column, step list, sidebar
 
 ### Build Agent
 

@@ -282,18 +282,20 @@ A step the run can never reach is muted: the card drops to 50% opacity, its inco
 
 ### Navigation
 
-A quiet menu bar spans the editor. Below it the editor is three docked
-columns: the outline on the left, the canvas in the centre, and details on the
-right, with the status strip beneath them. Both side columns are Panel-toned
-and separated from the canvas by a hairline. The selected workspace uses a
-Graphite Ink fill with Paper text. Tone, rather than an
-accent stripe, marks the active workflow.
+A quiet menu bar spans the editor. Below it the canvas fills the editor, with
+the status strip beneath it, and everything else floats over the canvas: the
+outline at the top left, the zoom controls at the bottom left, the agent's
+prompt line at the bottom, and the Inspector at the right edge while something
+is selected. Nothing docks beside the canvas, so the canvas box never changes
+size. The selected workspace uses a Graphite Ink fill with Paper text. Tone,
+rather than an accent stripe, marks the active workflow.
 
 The workflow workspace has two views: **Draft** and **Runs**. A
 segmented control precedes the Run split button and **Publish** at desktop
 widths. Below `md` the two views sit at the top of the toolbar's overflow
 menu, the active one checked, above the run commands and **Publish**. The
-columns, editing lock, and status strip always follow the same active view.
+outline, the Inspector, the editing lock, and the status strip always follow
+the same active view.
 A workflow opens with its cards readable. The camera fits the whole graph, with
 the padding **Fit view** uses and no higher than 100%, so a small workflow is
 not blown up, when that leaves every card at the compact form or larger, with
@@ -315,53 +317,37 @@ and owns the run list, run details, and run-node inspection. Reviewing a change 
 past version changed, happen in the review sheet, described under Publication
 review.
 
-The outline column is 340px wide by default and the person can resize it from
-240px to 480px. The details column is 400px by default and resizes from 340px
-to 560px. Each column's inner edge is a focusable separator, "Resize outline"
-or "Resize details": dragging it resizes the column, Left Arrow and Right Arrow
-move the edge 16px, Home and End go to the narrowest and widest width, and
-double-clicking returns the default width. The separator draws nothing at
-rest, a 2px Ring line on hover, and the same line on keyboard focus. Each
-column's header holds the control that collapses it to a 40px rail; the rail
-holds the control that brings it back. `[` collapses or shows the outline and
-`]` collapses or shows details from anywhere outside a text field, and the
-command palette offers both. A viewer's widths and collapsed columns are
-remembered across workflows and reloads. Only these controls change the
-docked columns: selecting or deselecting anything never adds, removes, or
-resizes a docked column, so the canvas box never changes size.
+The outline floats 12px inside the canvas's top left corner, capped at the
+canvas height less the room the zoom controls need, and scrolls inside itself.
+`[` hides and shows it from anywhere outside a text field, and the command
+palette offers the same command. In Runs with no run open it is the run list,
+which always shows, because it is the only way to open a run. Hiding it is not
+remembered across reloads or workflows.
 
-At 1360px and wider both side columns dock. From 900px to 1359px the canvas
-keeps room for one docked column, the outline's, and details is a rail. Below
-900px the phone layout described below applies.
+The Inspector is one card floating 8px inside the canvas's top, right and
+bottom edges, 340px wide, on the card surface with a hairline border, a 14px
+radius and shadow-lg. It opens when something is selected: a step, a
+connection, a Group, the Lifecycle node, several objects, or in Runs an open
+run or a run node. It closes when the selection clears, on its **Close**
+control, and on Escape with nothing left to step back through, which returns
+focus to the selected step's outline row as before. Pressing a step on the
+canvas or its outline row opens it again. Selecting something else while it is
+open replaces its content in place, and the card does not move or resize. In
+Draft with nothing selected, and on the run list, there is no card; the
+workflow's issues are reached from the issues chip. It floats, so the canvas
+box keeps its size and nothing reflows, and the camera moves only when the card
+would cover the selection. Under reduced motion the card appears and leaves
+without sliding.
 
-Whenever details is a rail, because of the window's width or because the
-person collapsed it, selecting a step, a Group, the Lifecycle node, or a
-connection slides details in as a floating panel over the right of the canvas,
-8px inside the canvas box, at the column's narrowest width, 340px, so it
-covers as little of the canvas as the column allows, with its content, a
-hairline border, shadow-lg, and a **Close details** control in its header. It
-floats, so the canvas box keeps its size and nothing reflows. Selecting
-something else while it is open replaces its content in place. It slides away
-when the selection is cleared, on **Close details**, and on Escape inside it,
-which returns focus to the selected step's outline row as docked details
-does. A closed panel reopens on the next selection. From 900px to 1359px the
-details rail control and `]` open and close the panel; at 1360px and wider
-they dock or collapse the column. With nothing selected nothing floats, and the
-rail control or `]` opens the panel on the workflow's own details. Under
-reduced motion the panel appears and leaves without sliding.
-
-The details column's header reads **Details**. It shows what the selection
-shows, under a header naming the object, the path from the workflow through
-any Group to it, and its status. With nothing
-selected in Draft it shows the workflow's own details: its name with
-**Rename**, its description, and its issues, each with an **Edit** that selects the step and puts the cursor in the
-field the issue names.
+The Inspector's header names the object and its status, with **Back** where a
+jump reached it and **Close**. Its body scrolls inside the card while the
+header stays put.
 
 The build agent works on the whole workflow, so it sits on the canvas rather
-than in the details column. In Draft and Runs, for a viewer who may use it on
+than in the Inspector. In Draft and Runs, for a viewer who may use it on
 a server that offers one, one prompt line floats at the bottom centre of the
 canvas, up to 560px wide, on the card surface with a hairline border and
-shadow-sm, clear of the zoom controls on the left and of floating details on
+shadow-sm, clear of the zoom controls on the left and of the open Inspector on
 the right. Its placeholder reads "Ask about this workflow, or describe a
 change". Focusing it, or sending, opens the conversation directly above it: a
 Popover-filled panel up to 560px wide and 60% of the canvas tall, with a
@@ -387,13 +373,13 @@ changes the canvas box. Opening a workflow, Fit view, and a placement keep
 cards clear of the line. While the review sheet is open the line and the
 conversation hide, since the canvas is read-only then.
 
-A workflow that holds only its Lifecycle Node draws nothing more on the canvas: choosing what starts it is the details column's, adding a step is the outline's **Add a step** row and the start card's +, and the agent's prompt line sits at the foot of the canvas. The build agent's empty conversation offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
+A workflow that holds only its Lifecycle Node draws nothing more on the canvas: choosing what starts it is the Inspector's, adding a step is the outline's **Add a step** row and the start card's +, and the agent's prompt line sits at the foot of the canvas. The build agent's empty conversation offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
 
 On a phone the zoom controls sit in a row along the bottom edge. The zoom
 controls draw on the card surface, so the graph never shows through them.
 
 Selecting an ordinary step, which is any Action or Wait, shows its editor in
-the details column at once. A press on a step selects it only when it ends as a
+the Inspector at once. A press on a step selects it only when it ends as a
 click. Dragging a step never selects it or moves the camera, and dragging a
 step that is not selected clears the selection. The header offers **Back** only
 where a jump reached the object, such as the Lifecycle node opened from an
@@ -433,7 +419,7 @@ place; a person who may not edit reads the rules as sentences. A rule names
 its field with the step it comes from, "Status · Patient State", when another
 input shares the field's name. A Condition's rule keeps field,
 operator, value, and remove on one line where the rule has 28rem; in a
-narrower details column the field shares the first line with remove, and the
+narrower Inspector the field shares the first line with remove, and the
 operator and value share the second. The operator is always as wide as its
 chosen label, so "is greater than or equal" never reads as "is greater than";
 the field and the value take the width it leaves. Selecting a
@@ -451,8 +437,8 @@ Selecting an object with the pointer opens its editor and leaves keyboard focus
 on the canvas object. The context menu's **Edit**, Enter on a focused object,
 and the command palette finding a step open the editor with focus in its label,
 or in the **Does** list's search of a step with no action. **Edit** on a row of the
-workflow's issue list, in the details column or in the list a blocked Publish
-opens, selects the step, brings the details column back if it was collapsed,
+workflow's issue list, in the issues chip's list or in the list a blocked
+Publish opens, selects the step, opens the Inspector,
 and puts focus in the field the row names. A
 step added from the palette opens with focus in the first required field it
 leaves empty, and any other new step opens with focus in the **Does** list's
@@ -541,16 +527,16 @@ outlet handles the same way a Condition does, keeping every outlet label that
 still fits inside the usable canvas.
 
 **Runs** has a Browse of its own and shows a run node's evidence in Focus. The
-run list is the left column's: its header holds **Refresh** and **Delete all
+run list is the outline's: its first row holds **Refresh** and **Delete all
 runs**, above the superseded count, the Refused Starts, the
 Cancellation Failures, a muted line naming the host's run retention window when
 the host deletes old runs, and the run rows. The All Runs list on the workflows
 page states the same window under its title. Selecting a run adds a browser history
-entry and puts the graph version the run pinned on the canvas. The left column
-then shows the run's outline under a header naming the run, with **Back** to
+entry and puts the graph version the run pinned on the canvas. The outline
+then shows the run's outline under a row naming the run, with **Back** to
 the list, and J and K open the next and previous run in the list. A failed run
 opens with the step that failed selected, and a waiting run with the Wait it is
-parked on, so the details column shows that step's evidence. The details header
+parked on, so the Inspector shows that step's evidence. The Inspector's header
 titles the run by its Entity and its start time, such as "Patient pat_20418 ·
 Nov 25, 7:42 AM", shows its status, and offers **Back**. A run's Entity is the
 Entity's label and the id the host supplied. A workflow that tracks no Entity
@@ -592,7 +578,7 @@ finish and duration, its error or cancellation, the wait it holds with **Resume
 now**, what the step did in words, and the node's activity such as parking and
 resuming. A Condition leads with its answer, such as "Took False", and the step
 the branch continues to, or that the path ends there. Each rule then reads as
-the sentence the details column builds for it, with whether it matched where the
+the sentence the Inspector builds for it, with whether it matched where the
 answer and the rules' logic decide that, and the value it compared where the
 run recorded the step it reads. Any other step shows its integration's own
 result display when it has one, then its input and output as labeled values
@@ -626,7 +612,7 @@ each run. On a phone the evidence replaces the run overview in the sheet, and
 its heading takes focus.
 
 Escape and **Back** take one step back as the shown object's kind defines it.
-In Draft, Escape inside the details column belongs to an open select,
+In Draft, Escape inside the Inspector belongs to an open select,
 combobox, menu, autocomplete, or dialog first, then to a Lifecycle section open
 for editing, and then hands focus back to the selected step's outline row, or
 to the selected object on the canvas when the outline does not show it.
@@ -639,13 +625,13 @@ step, the inspector's scroll position, and the open Lifecycle section are
 remembered separately for Draft, each Group view, the run list, and each run.
 Levels add no browser history.
 
-Selecting an object never moves the camera while details is docked. The camera
+Selecting an object moves the camera only when the Inspector would cover it. The camera
 moves for a request alone: the command palette finding a step, an issue's
 **Edit**, a jump to another scope, the review sheet pointing at an edit, and a
-selection that floating details would cover. A request never runs
+selection that the Inspector would cover. A request never runs
 layout, moves a node, or marks the draft changed. The camera keeps its zoom
 when the nodes fit the usable canvas, the canvas less its controls, the
-MiniMap, and the part the review sheet or floating details covers, and zooms
+MiniMap, and the part the review sheet or the Inspector covers, and zooms
 out only as far as
 fitting them needs. It then moves the least distance that keeps them and 64px
 of their neighbors inside the usable canvas, so a node already in view moves
@@ -654,7 +640,7 @@ nothing.
 Below `md`, 900px, the outline is the editor's main view and fills the width.
 A **Map** control in the toolbar shows the canvas in the outline's place, and
 pressing it again returns to the outline. The canvas under the outline keeps
-its camera and leaves the tab order. The column collapse controls are absent.
+its camera and leaves the tab order. `[` does nothing there.
 The agent's prompt line sits below either view, above the status strip, so
 the outline's last row and the bottom of the map scroll clear of it, and its
 conversation covers the whole screen under a header whose Back returns to it. Details are a sequence of sheets over the outline or the canvas.
@@ -684,7 +670,7 @@ order. Every control inside the sequence, and every option of a select, combobox
 or menu popup while the sequence shows, is at least 44px tall, text fields read
 at 1rem, and the sheets clear the left and right safe-area insets. The sheets,
 their scroll positions, and the Lifecycle section are remembered for each Draft
-scope apart from the details column, and each form factor keeps its own camera.
+scope apart from the Inspector, and each form factor keeps its own camera.
 While a sheet shows, the toolbar's **Configuration** button is absent. A phone
 offers no topology authoring: nodes cannot be dragged, added, deleted, pasted,
 duplicated, grouped, or ungrouped, connections cannot be drawn, the canvas has
@@ -759,7 +745,7 @@ dot, and both keep their names for assistive technology. The 320px search contro
 stays centered in the shell and hides at 70rem or narrower; its keyboard
 shortcut remains available. A compact **Find a step** control stays in the
 trailing group while the search control is hidden. It and Cmd+F (Ctrl+F)
-bring the outline into view, docked, over the canvas, or in place of a phone's
+bring the outline into view, over the canvas or in place of a phone's
 map, and put the cursor in its "Filter steps" field. The command palette's
 **Find a step** row does the same. It sits between the two
 groups in DOM order, so Tab reaches it in the position it appears. The workspace
@@ -782,7 +768,7 @@ controls say "Switch to Draft to run." or "Switch to Draft to publish." in a
 tooltip, and their menu rows say it in a detail line. A paused workflow starts
 no run, so in Draft both run commands are disabled and say "Resume the workflow
 to run." **Configuration** stays beside that menu as an icon
-button, because the details column is absent at that width. In Draft it opens the
+button, because the Inspector is absent at that width. In Draft it opens the
 selected object's summary sheet, and in Runs the sheet of the run list or the run.
 
 Every icon-only control in the toolbar and on the canvas names itself in the
@@ -798,7 +784,7 @@ workflow menu's **Rename**, **Duplicate workflow**, **Copy workflow ID**, and
 **Go to workflow…**, the chip's **Pause workflow** or **Resume workflow**; and the
 Settings menu's **Connections** and **Theme**. With one step selected in an
 editable Draft, the palette opens on a group headed by that step, "Step 4 ·
-Send 24-hour reminder", holding what its context menu and details column offer,
+Send 24-hour reminder", holding what its context menu and Inspector offer,
 each named with the step: Edit, Disable or Enable, Add a step after it on each
 outlet, Move up and Move down, Duplicate, and Delete. A query lists the steps
 it finds under "Steps", each named with its number, "Step 13 · Alert the front
@@ -836,8 +822,8 @@ versions. A publish that
 lands ends the redo branch, so an edit undone before the publish cannot come
 back after it; Undo still steps back through the edits made before it.
 
-The sheet covers the details column and reaches over the canvas from the
-editor's right edge, 8px inside it, up to 640px wide. The details column keeps
+The sheet covers the Inspector and reaches over the canvas from the
+editor's right edge, 8px inside it, up to 640px wide. The Inspector keeps
 its subject beneath it and returns as it was when the sheet closes. The sheet's header holds its title, one line of counts,
 **Version history** on the draft's review, and **Close**; a page opened over
 another leads with **Back**. Its footer holds the decision. The body between

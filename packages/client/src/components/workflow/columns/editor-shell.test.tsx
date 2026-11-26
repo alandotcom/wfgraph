@@ -6,7 +6,7 @@ import {
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { EditorColumns } from "./editor-columns";
+import { EditorLayout } from "./editor-layout";
 import { EditorShell } from "./editor-shell";
 
 function setViewportWidth(width: number): void {
@@ -20,7 +20,7 @@ function setViewportWidth(width: number): void {
 /**
  * The Tailwind classes that make an element a scroll container. A focus move
  * or `scrollIntoView` scrolls every scroll container above its target, so
- * none of these may sit between a details field's own scrolling body and the
+ * none of these may sit between an Inspector field's own scrolling body and the
  * page. `overflow-clip` clips without making a scroll container.
  */
 const SCROLL_CONTAINER_CLASS =
@@ -56,10 +56,10 @@ function renderEditor() {
   render(
     <JotaiProvider store={store}>
       <EditorShell>
-        <EditorColumns
+        <EditorLayout
           canvas={<div data-testid="canvas" />}
           details={
-            // The details panel's body is the one place a field may scroll.
+            // The Inspector's body is the one place a field may scroll.
             <div className="overflow-y-auto" data-testid="details-body">
               <input aria-label="Appointment ID" />
             </div>
@@ -74,11 +74,11 @@ function renderEditor() {
 
 /**
  * Focusing a field scrolls the nearest scroll container that holds it, and
- * every one above that. The details body is meant to scroll; anything above
+ * every one above that. The Inspector body is meant to scroll; anything above
  * it scrolling is the editor shifting under the pointer, which is what adding
  * a step did when the new step's first field took focus.
  */
-function expectOnlyTheDetailsBodyScrolls(): void {
+function expectOnlyTheInspectorBodyScrolls(): void {
   const body = screen.getByTestId("details-body");
   const scrolling = ancestorsOf(body).filter((element) =>
     SCROLL_CONTAINER_CLASS.test(element.className)
@@ -99,20 +99,14 @@ describe("EditorShell", () => {
     setViewportWidth(1024);
   });
 
-  it("lets nothing above docked details scroll when a field in it takes focus", () => {
-    setViewportWidth(1512);
-    renderEditor();
-    expectOnlyTheDetailsBodyScrolls();
-  });
-
-  it("lets nothing above floating details scroll when a field in it takes focus", () => {
-    setViewportWidth(1024);
+  it("lets nothing above the Inspector's body scroll when a field in it takes focus", () => {
+    setViewportWidth(1440);
     renderEditor();
     expect(
       document
         .querySelector('[data-slot="details-float"]')
         ?.contains(screen.getByTestId("details-body"))
     ).toBe(true);
-    expectOnlyTheDetailsBodyScrolls();
+    expectOnlyTheInspectorBodyScrolls();
   });
 });

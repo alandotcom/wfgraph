@@ -30,7 +30,7 @@ The colorful automation-canvas look of Zapier or n8n, where every node type shou
 
 ## Design Principles
 
-1. **The workflow is shown as an outline and a canvas side by side.** People read the workflow and move through it with the keyboard in the outline. Chrome stays out of the canvas's way.
+1. **The canvas fills the editor, and the outline floats over it.** People read the workflow and move through it with the keyboard in the outline. Chrome stays out of the canvas's way, and the Inspector opens only while something is selected.
 2. **State is always visible.** A run's status, a node's configuration health, and unsaved changes surface where the eye already is; users never wonder what the system is doing.
 3. **Color means something.** The palette stays monochrome; when color appears it encodes status (success, failure, running, warning), integration identity, or selection, and only that.
 4. **Fast is a feature.** Interactions respond immediately: optimistic saves, instant panel transitions, polling that never blocks the user.

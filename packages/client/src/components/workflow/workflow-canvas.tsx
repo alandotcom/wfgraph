@@ -101,6 +101,7 @@ import {
   useClearWorkflowNodeInspection,
   useWorkflowNodeInspection,
 } from "./use-workflow-node-inspection";
+import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import {
   type ContextMenuState,
   useContextMenuHandlers,
@@ -166,6 +167,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const comparison = useAtomValue(reviewDisplayGraphAtom);
   const comparisonActive = comparison !== null;
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
+  const openInspector = useSetAtom(detailsFloatOpenAtom);
   const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
@@ -528,6 +530,9 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         requestReviewScroll(members?.[0] ?? node.id);
         return;
       }
+      // Pressing a card opens the Inspector again after its X or Escape
+      // closed it with the card still selected.
+      openInspector(true);
       inspectNode(node.id, {
         selectionApplied:
           canvasWritesSelection &&
@@ -538,6 +543,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       canvasWritesSelection,
       inspectNode,
       interaction.comparisonVisible,
+      openInspector,
       requestReviewScroll,
     ]
   );

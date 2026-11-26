@@ -88,13 +88,15 @@ describe("shortcutReference", () => {
       expect(keysOf("Outline")).toContain(key);
     }
     expect(keysOf("Runs")).toEqual(["J", "K"]);
+    // `[` hides and shows the floating outline; nothing collapses details.
+    expect(keysOf("Editor")).toContain("[");
+    expect(keysOf("Editor")).not.toContain("]");
     const escapes =
       sections
         .find((section) => section.title === "Escape")
         ?.entries.map((entry) => entry.label) ?? [];
     for (const place of [
-      "In details",
-      "In floating details",
+      "In the Inspector",
       "On the canvas",
       "In the outline filter",
       "In a run's evidence",
