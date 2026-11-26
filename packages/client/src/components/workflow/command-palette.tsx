@@ -150,10 +150,7 @@ function plainRowsFirst(group: PaletteGroup): PaletteGroup {
 
 /**
  * The highlight styles, applied only while Return would take the row.
- *
- * Disabled rows keep pointer events so the pointer does not fall through to the
- * list, which `autoHighlight="always"` would read as leaving and then highlight
- * the first row. Skipping `data-disabled` keeps a disabled row visually inert.
+ * Skipping `data-disabled` keeps a disabled row visually inert.
  */
 const HIGHLIGHTED_ROW =
   "data-highlighted:not-data-disabled:bg-muted data-highlighted:not-data-disabled:text-foreground";
@@ -780,6 +777,11 @@ function CommandPaletteDialog({
         </p>
         <Autocomplete.Root
           autoHighlight="always"
+          // The pointer leaving a row for a group heading, the gap between
+          // rows or the list's padding leaves the highlight on that row.
+          // Without this Base UI reads it as leaving the list, and
+          // `autoHighlight="always"` then highlights the first row.
+          keepHighlight
           filteredItems={groups}
           inline
           items={authoredGroups}
