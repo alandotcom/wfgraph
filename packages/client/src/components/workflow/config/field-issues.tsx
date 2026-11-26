@@ -21,15 +21,13 @@ import {
 } from "react";
 import { useRegistrationBeforePaint } from "#src/hooks/effects";
 import {
+  lifecycleCheckFieldKey,
   requiredFieldKey,
   revealedRequiredFieldsAtom,
   revealLeftFieldAtom,
 } from "#src/lib/required-field-errors";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
-import type {
-  LifecycleRulesCheckId,
-  WorkflowIssue,
-} from "@wfgraph/shared/graph/workflow-issues";
+import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 import { cn } from "@wfgraph/shared/utils";
 import { NodeIssueList } from "#src/components/workflow/canvas-reveal/reveal-sections";
 
@@ -77,24 +75,19 @@ type FieldIssues = {
   issues: readonly WorkflowIssue[];
   /** The same issues by the field key each names. */
   byField: ReadonlyMap<string, readonly WorkflowIssue[]>;
+  /** Whether the node's field `fieldKey` shows the issues that wait. */
+  isRevealed: (fieldKey: string) => boolean;
   claims: FieldClaims | null;
 };
 
 const NO_FIELD_ISSUES: FieldIssues = {
   issues: [],
   byField: new Map(),
+  isRevealed: () => false,
   claims: null,
 };
 
 const FieldIssuesContext = createContext(NO_FIELD_ISSUES);
-
-/**
- * The key under which the Start's form shows the Lifecycle Rules problems one
- * Publish check reports, beneath the rule that check reads.
- */
-export function lifecycleCheckFieldKey(check: LifecycleRulesCheckId): string {
-  return `lifecycle-rules:${check}`;
-}
 
 /** The config key of the field an issue is about, or null for none. */
 export function issueFieldKey(issue: WorkflowIssue): string | null {
@@ -140,6 +133,8 @@ export function FieldIssuesProvider({
         issues.filter((issue) => issueFieldKey(issue) !== null),
         (issue) => issueFieldKey(issue) ?? ""
       ),
+      isRevealed: (fieldKey) =>
+        revealed.has(requiredFieldKey(nodeId, fieldKey)),
       claims,
     };
   }, [allIssues, nodeId, revealed, claims]);
@@ -158,6 +153,15 @@ export function FieldIssuesProvider({
       </div>
     </FieldIssuesContext.Provider>
   );
+}
+
+/**
+ * Whether the field `fieldKey` of the provider's node shows the issues that
+ * wait: it has been focused and left, or a Run draft or Publish was refused
+ * for it. A rule builder reads it for the field its refusal names.
+ */
+export function useFieldRevealed(fieldKey: string): boolean {
+  return useContext(FieldIssuesContext).isRevealed(fieldKey);
 }
 
 /**

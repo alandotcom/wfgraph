@@ -32,6 +32,7 @@ import {
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { catalogEventChoices } from "./event-choices";
 import { EventMultiCombobox } from "./event-combobox";
+import { useFieldRevealed } from "./field-issues";
 import { IntegrationEventConnectionEditor } from "./integration-event-connection";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
@@ -210,6 +211,9 @@ function WaitSubscriptionRow({
     },
     [onMatchChange, subscription.event]
   );
+  // An unfinished match is a missing value of `waitFor`, the field a refused
+  // Run draft or Publish names.
+  const revealUnfinished = useFieldRevealed("waitFor");
 
   // The comparison the common case wants, offered as one click: the arriving
   // payload at this workflow's Correlation Path for the Event, against whatever
@@ -286,6 +290,7 @@ function WaitSubscriptionRow({
           fields={fields}
           label="Match"
           onChange={handleChange}
+          revealUnfinished={revealUnfinished}
           value={subscription.match}
         />
       ) : (

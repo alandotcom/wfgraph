@@ -1,6 +1,6 @@
 import { useAtomValue } from "jotai";
 import { Plus, Trash2 } from "lucide-react";
-import { useCallback } from "react";
+import { type FocusEvent, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
@@ -31,6 +31,7 @@ import {
   type ConditionModel,
   type ConditionRule,
   compileConditionModel,
+  compileConditionRule,
   createDefaultConditionModel,
   createDefaultConditionRule,
   GROUP_LOGIC_OPTIONS,
@@ -85,6 +86,11 @@ type ConditionBuilderRowProps = {
    * comparison on any other string field.
    */
   setOperatorsRequireEnumValues?: boolean | undefined;
+  /**
+   * Whether a Run draft or Publish was refused for these rules. Until then an
+   * unfinished rule says so only once its value has been focused and left.
+   */
+  revealUnfinished: boolean;
   disabled: boolean;
 };
 
@@ -385,6 +391,7 @@ export function ConditionBuilderRow({
   onChange,
   currentNodeId,
   setOperatorsRequireEnumValues = false,
+  revealUnfinished,
   disabled,
 }: ConditionBuilderRowProps) {
   // The live draft's nodes name the source of any template reference a rule's
@@ -449,6 +456,76 @@ export function ConditionBuilderRow({
   // Derived in render rather than remembered from the last write, so a model
   // that arrives already broken says so on the first paint.
   const compiled = parsedModel ? compileConditionModel(parsedModel) : null;
+
+  // Each rule answers for itself beneath its value. A rule the builder has not
+  // finished, such as one whose value is still blank, waits the way an empty
+  // required field does: it says so once its value has been focused and left,
+  // or once a Run draft or Publish was refused for these rules. A rule that is
+  // malformed rather than unfinished says so at once.
+  const ruleResults = new Map(
+    (parsedModel?.groups ?? []).flatMap((group) =>
+      group.conditions.map(
+        (condition) => [condition.id, compileConditionRule(condition)] as const
+      )
+    )
+  );
+  const [leftRuleIds, setLeftRuleIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const ruleIssue = (conditionId: string): string | null => {
+    const result = ruleResults.get(conditionId);
+    if (!result || result.valid) {
+      return null;
+    }
+    return !result.incomplete ||
+      revealUnfinished ||
+      leftRuleIds.has(conditionId)
+      ? result.error
+      : null;
+  };
+  // What the model says beyond its rules, such as a group with no rule in it.
+  const modelIssue =
+    compiled?.valid === false &&
+    [...ruleResults.values()].every((result) => result.valid)
+      ? compiled.error
+      : null;
+
+  /**
+   * Focus leaving a rule's value marks the rule as left. A value's popup, such
+   * as an enum's list, takes focus outside the value's DOM while its control
+   * inside the value stays expanded, and Base UI moves that focus a frame
+   * later. So the check waits a task, and focus still inside the value or a
+   * control of it still expanded is focus that has not left.
+   */
+  const markLeftOnBlur =
+    (conditionId: string) => (event: FocusEvent<HTMLElement>) => {
+      const cell = event.currentTarget;
+      window.setTimeout(() => {
+        if (
+          cell.contains(document.activeElement) ||
+          cell.querySelector('[aria-expanded="true"]') !== null
+        ) {
+          return;
+        }
+        setLeftRuleIds((current) =>
+          current.has(conditionId)
+            ? current
+            : new Set([...current, conditionId])
+        );
+      }, 0);
+    };
+
+  /** A rule given a new field is a new rule to fill in, not yet left. */
+  const forgetLeftRule = (conditionId: string) => {
+    setLeftRuleIds((current) => {
+      if (!current.has(conditionId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(conditionId);
+      return next;
+    });
+  };
 
   const updateGroup = (
     groupId: string,
@@ -695,6 +772,7 @@ export function ConditionBuilderRow({
                       // nothing about which rule each one drops.
                       const conditionName =
                         selectedFieldDef?.label ?? unavailableFieldLabel();
+                      const issue = ruleIssue(condition.id);
 
                       return (
                         <div className="@container/rule" key={condition.id}>
@@ -737,6 +815,7 @@ export function ConditionBuilderRow({
                                         }
                                       : nextField;
 
+                                  forgetLeftRule(condition.id);
                                   updateCondition(
                                     group.id,
                                     condition.id,
@@ -834,6 +913,7 @@ export function ConditionBuilderRow({
                               <div
                                 className={CONDITION_RULE_VALUE_CLASS}
                                 data-slot="condition-rule-value"
+                                onBlur={markLeftOnBlur(condition.id)}
                               >
                                 <ConditionValueInput
                                   condition={condition}
@@ -866,6 +946,15 @@ export function ConditionBuilderRow({
                               <Trash2 className="size-4" />
                             </Button>
                           </div>
+
+                          {issue === null ? null : (
+                            <p
+                              className="pt-1 text-destructive text-xs"
+                              data-slot="condition-rule-issue"
+                            >
+                              {issue}
+                            </p>
+                          )}
 
                           {conditionIndex < group.conditions.length - 1 && (
                             <div className="pt-2">
@@ -912,9 +1001,9 @@ export function ConditionBuilderRow({
                 </Button>
               </div>
 
-              {compiled?.valid === false ? (
-                <p className="text-destructive text-xs">{compiled.error}</p>
-              ) : null}
+              {modelIssue === null ? null : (
+                <p className="text-destructive text-xs">{modelIssue}</p>
+              )}
             </>
           ) : null}
         </div>

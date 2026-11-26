@@ -45,7 +45,8 @@ import {
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigGroup, ConfigHelp, RemoveGroupButton } from "./config-section";
 import { EventMultiCombobox } from "./event-combobox";
-import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
+import { lifecycleCheckFieldKey } from "#src/lib/required-field-errors";
+import { FieldIssueMessages, useFieldRevealed } from "./field-issues";
 import type { LifecycleRuleGroupProps } from "./use-lifecycle-rules-editor";
 import {
   lifecycleFilterTargetId,
@@ -441,6 +442,9 @@ function LifecycleFilterEditor({
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const shared = eventNames.length > 1;
+  const revealUnfinished = useFieldRevealed(
+    lifecycleCheckFieldKey(role === "start" ? "start_filter" : "cancel_filter")
+  );
 
   const fields: ConditionSelectableField[] = useMemo(
     () => getSharedEventConditionFields(catalog, eventNames, nodes),
@@ -524,6 +528,7 @@ function LifecycleFilterEditor({
       fields={fields}
       label={role === "start" ? START_RULE_NAMES.startFilter : "Only stop when"}
       onChange={handleChange}
+      revealUnfinished={revealUnfinished}
       value={model}
     />
   );

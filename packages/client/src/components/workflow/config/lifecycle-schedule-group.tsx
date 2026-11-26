@@ -25,7 +25,8 @@ import { lifecycleRuleTargetId } from "#src/components/workflow/canvas-reveal/li
 import type { ScheduleIssue } from "@wfgraph/shared/lifecycle/cron-schedule";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { ConfigGroup, ConfigHelp, RemoveGroupButton } from "./config-section";
-import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
+import { lifecycleCheckFieldKey } from "#src/lib/required-field-errors";
+import { FieldIssueMessages } from "./field-issues";
 import {
   browserTimeZone,
   cronForPreset,

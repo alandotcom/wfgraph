@@ -486,7 +486,10 @@ outlets are each the step's one choice, so neither has such a disclosure. A Cond
 same way: the sentence saying when it takes True sits above them and changes as
 they do, and there is no Edit or Done. Every rule builder, the Wait's match and
 the filters and eligibility rule in the Start's form included, edits in
-place; a person who may not edit reads the rules as sentences. A rule names
+place; a person who may not edit reads the rules as sentences. A rule that is
+not finished, such as one whose value is blank, says why beneath its value the
+way an empty required field does: once that value has been focused and left,
+or once a Run draft or Publish was refused for it. A rule names
 its field with the step it comes from, "Status · Patient State", when another
 input shares the field's name. A Condition's rule keeps field,
 operator, value, and remove on one line where the rule has 36rem; in a
