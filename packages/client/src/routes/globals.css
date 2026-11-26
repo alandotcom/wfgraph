@@ -731,8 +731,8 @@
    the ones the Inspector shows on desktop at compact heights, so this raises
    each button, checkbox, switch, select trigger and text field inside the
    sequence to the 44px touch target instead of giving each body a second set
-   of sizes. Text fields also read at 1rem, below which iOS zooms the page when
-   a field takes focus. */
+   of sizes. Text fields, the template fields among them, also read at 1rem,
+   below which iOS zooms the page when a field takes focus. */
 @media (width < theme(--breakpoint-md)) {
   .mobile-reveal
     :is(button, [role="checkbox"], [role="switch"], [role="combobox"]) {
@@ -740,9 +740,22 @@
     min-width: 2.75rem;
   }
 
-  .mobile-reveal :is(input:not([type="checkbox"], [type="radio"]), textarea) {
+  .mobile-reveal
+    :is(
+      input:not([type="checkbox"], [type="radio"]),
+      textarea,
+      [data-slot="template-input"],
+      [data-slot="template-textarea"]
+    ) {
     min-height: 2.75rem;
     font-size: 1rem;
+  }
+
+  /* A template field's box is the element around its contenteditable, which
+     cannot center its line the way an input does, so its padding grows until
+     one 1.5rem line fills the 44px box inside the 1px border. */
+  .mobile-reveal [data-slot="template-input"] {
+    --template-field-py: calc((2.75rem - 2px - 1.5rem) / 2);
   }
 
   /* A select, combobox or menu popup is portalled to the body, outside the

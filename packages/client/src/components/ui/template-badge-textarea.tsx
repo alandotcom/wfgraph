@@ -77,14 +77,17 @@ export function TemplateBadgeTextarea({
         className={cn(
           // Matches the shared Textarea: same fill, padding and type size, and
           // on focus a border shift plus the 2px ring-ring halo every other
-          // control in the panel draws.
-          "relative flex w-full rounded-md border border-input bg-input/20 px-2 py-2 text-base transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring md:text-xs/relaxed dark:bg-input/30",
+          // control in the panel draws. The padding sits on the editor and the
+          // placeholder rather than here, so a press anywhere inside the
+          // border lands in the editor.
+          "relative flex w-full rounded-md border border-input bg-input/20 text-base transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring md:text-xs/relaxed dark:bg-input/30",
           invalid &&
             "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
           disabled && "cursor-not-allowed opacity-50",
           className
         )}
         data-invalid={invalid || undefined}
+        data-slot="template-textarea"
         ref={chromeRef}
         style={{ minHeight: `${rows * 1.5}rem` }}
       >
@@ -94,7 +97,7 @@ export function TemplateBadgeTextarea({
           aria-labelledby={labelledBy}
           aria-placeholder={placeholder}
           aria-required={required || undefined}
-          className="w-full whitespace-pre-wrap break-words outline-none"
+          className="w-full whitespace-pre-wrap break-words p-2 outline-none"
           contentEditable={!disabled}
           // The Inspector leaves Escape to the autocomplete menu while it shows.
           data-autocomplete-open={isMenuShown || undefined}
@@ -124,7 +127,7 @@ export function TemplateBadgeTextarea({
           // textbox carries the same words as `aria-placeholder`.
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-2 top-2 truncate text-muted-foreground"
+            className="pointer-events-none absolute inset-x-0 top-0 truncate p-2 text-muted-foreground"
           >
             {placeholder}
           </span>

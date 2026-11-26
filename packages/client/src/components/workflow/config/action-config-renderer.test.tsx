@@ -11,6 +11,8 @@
  * attribute.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
@@ -247,4 +249,64 @@ describe("ActionConfigRenderer", () => {
       }).templatePlaceholder()
     ).toBe("Subject");
   });
+
+  // happy-dom applies no stylesheet and no media query, so this reads the rule
+  // `globals.css` gives the phone sheet's text fields (the 44px touch target and
+  // 1rem text) and asks whether it reaches the box of every text field the
+  // form draws. A template field's box is the element around its
+  // contenteditable, so the rule has to name that element.
+  it("puts every text field of a phone sheet under the touch-target rule", () => {
+    const selector = phoneTextFieldSelector();
+    const { container } = render(
+      <div className="mobile-reveal">
+        {fieldsTree({
+          fields: [
+            { key: "line", label: "Line", type: "template-input" },
+            { key: "body", label: "Body", type: "template-textarea" },
+            { key: "plain", label: "Plain", type: "text" },
+            { key: "count", label: "Count", type: "number" },
+          ],
+        })}
+      </div>
+    );
+
+    const textboxes = [
+      ...within(container).getAllByRole("textbox"),
+      ...within(container).getAllByRole("spinbutton"),
+    ];
+    expect(textboxes.map((textbox) => textbox.id)).toEqual([
+      "line",
+      "body",
+      "plain",
+      "count",
+    ]);
+    for (const textbox of textboxes) {
+      expect(textbox.closest(selector), textbox.id).not.toBeNull();
+    }
+  });
 });
+
+/**
+ * The selector of the phone sheet's text-field rule in `globals.css`: the one
+ * rule that sets both the touch-target height and the 1rem text.
+ */
+function phoneTextFieldSelector(): string {
+  // A path rather than a URL: the client project's global `URL` is
+  // happy-dom's, which `readFileSync` does not accept.
+  const css = readFileSync(
+    join(import.meta.dirname, "../../../routes/globals.css"),
+    "utf8"
+  ).replaceAll(/\/\*[\s\S]*?\*\//g, "");
+  const rules = Array.from(css.matchAll(/([^{};]+)\{([^{}]*)\}/g));
+  const textFieldRules = rules.filter(
+    ([, , body]) =>
+      body?.includes("min-height: 2.75rem") && body.includes("font-size: 1rem")
+  );
+  expect(textFieldRules).toHaveLength(1);
+  // happy-dom's selector parser takes a selector on one line.
+  return (textFieldRules[0]?.[1] ?? "")
+    .replaceAll(/\s+/g, " ")
+    .replaceAll("( ", "(")
+    .replaceAll(" )", ")")
+    .trim();
+}

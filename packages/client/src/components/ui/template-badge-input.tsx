@@ -83,14 +83,19 @@ export function TemplateBadgeInput({
           // that holds badges: same 28px floor, same padding, same type size,
           // and the same border-plus-ring treatment on focus. Anything that
           // grows this box beyond a plain Input makes a template field read as
-          // a different kind of control from the text field beside it.
-          "relative flex min-h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-base transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring md:text-xs/relaxed dark:bg-input/30",
+          // a different kind of control from the text field beside it. The
+          // padding sits on the editor and the placeholder rather than here,
+          // so a press anywhere inside the border lands in the editor; the
+          // phone sheet's rule in globals.css raises the vertical padding
+          // through `--template-field-py` to make the box a 44px target.
+          "relative flex min-h-7 w-full rounded-md border border-input bg-input/20 text-base [--template-field-py:--spacing(0.5)] transition-colors focus-within:border-ring focus-within:outline-none focus-within:ring-2 focus-within:ring-ring md:text-xs/relaxed dark:bg-input/30",
           invalid &&
             "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
           disabled && "cursor-not-allowed opacity-50",
           className
         )}
         data-invalid={invalid || undefined}
+        data-slot="template-input"
         ref={chromeRef}
       >
         <div
@@ -100,7 +105,7 @@ export function TemplateBadgeInput({
           aria-labelledby={labelledBy}
           aria-placeholder={placeholder}
           aria-required={required || undefined}
-          className="w-full outline-none"
+          className="w-full px-2 py-(--template-field-py) outline-none"
           contentEditable={!disabled}
           // The Inspector leaves Escape to the autocomplete menu while it shows.
           data-autocomplete-open={isMenuShown || undefined}
@@ -120,7 +125,7 @@ export function TemplateBadgeInput({
           // textbox carries the same words as `aria-placeholder`.
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-2 top-0.5 truncate text-muted-foreground"
+            className="pointer-events-none absolute inset-x-0 top-0 truncate px-2 py-(--template-field-py) text-muted-foreground"
           >
             {placeholder}
           </span>
