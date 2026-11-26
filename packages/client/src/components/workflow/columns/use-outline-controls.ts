@@ -26,7 +26,9 @@ export type OutlineControls = {
   toggle: () => void;
   /**
    * Bring the outline into view, showing it over the canvas or leaving a
-   * phone's map, and put the cursor in its "Filter steps" field.
+   * phone's map, and put the cursor in its "Filter steps" field. The run list
+   * has no steps to filter, so there it does nothing, and no request is left
+   * waiting for the next outline that mounts.
    */
   findStep: () => void;
 };
@@ -56,6 +58,9 @@ export function useOutlineControls(): OutlineControls {
       }
     },
     findStep: () => {
+      if (runList) {
+        return;
+      }
       if (isMobile) {
         setPhoneShowsMap(false);
       } else {
