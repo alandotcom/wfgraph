@@ -63,6 +63,12 @@ function refuse(error: string): LifecycleRulesCheck {
   return { valid: false, error };
 }
 
+// Built here rather than imported: `lifecycle-rules.ts` reads this module's
+// schemas, so a value import back from it would be a cycle.
+function refuseUnfinished(error: string): LifecycleRulesCheck {
+  return { valid: false, error, unfinished: true };
+}
+
 function lifecycleEventNames(rules: LifecycleRules): string[] {
   return [...rules.startEvents, ...rules.cancelEvents];
 }
@@ -189,11 +195,11 @@ export function checkEntityEligibilityCondition(
 
   const compiled = compileConditionModel(parsed.model);
   if (!compiled.valid) {
-    return refuse(
-      compiled.incomplete
-        ? "Entity Eligibility is unfinished. Complete it before publishing."
-        : `Entity Eligibility is invalid: ${compiled.error}`
-    );
+    return compiled.incomplete
+      ? refuseUnfinished(
+          "Entity Eligibility is unfinished. Complete it before publishing."
+        )
+      : refuse(`Entity Eligibility is invalid: ${compiled.error}`);
   }
 
   const unreadable = unreadableEligibilityRule(entity, parsed.model);

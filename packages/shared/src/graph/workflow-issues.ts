@@ -208,6 +208,12 @@ export type InvalidLifecycleRulesIssue = {
   nodeLabel: string;
   check: LifecycleRulesCheckId;
   message: string;
+  /**
+   * Set when the check refused a rule builder holding a rule nobody has
+   * finished. The Start's form names that rule beneath its value and shows
+   * this issue nowhere else.
+   */
+  unfinished?: true | undefined;
 };
 
 /**
@@ -972,14 +978,15 @@ function collectInvalidLifecycleRulesIssues(input: {
       return result.valid
         ? []
         : [
-            {
+            omitUndefined({
               kind: "invalid_lifecycle_rules" as const,
               severity: "blocking" as const,
               nodeId: node.id,
               nodeLabel,
               check,
               message: result.error,
-            },
+              unfinished: result.unfinished,
+            }),
           ];
     });
   });

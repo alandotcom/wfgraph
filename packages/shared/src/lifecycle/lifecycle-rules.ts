@@ -240,9 +240,14 @@ export function manualStartAllowed(rules: LifecycleRules | undefined): boolean {
   return rules === undefined || rules.allowManualStart === true;
 }
 
+/**
+ * A rules check's verdict. `unfinished` marks a refusal of a rule builder
+ * holding a rule nobody has finished, such as a blank value: the builder names
+ * that rule beneath its value, so the editor shows the refusal nowhere else.
+ */
 export type LifecycleRulesCheck =
   | { valid: true }
-  | { valid: false; error: string };
+  | { valid: false; error: string; unfinished?: true | undefined };
 
 /**
  * The two answers a rules check gives, built here so every module that returns
@@ -256,6 +261,10 @@ export const refuseLifecycleRules = (error: string): LifecycleRulesCheck => ({
   valid: false,
   error,
 });
+
+export const refuseUnfinishedLifecycleRules = (
+  error: string
+): LifecycleRulesCheck => ({ valid: false, error, unfinished: true });
 
 /**
  * The sentence a save is refused with when a name resolves to no Event.
