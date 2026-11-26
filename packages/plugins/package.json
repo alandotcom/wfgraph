@@ -1,6 +1,6 @@
 {
   "name": "@wfgraph/plugins",
-  "version": "4.1.2",
+  "version": "4.2.0",
   "description": "The six built-in Workflow Graph integrations, one entry each, plus the icons and output renderers the editor draws them with",
   "keywords": [
     "automation",
