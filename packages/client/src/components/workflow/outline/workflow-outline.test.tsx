@@ -445,6 +445,25 @@ describe("WorkflowOutline", () => {
     expect(document.activeElement).toBe(otherwise);
   });
 
+  it("lets a viewer who may not edit open a step, and offers them no step to add", async () => {
+    installAuthorizationGrantsForTests([]);
+    const { store } = renderOutline();
+    const list = await tree();
+
+    expect(
+      within(list).queryAllByRole("treeitem", { name: "Add a step" })
+    ).toHaveLength(0);
+    fireEvent.click(row("Send booking confirmation"));
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual([
+      "Send booking confirmation",
+    ]);
+    // A viewer's click selects one step and never extends the selection.
+    fireEvent.click(row("Release the slot"), { shiftKey: true });
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual([
+      "Release the slot",
+    ]);
+  });
+
   it("shows the filter only on a find request, filters rows by text, and hides it again on Escape", async () => {
     const { store } = renderOutline();
     await tree();
