@@ -147,12 +147,9 @@ export function LifecycleScheduleGroup({
         </Button>
         {unsaved.length > 0 ? (
           <ul className="space-y-0.5" data-slot="unsaved-schedules">
-            {unsaved.map((issue) => (
-              <li
-                className="text-warning text-xs"
-                key={unsavedScheduleMessage(issue)}
-              >
-                {unsavedScheduleMessage(issue)}
+            {unsaved.map(unsavedScheduleMessage).map((message) => (
+              <li className="text-warning text-xs" key={message}>
+                {message}
               </li>
             ))}
           </ul>

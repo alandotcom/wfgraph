@@ -358,7 +358,8 @@ function renderField(
     isTemplate && ownPlaceholder !== undefined
       ? TEMPLATE_INSERT_HINT
       : undefined;
-  const help = compact([field.description, insertHint]).join(" ");
+  const helpSentences = compact([field.description, insertHint]);
+  const help = helpSentences.join(" ");
   const helpBehindIcon = help.length > INLINE_HELP_MAX_LENGTH;
   const label = field.label ?? field.key;
 
@@ -388,7 +389,7 @@ function renderField(
           </Label>
           {helpBehindIcon ? (
             <ConfigHelp label={label}>
-              {compact([field.description, insertHint]).map((sentence) => (
+              {helpSentences.map((sentence) => (
                 <p key={sentence}>{sentence}</p>
               ))}
             </ConfigHelp>
