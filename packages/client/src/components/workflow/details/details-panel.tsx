@@ -17,6 +17,9 @@ import type {
 } from "#src/components/workflow/node-config-panel";
 import {
   canvasRevealAtom,
+  dismissInspectorAtom,
+  inspectorOpenAtom,
+  inspectorSubjectAtom,
   showCanvasRevealLevelAtom,
   unwoundLevel,
 } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
@@ -31,7 +34,7 @@ import {
 } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useInspectorScroll } from "#src/components/workflow/canvas-reveal/use-inspector-scroll";
 import { useRevealKeyboard } from "#src/components/workflow/canvas-reveal/use-reveal-keyboard";
-import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
+import { focusStepRowOrCard } from "#src/components/workflow/step-focus-landing";
 import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
@@ -42,23 +45,24 @@ import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { RevealLevel } from "#src/lib/workflow-navigation-state";
 import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
-import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 
 /**
  * The Inspector's contents. It shows the selected object's editor, or in Runs
  * a run or a run node's evidence, under a header naming it, and nothing while
- * there is no subject, since the Inspector card is closed then. The subject's
+ * the card has no subject, such as on the run list, since the card is closed
+ * then. The subject's
  * kind supplies the header and bodies. Escape and Back take one step back as
- * the kind defines it. With no step left, Escape hands focus back to the
- * selected step's outline row, or else to the object on the canvas, and closes
- * the Inspector. A run node's evidence opens with focus on its title.
+ * the kind defines it. With no step left, Escape closes the Inspector as its
+ * X does. A run node's evidence opens with focus on its title. Escape, a field
+ * request and a title request wait for the card to be open.
  */
 export function DetailsPanel() {
   // Workspace synchronization can write these before normal subscriptions mount.
   const reveal = useAtomValueRawSync(canvasRevealAtom);
+  const subject = useAtomValueRawSync(inspectorSubjectAtom);
+  const open = useAtomValueRawSync(inspectorOpenAtom);
   const showLevel = useSetAtom(showCanvasRevealLevelAtom);
-  const closeInspector = useSetAtom(inspectorOpenAtom);
+  const dismissInspector = useSetAtom(dismissInspectorAtom);
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
   const catalog = useExtensionCatalog();
@@ -80,12 +84,14 @@ export function DetailsPanel() {
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const frame = useMemo<NodeConfigFrame>(() => ({ confirm: setRequest }), []);
   const rootRef = useRef<HTMLElement>(null);
-  const setHistoryGroupClosed = useSetAtom(closeHistoryGroupAtom);
-  const closeHistoryGroup = () => setHistoryGroupClosed();
+  const closeHistoryGroup = useSetAtom(closeHistoryGroupAtom);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const shownLevelRef = useRef<RevealLevel>(reveal.level);
+  // Whether focus was last inside the card. Moving it to an element outside
+  // clears this; a focused control leaving the page with its subject does not.
+  const focusInsideRef = useRef(false);
 
-  const { subject, level, presentation } = reveal;
+  const { level, presentation } = reveal;
   const kind = subject ? revealKind(subject) : null;
 
   // Opening a run node's evidence moves focus to its title. Every move passes
@@ -97,34 +103,42 @@ export function DetailsPanel() {
     shownLevelRef.current = level;
   });
 
-  /**
-   * Hand focus back to where the person came from: the selected step's row
-   * when the outline shows it, or else the selected object on the canvas.
-   */
-  const returnFocus = () => {
-    const [nodeId] = store.get(activeSelectionAtom).nodeIds;
-    const row =
-      nodeId === undefined
-        ? null
-        : document.getElementById(outlineRowElementId(nodeId));
-    if (row) {
-      row.focus({ preventScroll: true });
-      return;
+  // A jump inside the card, such as an Event Split's button or Back, replaces
+  // the control that held focus, which drops focus to the page body. The new
+  // subject's title takes it, so Escape and Tab still reach the card.
+  useBeforePaint(`${subject?.key ?? ""}|${open}`, () => {
+    const active = document.activeElement;
+    if (
+      open &&
+      focusInsideRef.current &&
+      (active === null || active === document.body)
+    ) {
+      titleRef.current?.focus({ preventScroll: true });
     }
-    if (subject && kind) {
+  });
+
+  /**
+   * The one way the Inspector closes, for its X and for Escape with nothing
+   * left to unwind. Focus goes back to the subject's outline row or card, or
+   * else to the canvas element the kind names, before the card slides away
+   * and leaves the selection as it is.
+   */
+  const closeInspector = () => {
+    const landed =
+      subject?.nodeId != null && focusStepRowOrCard(subject.nodeId);
+    if (!landed && subject && kind) {
       kind
         .focusReturnTarget(subject, document.documentElement)
         ?.focus({ preventScroll: true });
     }
+    dismissInspector();
   };
 
   // Back and Escape both run this, so a kind's own unwind answers both.
   const unwindLevel = () => {
     const next = unwoundLevel(level);
     if (next === null) {
-      returnFocus();
-      // The Inspector card slides away once focus has left it.
-      closeInspector(false);
+      closeInspector();
       return;
     }
     showLevel(next);
@@ -145,10 +159,13 @@ export function DetailsPanel() {
     }
   };
 
+  // A closed card is out of sight and inert, so it answers no keys, and only
+  // an Escape from inside the card is its own.
   useRevealKeyboard({
-    enabled: subject !== null && !coveredByReview && !isMobile,
+    enabled: open && subject !== null && !coveredByReview && !isMobile,
     hasOverlays,
     area: rootRef,
+    pageBodyCounts: false,
     onUnwind: () => unwind("escape"),
   });
   const {
@@ -168,17 +185,20 @@ export function DetailsPanel() {
       : null
   );
 
-  // A field request is answered once the Inspector shows its node, at Focus
-  // for a Runs subject that offers it. This runs after the scroll restore
+  // A field request is answered once the open Inspector shows its node, at
+  // Focus for a Runs subject that offers it. A request made while the card is
+  // still closed, or before the press that asked has opened it, waits for the
+  // card to open, since a closed card is inert. This runs after the scroll restore
   // above, and the field's scroll becomes the position the scope keeps. Only
   // the Inspector's own scrolling body moves, and only when the field is out
   // of view, to its nearest edge, so a field already on screen stays under
   // the pointer and nothing outside the card scrolls.
   useAfterPaint(
-    `${fieldRequest?.nodeId ?? ""}|${fieldRequest?.targetId ?? ""}|${subject?.key ?? ""}|${level}`,
+    `${fieldRequest?.nodeId ?? ""}|${fieldRequest?.targetId ?? ""}|${subject?.key ?? ""}|${level}|${open}`,
     () => {
       if (
         isMobile ||
+        !open ||
         fieldRequest === null ||
         subject === null ||
         subject.nodeId !== fieldRequest.nodeId ||
@@ -202,18 +222,22 @@ export function DetailsPanel() {
     }
   );
 
-  // A title request is answered once the Inspector shows the node it names,
-  // after the palette or menu that asked has given focus back.
-  useAfterPaint(`${titleFocusRequest ?? ""}|${subject?.key ?? ""}`, () => {
-    if (
-      !isMobile &&
-      titleFocusRequest !== null &&
-      subject?.nodeId === titleFocusRequest
-    ) {
-      setTitleFocusRequest(null);
-      titleRef.current?.focus({ preventScroll: true });
+  // A title request is answered once the open Inspector shows the node it
+  // names, after the palette or menu that asked has given focus back.
+  useAfterPaint(
+    `${titleFocusRequest ?? ""}|${subject?.key ?? ""}|${open}`,
+    () => {
+      if (
+        !isMobile &&
+        open &&
+        titleFocusRequest !== null &&
+        subject?.nodeId === titleFocusRequest
+      ) {
+        setTitleFocusRequest(null);
+        titleRef.current?.focus({ preventScroll: true });
+      }
     }
-  });
+  );
 
   if (isMobile) {
     return null;
@@ -221,6 +245,7 @@ export function DetailsPanel() {
 
   const headerControls: RevealHeaderControls = {
     onBack: () => unwind("back"),
+    onClose: closeInspector,
     titleRef,
   };
   let header: ReactNode = null;
@@ -276,7 +301,18 @@ export function DetailsPanel() {
       inert={coveredByReview}
       // Leaving a field ends its run of typing, so the next edit is an undo
       // step of its own.
-      onBlur={closeHistoryGroup}
+      onBlur={(event) => {
+        closeHistoryGroup();
+        if (
+          event.relatedTarget instanceof Node &&
+          !rootRef.current?.contains(event.relatedTarget)
+        ) {
+          focusInsideRef.current = false;
+        }
+      }}
+      onFocus={() => {
+        focusInsideRef.current = true;
+      }}
       ref={rootRef}
     >
       {header}
@@ -300,8 +336,8 @@ export function DetailsPanel() {
         // No dismissal in onConfirm: the dialog's action is an AlertDialog.Close,
         // so it is already going away by the time the handler runs.
         onConfirm={() => request?.onConfirm()}
-        onOpenChange={(open) => {
-          if (!open) {
+        onOpenChange={(dialogOpen) => {
+          if (!dialogOpen) {
             setRequest(null);
           }
         }}

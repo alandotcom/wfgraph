@@ -42,10 +42,7 @@ import {
   activeWorkspaceAddressAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { Input } from "#src/components/ui/input";
-import {
-  inspectorOpenAtom,
-  outlineFilterFocusRequestAtom,
-} from "#src/components/workflow/columns/editor-columns-store";
+import { outlineFilterFocusRequestAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
@@ -408,9 +405,6 @@ export function WorkflowOutline({
       if (edits && editOfNode(edits, nodeId)) requestReviewScroll(nodeId);
       return;
     }
-    // Pressing a row opens the Inspector again after its X or Escape closed
-    // it with the step still selected.
-    store.set(inspectorOpenAtom, true);
     if (view === "runs") {
       // On a run the row shows the step's evidence on the one canvas, and
       // Back and Escape return to the row. A step in a Group the viewer

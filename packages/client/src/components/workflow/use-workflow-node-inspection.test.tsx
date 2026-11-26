@@ -3,6 +3,10 @@ import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import type { Store } from "jotai";
 import { beforeEach, describe, expect, it } from "vitest";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import {
+  dismissInspectorAtom,
+  inspectorOpenAtom,
+} from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { useWorkflowNodeInspection } from "#src/components/workflow/use-workflow-node-inspection";
 import {
   canvasEdgesAtom,
@@ -154,6 +158,20 @@ describe("useWorkflowNodeInspection", () => {
     const only = { nodeIds: ["draft_a"], edgeIds: [] };
     expect(selectionState(store)).toEqual({ owner: only, painted: only });
     expect(store.get(selectedNodeAtom)).toBe("draft_a");
+  });
+
+  it("opens the Inspector again on the step its X closed, as a press or Enter on the card does", () => {
+    const store = selectionStore();
+    store.set(activeSelectionAtom, { nodeIds: ["draft_a"], edgeIds: [] });
+    expect(store.get(inspectorOpenAtom)).toBe(true);
+    store.set(dismissInspectorAtom);
+    expect(store.get(inspectorOpenAtom)).toBe(false);
+    const view = renderInspector(store, "draft_a");
+
+    fireEvent.click(view.getByRole("button", { name: /Inspect/ }));
+
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["draft_a"]);
+    expect(store.get(inspectorOpenAtom)).toBe(true);
   });
 
   it("clears a stale edge selection when clicking a node in Runs", () => {

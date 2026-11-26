@@ -1,8 +1,8 @@
 /**
  * What the editor below the toolbar shows besides the canvas: whether the
- * floating outline is hidden, whether the Inspector card is open, and on a
- * phone whether the map replaces the outline. None of it is kept across
- * reloads or workflows.
+ * floating outline is hidden, and on a phone whether the map replaces the
+ * outline. None of it is kept across reloads or workflows. Whether the
+ * Inspector card is open derives from its subject, in `canvas-reveal-state.ts`.
  */
 
 import { atom } from "jotai";
@@ -19,14 +19,6 @@ export const phoneShowsMapAtom = atom(false);
  * because the list is the only way to open a run.
  */
 export const outlineHiddenAtom = atom(false);
-
-/**
- * Whether the Inspector card is open over the right of the canvas. Each new
- * subject opens it and losing the subject closes it; its X and Escape with
- * nothing left to unwind close it while the subject stays selected, and
- * pressing a step on the canvas or its outline row opens it again.
- */
-export const inspectorOpenAtom = atom(false);
 
 /**
  * Whether Cmd+F or "Find a step" has asked for the outline's filter field and

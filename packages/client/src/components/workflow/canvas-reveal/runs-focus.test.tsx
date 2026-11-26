@@ -148,7 +148,8 @@ describe("Runs Focus node evidence", () => {
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
     expect(store.get(selectedNodeAtom)).toBe("send");
 
-    escape();
+    // The pressed row keeps focus, so Escape comes from inside the card.
+    escape(aside());
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
     await waitFor(async () =>
       expect(document.activeElement).toBe(await outlineRow("Send reminder"))
@@ -1099,7 +1100,8 @@ describe("Runs Focus node evidence", () => {
       within(evidence()).getByRole("heading", { name: "In this run" })
     ).toBeTruthy();
 
-    escape();
+    // The pressed row keeps focus, so Escape comes from inside the card.
+    escape(aside());
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
     await waitFor(async () =>
       expect(document.activeElement).toBe(await outlineRow("Send reminder"))

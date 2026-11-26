@@ -1,8 +1,8 @@
 /**
  * What the Inspector and the mobile Reveal sheets show, derived from the
  * active address's selection, presented graph, and stored desktop
- * presentation, and the write that moves Runs between a run and a node's
- * evidence. Levels create no history entry.
+ * presentation; whether the Inspector card is open; and the writes that open and close the card and move Runs between
+ * a run and a node's evidence. Levels create no history entry.
  */
 
 import { atom, useAtomValue } from "jotai";
@@ -14,6 +14,7 @@ import {
   type MobileSheet,
 } from "#src/lib/mobile-sheet-navigation";
 import {
+  showsRunList,
   workspaceAddressId,
   type CanvasSelection,
   type DesktopPresentation,
@@ -27,6 +28,7 @@ import {
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
+  recordInspectorDismissalAtom,
   setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { revealSubject } from "./reveal-kinds";
@@ -60,6 +62,52 @@ export const canvasRevealAtom = atom((get): CanvasRevealState => {
     level: effectiveRevealLevel(get(activeDesktopRevealLevelAtom), subject),
     presentation: get(activeRevealPresentationAtom),
   };
+});
+
+/**
+ * The subject the Inspector card shows at `md` and wider: the Reveal subject,
+ * except in two cases where it has none. The run list is the floating
+ * outline's, so a run list address shows no card. Several selected Draft steps
+ * have no editor of their own; their commands are the context menu's.
+ */
+export const inspectorSubjectAtom = atom((get): RevealSubject | null => {
+  const { address, subject } = get(canvasRevealAtom);
+  const { key } = address;
+  if (showsRunList(key)) {
+    return null;
+  }
+  if (
+    key.workspace === "draft" &&
+    get(activeSelectionAtom).nodeIds.length > 1
+  ) {
+    return null;
+  }
+  return subject;
+});
+
+/**
+ * Whether the Inspector card is open over the right of the canvas at `md` and
+ * wider: while it has a subject, unless the person closed it on that subject.
+ * A phone shows no card, whatever this answers.
+ */
+export const inspectorOpenAtom = atom((get): boolean => {
+  const subject = get(inspectorSubjectAtom);
+  return (
+    subject !== null &&
+    get(canvasRevealAtom).presentation.dismissedSubjectKey !== subject.key
+  );
+});
+
+/**
+ * Close the Inspector card and keep the selection, until the subject changes
+ * or a press opens the card again through `openInspectorAtom`.
+ */
+export const dismissInspectorAtom = atom(null, (get, set) => {
+  const { address } = get(canvasRevealAtom);
+  const subject = get(inspectorSubjectAtom);
+  if (subject !== null) {
+    set(recordInspectorDismissalAtom, { address, subjectKey: subject.key });
+  }
 });
 
 /**

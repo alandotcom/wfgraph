@@ -35,7 +35,7 @@ function twoSteps() {
 }
 
 describe("RunsColumn", () => {
-  it("lists the runs in the outline and leaves the Inspector pointing at it", async () => {
+  it("lists the runs in the outline and opens no Inspector for the list", async () => {
     served.items = [
       execution("exec_b", "completed"),
       execution("exec_a", "completed"),
@@ -57,9 +57,8 @@ describe("RunsColumn", () => {
     expect(
       within(column).getAllByTestId("workflow-run-summary-row")
     ).toHaveLength(2);
-    expect(aside()?.textContent).toContain(
-      "Open a run from the list to see its summary here."
-    );
+    expect(title()).toBeUndefined();
+    expect(aside()?.textContent).toBe("");
   });
 
   it("opens a completed run with nothing selected", async () => {

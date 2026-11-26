@@ -1,10 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -22,7 +21,7 @@ import { RevealHeader } from "./reveal-header";
 
 afterEach(resetAuthorizationGrantsForTests);
 
-function renderHeader() {
+function renderHeader(onClose: () => void = () => {}) {
   installAuthorizationGrantsForTests(WfGraphOperationIds);
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
@@ -52,14 +51,17 @@ function renderHeader() {
   });
   showWorkspaceRoute(store, {});
   act(() => store.set(selectOnlyNodeAtom, "send"));
-  store.set(inspectorOpenAtom, true);
   render(
     <JotaiProvider store={store}>
       <QueryClientProvider client={new QueryClient()}>
         <ExtensionCatalogProvider value={emptyExtensionCatalog}>
           <OverlayProvider>
             <RevealHeader
-              controls={{ onBack: () => {}, titleRef: { current: null } }}
+              controls={{
+                onBack: () => {},
+                onClose,
+                titleRef: { current: null },
+              }}
               model={{
                 title: "Send reminder",
                 status: { text: "2 issues", tone: "warning" },
@@ -105,9 +107,10 @@ describe("RevealHeader", () => {
     ).toBe(false);
   });
 
-  it("closes the Inspector on Close and keeps the selection", () => {
-    const store = renderHeader();
+  it("runs the shell's close on Close", () => {
+    const onClose = vi.fn();
+    renderHeader(onClose);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(store.get(inspectorOpenAtom)).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

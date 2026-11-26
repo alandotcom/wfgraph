@@ -3,6 +3,7 @@ import { useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import { OUTLINE_SHORTCUT_KEY } from "#src/lib/shortcut-label";
+import { showsRunList } from "#src/lib/workflow-navigation-state";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   outlineFilterFocusRequestAtom,
@@ -41,8 +42,8 @@ export function useOutlineControls(): OutlineControls {
   const [phoneShowsMap, setPhoneShowsMap] = useAtom(phoneShowsMapAtom);
   const requestFilterFocus = useSetAtom(outlineFilterFocusRequestAtom);
   const { key } = useAtomValue(activeWorkspaceAddressAtom);
-  const showsRunList = key.workspace === "runs" && key.executionId === null;
-  const canHide = !isMobile && !showsRunList;
+  const runList = showsRunList(key);
+  const canHide = !isMobile && !runList;
   const shown = isMobile ? !phoneShowsMap : !(canHide && hidden);
 
   return {

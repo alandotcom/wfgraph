@@ -20,6 +20,7 @@ import {
   withCamera,
   withDesktopRevealLevel,
   withInspectedOrigin,
+  withInspectorDismissal,
   withInspectorScroll,
   withChosenExecution,
   withInspectedSelection,
@@ -245,6 +246,37 @@ export const setWorkspaceRevealLevelAtom = atom(
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
       updateWorkspaceNavigation(navigation, input.address, (workspace) =>
         withDesktopRevealLevel(workspace, input.level)
+      )
+    );
+  }
+);
+
+/**
+ * Record that the person closed the Inspector card of a named address on the
+ * subject whose key is `subjectKey`.
+ */
+export const recordInspectorDismissalAtom = atom(
+  null,
+  (_get, set, input: { address: WorkspaceAddress; subjectKey: string }) => {
+    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
+      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
+        withInspectorDismissal(workspace, input.subjectKey)
+      )
+    );
+  }
+);
+
+/**
+ * Open the Inspector card of a named address again after its X or Escape
+ * closed it, as every press on a step does: on its card, its outline row,
+ * Enter on its card, or a search for it.
+ */
+export const openInspectorAtom = atom(
+  null,
+  (_get, set, address: WorkspaceAddress) => {
+    set(writeNavigationAtom, address.workflowId, (navigation) =>
+      updateWorkspaceNavigation(navigation, address, (workspace) =>
+        withInspectorDismissal(workspace, null)
       )
     );
   }

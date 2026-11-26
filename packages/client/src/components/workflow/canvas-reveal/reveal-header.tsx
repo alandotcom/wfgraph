@@ -1,4 +1,4 @@
-import { useAtomValue, useStore } from "jotai";
+import { useAtomValue } from "jotai";
 import { ArrowLeft, MoreHorizontal, X } from "lucide-react";
 import { Fragment, type Ref } from "react";
 import { Button } from "#src/components/ui/button";
@@ -25,8 +25,6 @@ import {
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
-import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
 import {
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
@@ -49,28 +47,14 @@ export type RevealHeaderModel = {
 export type RevealHeaderControls = {
   /** One step back, as the subject's kind defines it. Escape runs the same. */
   onBack: () => void;
+  /**
+   * Close the Inspector card and keep the selection, handing focus back to
+   * the subject's outline row or card. Escape with nothing left to unwind
+   * runs the same.
+   */
+  onClose: () => void;
   titleRef: Ref<HTMLHeadingElement>;
 };
-
-/**
- * Close the Inspector card, leaving the selection as it is, and hand focus to
- * the selected step's outline row, or else to its card on the canvas.
- */
-function useCloseInspector(): () => void {
-  const store = useStore();
-  return () => {
-    const [nodeId] = store.get(activeSelectionAtom).nodeIds;
-    if (nodeId !== undefined) {
-      (
-        document.getElementById(outlineRowElementId(nodeId)) ??
-        document.querySelector<HTMLElement>(
-          `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`
-        )
-      )?.focus({ preventScroll: true });
-    }
-    store.set(inspectorOpenAtom, false);
-  };
-}
 
 /**
  * A row's label in the Inspector's ⋯ menu. The header already names the
@@ -174,9 +158,8 @@ export function RevealHeader({
   model: RevealHeaderModel;
   controls: RevealHeaderControls;
 }) {
-  const { onBack, titleRef } = controls;
+  const { onBack, onClose, titleRef } = controls;
   const { status } = model;
-  const closeInspector = useCloseInspector();
   const { key } = useAtomValue(activeWorkspaceAddressAtom);
   const selection = useAtomValue(activeSelectionAtom);
   const numbers = useAtomValue(stepNumbersAtom);
@@ -233,7 +216,7 @@ export function RevealHeader({
       {draftNodeId === null ? null : <StepActionsMenu nodeId={draftNodeId} />}
       <Button
         aria-label="Close"
-        onClick={closeInspector}
+        onClick={onClose}
         size="icon-sm"
         type="button"
         variant="ghost"

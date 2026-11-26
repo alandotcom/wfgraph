@@ -37,6 +37,28 @@ export function stepBeforeRemoved(input: {
 }
 
 /**
+ * Focuses the outline row of `nodeId`, or else its card on the canvas: `card`
+ * when it is still on the page, or the card found by its id. Every move passes
+ * `preventScroll`. Answers whether either took focus. Closing the Inspector
+ * and the agent's Escape hand focus back to the selected step this way.
+ */
+export function focusStepRowOrCard(
+  nodeId: string,
+  card?: Element | null
+): boolean {
+  const row = document.getElementById(outlineRowElementId(nodeId));
+  const ownCard =
+    card instanceof HTMLElement && card.isConnected
+      ? card
+      : document.querySelector<HTMLElement>(
+          `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`
+        );
+  const target = row ?? ownCard;
+  target?.focus({ preventScroll: true });
+  return target !== null;
+}
+
+/**
  * After two frames, when focus sits on the page body, focuses the outline
  * row of `nodeId`, or its card on the canvas when the outline is not shown.
  * Two frames, because React Flow blurs a deselected card one frame after the
@@ -52,14 +74,7 @@ export function focusStepWhenFocusIsLost(
       if (active !== null && active !== document.body) {
         return;
       }
-      const row = document.getElementById(outlineRowElementId(nodeId));
-      const ownCard =
-        card instanceof HTMLElement && card.isConnected
-          ? card
-          : document.querySelector<HTMLElement>(
-              `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`
-            );
-      (row ?? ownCard)?.focus({ preventScroll: true });
+      focusStepRowOrCard(nodeId, card);
     });
   });
 }

@@ -465,12 +465,20 @@ describe("Event Split Browse", () => {
       edges: BASE_EDGES,
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
+    // A pressed button takes focus, and leaves the page with the split.
+    const owner = view.getByRole("button", { name: "Open start Events" });
+    owner.focus();
+    fireEvent.click(owner);
     expect(
       view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();
 
-    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
+    // Focus went to the Lifecycle Node's title, so Escape reaches the card.
+    expect(aside()?.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+      bubbles: true,
+    });
 
     expect(
       view.getByRole("complementary", { name: "Event Split inspector" })
@@ -496,14 +504,20 @@ describe("Event Split Browse", () => {
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
 
     // The section stays open as it was left, and Escape closes it first.
-    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
+    fireEvent.keyDown(aside() ?? document.body, {
+      key: "Escape",
+      bubbles: true,
+    });
     expect(
       view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();
     expect(aside()?.dataset.level).toBe("browse");
-    // With nothing left to step back from, Escape keeps the Lifecycle Node
-    // shown.
-    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
+    // With nothing left to step back from, Escape closes the card and keeps
+    // the Lifecycle Node inspected.
+    fireEvent.keyDown(aside() ?? document.body, {
+      key: "Escape",
+      bubbles: true,
+    });
     expect(
       view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();

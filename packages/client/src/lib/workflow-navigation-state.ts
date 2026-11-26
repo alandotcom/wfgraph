@@ -41,6 +41,11 @@ export type WorkspaceKey =
   | { workspace: "draft" }
   | { workspace: "runs"; executionId: string | null };
 
+/** Whether `key` is the run list: Runs with no run open. */
+export function showsRunList(key: WorkspaceKey): boolean {
+  return key.workspace === "runs" && key.executionId === null;
+}
+
 /** One workspace key inside one workflow. */
 export type WorkspaceAddress = {
   workflowId: string;
@@ -97,13 +102,17 @@ export type FormFactorPresentation = { camera: WorldCamera | null };
  * belongs to an address that has never set one, which shows Browse. `inspected`
  * is the object `inspectorScroll` (pixels from the top, per level) belongs to.
  * `inspectedOrigin` is where a jump to `inspected` started. It lasts while the
- * selection holds `inspected` alone.
+ * selection holds `inspected` alone. `dismissedSubjectKey` is the key of the
+ * Inspector subject the person closed the card on with its X or Escape; the
+ * card stays closed while the address's subject has that key. A selection
+ * change and an explicit open forget it.
  */
 export type DesktopPresentation = FormFactorPresentation & {
   revealLevel: RevealLevel | null;
   inspected: InspectedObject | null;
   inspectorScroll: Readonly<Record<RevealLevel, number>>;
   inspectedOrigin: InspectedOrigin | null;
+  dismissedSubjectKey: string | null;
 };
 
 /**
@@ -164,6 +173,7 @@ export const EMPTY_WORKSPACE_NAVIGATION: WorkspaceNavigation = {
     inspected: null,
     inspectorScroll: { browse: 0, focus: 0 },
     inspectedOrigin: null,
+    dismissedSubjectKey: null,
   },
   mobile: { camera: null, sheets: [] },
   showSuperseded: false,
@@ -467,6 +477,19 @@ export function withShowSuperseded(
   return workspace.showSuperseded === showSuperseded
     ? workspace
     : { ...workspace, showSuperseded };
+}
+
+/**
+ * Record the key of the Inspector subject whose card the person closed, or
+ * null to open the card again.
+ */
+export function withInspectorDismissal(
+  workspace: WorkspaceNavigation,
+  dismissedSubjectKey: string | null
+): WorkspaceNavigation {
+  return workspace.desktop.dismissedSubjectKey === dismissedSubjectKey
+    ? workspace
+    : { ...workspace, desktop: { ...workspace.desktop, dismissedSubjectKey } };
 }
 
 /** Record where a jump to the inspected object started. */

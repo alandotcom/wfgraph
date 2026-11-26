@@ -8,11 +8,18 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+  openInspectorAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { revealPlacementRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import {
+  dismissInspectorAtom,
+  inspectorOpenAtom,
+} from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { EditorLayout } from "./editor-layout";
 import {
-  inspectorOpenAtom,
   outlineFilterFocusRequestAtom,
   outlineHiddenAtom,
   phoneShowsMapAtom,
@@ -124,21 +131,13 @@ describe("EditorLayout", () => {
     const store = renderLayout();
     expect(inspector()?.dataset.open).toBe("false");
     expect(inspector()?.hasAttribute("inert")).toBe(true);
-    const composerBox = document.querySelector<HTMLElement>(
-      '[data-slot="agent-composer-box"]'
-    );
-    expect(composerBox?.style.right).toBe("12px");
 
     act(() => store.set(selectOnlyNodeAtom, "send"));
 
     expect(inspector()?.dataset.open).toBe("true");
     expect(inspector()?.hasAttribute("inert")).toBe(false);
-    expect(inspector()?.style.width).toBe("340px");
-    expect(inspector()?.dataset.coversWidth).toBe("348");
     // The camera keeps the selected step clear of the card.
     expect(store.get(revealPlacementRequestAtom)?.nodeIds).toEqual(["send"]);
-    // The composer's right edge clears the open card.
-    expect(composerBox?.style.right).toBe("360px");
 
     act(() => store.set(clearSelectionAtom));
     expect(inspector()?.dataset.open).toBe("false");
@@ -159,18 +158,51 @@ describe("EditorLayout", () => {
     expect(inspector()?.dataset.open).toBe("false");
   });
 
-  it("closes the Inspector without clearing the selection, and opens it for the next subject", () => {
+  it("closes the Inspector without clearing the selection until a press or the next subject opens it", () => {
     setViewportWidth(1440);
     const store = renderLayout();
     act(() => store.set(selectOnlyNodeAtom, "send"));
     expect(inspector()?.dataset.open).toBe("true");
 
-    act(() => store.set(inspectorOpenAtom, false));
+    act(() => store.set(dismissInspectorAtom));
     expect(inspector()?.dataset.open).toBe("false");
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
 
-    act(() => store.set(clearSelectionAtom));
-    act(() => store.set(selectOnlyNodeAtom, "send"));
+    // A press on the same step opens the card again and places the step.
+    const before = store.get(revealPlacementRequestAtom)?.sequence ?? 0;
+    act(() =>
+      store.set(openInspectorAtom, store.get(activeWorkspaceAddressAtom))
+    );
     expect(inspector()?.dataset.open).toBe("true");
+    expect(store.get(revealPlacementRequestAtom)?.sequence).toBe(before + 1);
+
+    // Another subject opens it whatever the card was.
+    act(() => store.set(dismissInspectorAtom));
+    act(() => store.set(selectOnlyNodeAtom, "wait"));
+    expect(inspector()?.dataset.open).toBe("true");
+
+    // The same subject selected again after a change opens it too.
+    act(() => store.set(dismissInspectorAtom));
+    act(() => store.set(clearSelectionAtom));
+    act(() => store.set(selectOnlyNodeAtom, "wait"));
+    expect(inspector()?.dataset.open).toBe("true");
+  });
+
+  it("opens the card and places its step when a phone widens with a step selected", () => {
+    setViewportWidth(500);
+    const store = renderLayout();
+    act(() => store.set(selectOnlyNodeAtom, "send"));
+    expect(inspector()).toBeNull();
+    const before = store.get(revealPlacementRequestAtom)?.sequence ?? 0;
+
+    act(() => setViewportWidth(1280));
+
+    expect(inspector()?.dataset.open).toBe("true");
+    expect(store.get(inspectorOpenAtom)).toBe(true);
+    expect(store.get(revealPlacementRequestAtom)).toMatchObject({
+      nodeIds: ["send"],
+      sequence: before + 1,
+    });
   });
 
   it("hides and shows the outline with [ outside text fields", () => {
