@@ -737,6 +737,10 @@ Otherwise the camera moves the least distance that keeps them and 64px of
 their neighbors inside the usable canvas.
 
 Below `md`, 900px, the outline is the editor's main view and fills the width.
+Each of its rows, each heading that folds, and its "Filter steps" field are
+44px tall there, and the fold chevron answers the row's full height. The
+toolbar keeps its 44px height and its compact controls, and each control
+answers a touch across that full height through an invisible hit area.
 A **Map** control in the toolbar shows the canvas in the outline's place, and
 pressing it again returns to the outline. The canvas under the outline keeps
 its camera and leaves the tab order. `[` does nothing there.

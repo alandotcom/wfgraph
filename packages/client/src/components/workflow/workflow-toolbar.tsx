@@ -250,7 +250,10 @@ export function WorkflowToolbarChrome({
   state: WorkflowToolbarState;
 }) {
   return (
-    <div className="relative h-11 shrink-0 border-b bg-background">
+    <div
+      className="relative h-11 shrink-0 border-b bg-background"
+      data-slot="editor-toolbar"
+    >
       {/* The row remains one fixed height. Below `md` every control fits, with
           the workflow name truncating; from `md` a narrow editor scrolls through
           every control, and at desktop widths the palette trigger is centred in

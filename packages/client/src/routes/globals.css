@@ -727,6 +727,25 @@
   }
 }
 
+/* The editor toolbar stays 44px tall on a phone and its controls keep their
+   compact 24px to 28px faces, so each answers a finger through an invisible
+   hit area as tall as the toolbar, centred on the control. Growing the faces
+   instead would put their hover fill and focus ring against the toolbar's
+   bottom border. */
+@media (width < theme(--breakpoint-md)) {
+  [data-slot="editor-toolbar"] :is(button, a[href]) {
+    position: relative;
+  }
+
+  [data-slot="editor-toolbar"] :is(button, a[href])::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: calc(50% - 1.375rem);
+    bottom: calc(50% - 1.375rem);
+  }
+}
+
 /* Every control in the mobile Reveal sequence answers a finger. Its bodies are
    the ones the Inspector shows on desktop at compact heights, so this raises
    each button, checkbox, switch, select trigger and text field inside the

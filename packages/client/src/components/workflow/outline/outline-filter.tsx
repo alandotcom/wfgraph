@@ -59,6 +59,9 @@ export function OutlineFilter({
       <Input
         aria-keyshortcuts="Meta+F Control+F"
         aria-label="Filter steps"
+        // On a phone the field is always shown at the top of the step list,
+        // at the 44px touch height and 1rem, below which iOS zooms the page.
+        className="max-md:h-11 max-md:text-base"
         onBlur={() => {
           if (value === "") setOpen(false);
         }}
