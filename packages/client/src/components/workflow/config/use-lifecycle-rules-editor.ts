@@ -23,13 +23,13 @@ import {
   readLifecycleRules,
   setConnectionForIntegration,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { reconcileEntityBindings } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import {
   carryStartFilterToAddedEvents,
   pruneStartFilters,
   setStartFilterForAll,
   setStartFilterForEvent,
 } from "@wfgraph/shared/lifecycle/start-filters";
-import { reconcileEntityBindings } from "./lifecycle-entity-eligibility-group";
 import {
   readScheduleRows,
   rowOfSchedule,

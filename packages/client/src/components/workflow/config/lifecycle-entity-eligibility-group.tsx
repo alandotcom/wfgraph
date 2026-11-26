@@ -12,6 +12,10 @@ import {
   findEntity,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
+import {
+  entityBindingChoices,
+  reconcileEntityBindings,
+} from "@wfgraph/shared/lifecycle/entity-eligibility";
 import type { LifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { compact, uniq } from "es-toolkit/array";
 import { omit } from "es-toolkit/object";
@@ -47,48 +51,6 @@ function lifecycleEvents(rules: LifecycleRules): string[] {
   return uniq([...rules.startEvents, ...rules.cancelEvents]);
 }
 
-function bindingChoices(input: {
-  catalog: ExtensionCatalog;
-  eventName: string;
-  entityType: string;
-}) {
-  return (
-    findEvent(input.catalog, input.eventName)?.entityBindings ?? []
-  ).filter((binding) => binding.entityType === input.entityType);
-}
-
-/** Keeps one selected binding for each current Lifecycle Event when possible. */
-export function reconcileEntityBindings(
-  rules: LifecycleRules,
-  catalog: ExtensionCatalog
-): LifecycleRules {
-  const tracked = rules.trackedEntity;
-  if (!tracked) {
-    return rules;
-  }
-
-  const bindings = Object.fromEntries(
-    lifecycleEvents(rules).flatMap((eventName) => {
-      const choices = bindingChoices({
-        catalog,
-        eventName,
-        entityType: tracked.type,
-      });
-      const selected = choices.some(
-        (choice) => choice.name === tracked.bindings[eventName]
-      )
-        ? tracked.bindings[eventName]
-        : choices[0]?.name;
-      return selected ? [[eventName, selected]] : [];
-    })
-  );
-
-  return {
-    ...rules,
-    trackedEntity: { type: tracked.type, bindings },
-  };
-}
-
 /**
  * One Lifecycle Event's binding of the tracked Entity, where it needs a person:
  * a picker when the Event offers several bindings, or a warning when it offers
@@ -113,7 +75,7 @@ function EventBindingRow({
   onChange: (bindingName: string) => void;
 }) {
   const event = findEvent(catalog, eventName);
-  const choices = bindingChoices({ catalog, eventName, entityType });
+  const choices = entityBindingChoices({ catalog, eventName, entityType });
   const label = event?.label ?? eventName;
 
   if (choices.length === 0) {
@@ -172,7 +134,7 @@ function singleBindingSentence(input: {
   entityType: string;
   eventName: string;
 }): string | null {
-  const choices = bindingChoices(input);
+  const choices = entityBindingChoices(input);
   const [only] = choices;
   if (choices.length !== 1 || !only) {
     return null;
@@ -197,7 +159,7 @@ function UnavailableEntityNote({
     const missingEvents = events
       .filter(
         (eventName) =>
-          bindingChoices({
+          entityBindingChoices({
             catalog,
             eventName,
             entityType: entity.type,
@@ -339,7 +301,7 @@ export function LifecycleEntityEligibilityGroup({
       ? catalog.entities.filter((candidate) =>
           events.every(
             (eventName) =>
-              bindingChoices({
+              entityBindingChoices({
                 catalog,
                 eventName,
                 entityType: candidate.type,
