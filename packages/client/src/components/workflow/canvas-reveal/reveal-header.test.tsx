@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
@@ -20,6 +20,15 @@ import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { RevealHeader } from "./reveal-header";
 
+// The ⋯ menu offers topology commands, which need the desktop layout, and
+// another file in the worker may have left happy-dom at phone width.
+beforeEach(() => {
+  (
+    window as unknown as {
+      happyDOM: { setViewport: (viewport: { width: number }) => void };
+    }
+  ).happyDOM.setViewport({ width: 1440 });
+});
 afterEach(resetAuthorizationGrantsForTests);
 
 function renderHeader(
