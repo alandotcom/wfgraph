@@ -66,9 +66,8 @@ describe("Runs Browse run list and selected run", () => {
     // The run is named by its Entity Value, and its Event is a detail row.
     await waitFor(() => expect(title()).toBe(runHeading("exec_b", "appt_2")));
     expect(aside()?.getAttribute("aria-label")).toBe("Runs inspector");
-    expect(path()).toBe(
-      `Appointment reminders › Runs › ${runHeading("exec_b", "appt_2")}`
-    );
+    // The Inspector's header draws no path.
+    expect(path()).toBeUndefined();
     expect(aside()?.querySelector("header")?.textContent).toContain(
       "Completed"
     );
@@ -99,7 +98,7 @@ describe("Runs Browse run list and selected run", () => {
     });
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(title()).toBe("Runs");
-    expect(path()).toBe("Appointment reminders › Runs");
+    expect(path()).toBeUndefined();
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
     expect(view.getByRole("button", { name: "Refresh" })).toBeTruthy();
 
@@ -129,28 +128,6 @@ describe("Runs Browse run list and selected run", () => {
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(router.state.location.search).toEqual({ view: "runs" });
     expect(title()).toBe("Runs");
-  });
-
-  // The path names where the run list is, and its Runs segment opens it the
-  // way Back does: the run's entry is replaced and its row takes focus.
-  it("opens the run list from the Runs segment of an open run's path", async () => {
-    served.items = [
-      execution("exec_b", "completed"),
-      execution("exec_a", "running"),
-    ];
-    const { view, router, title, rows, show } = await renderRunsReveal({
-      view: "runs",
-    });
-    await waitFor(() => expect(rows()).toHaveLength(2));
-    await show({ view: "runs", executionId: "exec_a" });
-    await waitFor(() => expect(title()).toBe(runHeading("exec_a")));
-
-    fireEvent.click(view.getByRole("button", { name: "Runs" }));
-    await waitFor(() => expect(rows()).toHaveLength(2));
-    expect(router.state.location.search).toEqual({ view: "runs" });
-    await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
-    // The list itself has no link to itself.
-    expect(view.queryByRole("button", { name: "Runs" })).toBeNull();
   });
 
   it("projects each run's pinned graph and restores that run's selection", async () => {

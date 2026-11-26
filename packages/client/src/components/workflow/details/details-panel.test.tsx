@@ -451,9 +451,8 @@ describe("details panel presentation states", () => {
     expect(level()).toBe("browse");
     const region = view.getByRole("complementary", { name: "Step inspector" });
     expect(view.getByRole("heading", { name: "Send reminder" })).toBeTruthy();
-    expect(region.querySelector("[data-slot=reveal-path]")?.textContent).toBe(
-      "Appointment reminders › Send reminder"
-    );
+    // The header names the step and draws no path.
+    expect(region.querySelector("[data-slot=reveal-path]")).toBeNull();
     expect(region.textContent).toContain("Ready");
     // Every setting is its field, and the header changes no level.
     expect(view.getByRole("textbox", { name: "To" })).toBeTruthy();

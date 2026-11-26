@@ -1,10 +1,30 @@
-import { useStore } from "jotai";
-import { ArrowLeft, X } from "lucide-react";
-import type { Ref } from "react";
+import { useAtomValue, useStore } from "jotai";
+import { ArrowLeft, MoreHorizontal, X } from "lucide-react";
+import { Fragment, type Ref } from "react";
 import { Button } from "#src/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "#src/components/ui/dropdown-menu";
+import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
+import {
+  startsGroup,
+  useStepMenuItems,
+} from "#src/components/workflow/step-menu-items";
+import { can } from "#src/lib/authorization";
+import { stepNumbersAtom } from "#src/lib/step-numbers";
+import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import {
   type StatusTone,
   statusToneTextClass,
@@ -13,11 +33,14 @@ import {
 /** What a subject kind puts in the Inspector's header. */
 export type RevealHeaderModel = {
   title: string;
-  /** Ancestors of the shown object, outermost first, ending with the object. */
+  /**
+   * Ancestors of the shown object, outermost first, ending with the object.
+   * The header draws no path; the kinds still build one.
+   */
   path: readonly string[];
   /**
-   * The one ancestor in `path`, by index, that opens when pressed, and what
-   * pressing it does. The Runs header uses it to reach the run list.
+   * The one ancestor in `path`, by index, that opens when pressed. The header
+   * draws no path, so nothing presses it; Back reaches the same place.
    */
   pathLink?: { index: number; onSelect: () => void } | undefined;
   /** A step's validation status or a run's status, in its signal color. */
@@ -32,38 +55,6 @@ export type RevealHeaderControls = {
   onBack: () => void;
   titleRef: Ref<HTMLHeadingElement>;
 };
-
-/**
- * The path's segments joined by "›", with the segment `link` names as a button
- * that runs its `onSelect`.
- */
-function RevealPath({
-  path,
-  link,
-}: {
-  path: readonly string[];
-  link: RevealHeaderModel["pathLink"];
-}) {
-  const linked = link === undefined ? undefined : path[link.index];
-  if (link === undefined || linked === undefined) {
-    return path.join(" › ");
-  }
-  const before = path.slice(0, link.index);
-  const after = path.slice(link.index + 1);
-  return (
-    <>
-      {before.map((segment) => `${segment} › `).join("")}
-      <button
-        className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-        onClick={link.onSelect}
-        type="button"
-      >
-        {linked}
-      </button>
-      {after.map((segment) => ` › ${segment}`).join("")}
-    </>
-  );
-}
 
 /**
  * Close the Inspector card, leaving the selection as it is, and hand focus to
@@ -86,9 +77,66 @@ function useCloseInspector(): () => void {
 }
 
 /**
- * The Inspector's header for the shown object: its title, the path to
- * it, and its status, with Back where the model offers it. The title takes
- * focus when a run node's evidence opens, so it carries `tabIndex={-1}`.
+ * The ⋯ menu of a Draft step, Group or Lifecycle node: the commands its
+ * context menu on the canvas offers, from the same source, less Edit, since
+ * the Inspector already shows its editor.
+ */
+function StepActionsMenu({ nodeId }: { nodeId: string }) {
+  const locked = useAtomValue(canvasEditingLockedAtom);
+  const topologyAuthoring = useTopologyAuthoring();
+  const canEdit =
+    can(WfGraphOperations.workflowUpdate.id) && !locked && topologyAuthoring;
+  const items = useStepMenuItems({
+    nodeId,
+    selectedIds: new Set([nodeId]),
+    canEdit,
+    canInsert: canEdit,
+  }).filter((item) => item.id !== "edit");
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label="More actions"
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          />
+        }
+      >
+        <MoreHorizontal />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60">
+        {items.map((item, index) => (
+          <Fragment key={item.id}>
+            {startsGroup(items, index) ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              disabled={item.disabled}
+              onClick={item.run}
+              title={item.disabled ? item.hint : undefined}
+              variant={item.destructive ? "destructive" : "default"}
+            >
+              {item.icon}
+              {item.label}
+              {item.shortcut && !item.disabled ? (
+                <DropdownMenuShortcut>{item.shortcut}</DropdownMenuShortcut>
+              ) : null}
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * The Inspector's header for the shown object: Back where the model offers
+ * it, the step's number and title, its status, a Draft object's ⋯ menu, and
+ * Close. It stays put while the body under it scrolls. The title takes focus
+ * when a run node's evidence opens, so it carries `tabIndex={-1}`.
  */
 export function RevealHeader({
   model,
@@ -100,55 +148,69 @@ export function RevealHeader({
   const { onBack, titleRef } = controls;
   const { status } = model;
   const closeInspector = useCloseInspector();
+  const { key } = useAtomValue(activeWorkspaceAddressAtom);
+  const selection = useAtomValue(activeSelectionAtom);
+  const numbers = useAtomValue(stepNumbersAtom);
+  // The one object a Draft selection holds alone. A run's pinned graph
+  // numbers its own steps, so only a Draft object shows the draft's number,
+  // the one its card and outline row carry.
+  const draftNodeId =
+    key.workspace === "draft" &&
+    selection.nodeIds.length === 1 &&
+    selection.edgeIds.length === 0
+      ? (selection.nodeIds[0] ?? null)
+      : null;
+  const number = draftNodeId === null ? undefined : numbers.get(draftNodeId);
   return (
-    <header className="shrink-0 border-b px-3 py-2">
-      <div className="flex items-center gap-1">
-        {model.showsBack ? (
-          <Button
-            aria-label="Back"
-            onClick={onBack}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <ArrowLeft />
-          </Button>
-        ) : null}
-        <h2
-          className="min-w-0 flex-1 truncate px-1 font-semibold text-sm outline-none"
-          data-slot="reveal-title"
-          ref={titleRef}
-          tabIndex={-1}
-        >
-          {model.title}
-        </h2>
+    <header
+      className="flex h-12 shrink-0 items-center gap-1 border-b pr-2 pl-3"
+      data-slot="inspector-header"
+    >
+      {model.showsBack ? (
         <Button
-          aria-label="Close"
-          onClick={closeInspector}
+          aria-label="Back"
+          onClick={onBack}
           size="icon-sm"
           type="button"
           variant="ghost"
         >
-          <X />
+          <ArrowLeft />
         </Button>
-      </div>
-      {model.path.length > 0 || status ? (
-        <div className="flex items-baseline justify-between gap-3 pt-1 pl-1">
-          <p
-            className="min-w-0 truncate text-muted-foreground text-xs"
-            data-slot="reveal-path"
-          >
-            <RevealPath link={model.pathLink} path={model.path} />
-          </p>
-          {status ? (
-            <span
-              className={`shrink-0 text-xs ${statusToneTextClass(status.tone)}`}
-            >
-              {status.text}
-            </span>
-          ) : null}
-        </div>
       ) : null}
+      {number === undefined ? null : (
+        <span
+          className="shrink-0 pl-1 font-semibold text-muted-foreground text-sm tabular-nums"
+          data-slot="reveal-number"
+        >
+          {number}
+        </span>
+      )}
+      <h2
+        className="min-w-0 flex-1 truncate px-1 font-semibold text-sm outline-none"
+        data-slot="reveal-title"
+        ref={titleRef}
+        tabIndex={-1}
+      >
+        {model.title}
+      </h2>
+      {status ? (
+        <span
+          className={`shrink-0 px-1 text-xs ${statusToneTextClass(status.tone)}`}
+          data-slot="reveal-status"
+        >
+          {status.text}
+        </span>
+      ) : null}
+      {draftNodeId === null ? null : <StepActionsMenu nodeId={draftNodeId} />}
+      <Button
+        aria-label="Close"
+        onClick={closeInspector}
+        size="icon-sm"
+        type="button"
+        variant="ghost"
+      >
+        <X />
+      </Button>
     </header>
   );
 }
