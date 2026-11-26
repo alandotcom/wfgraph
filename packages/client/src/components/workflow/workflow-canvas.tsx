@@ -92,6 +92,8 @@ import {
 } from "#src/components/workflow/step-focus-landing";
 import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
 import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
+import { INSPECTOR_CLEARANCE_PX } from "./canvas-reveal/canvas-reveal-state";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import {
   useClearWorkflowNodeInspection,
@@ -131,6 +133,20 @@ const edgeTypes = {
  */
 const defaultEdgeOptions = { type: WORKFLOW_EDGE_TYPE };
 
+/**
+ * How far the minimap floats from the canvas's top right corner. It sits 36px
+ * down, below the 24px React Flow attribution at the top centre with a 12px
+ * gap. At `md` and wider it ends where the part of the canvas the Inspector
+ * card never covers ends, so it keeps one place as the card opens and closes;
+ * a phone has no card, so its minimap keeps React Flow's 15px side margin.
+ */
+function minimapMargin(isMobile: boolean) {
+  return {
+    marginTop: 36,
+    marginRight: isMobile ? 15 : INSPECTOR_CLEARANCE_PX,
+  };
+}
+
 const nodeTypes = {
   lifecycle: LifecycleNode,
   action: ActionNode,
@@ -164,6 +180,7 @@ export function WorkflowCanvas() {
   const isGenerating = useAtomValue(isGeneratingAtom);
   const currentWorkflowId = useAtomValueRawSync(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
+  const isMobile = useIsMobile();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const selection = useAtomValue(canvasSelectionAtom);
@@ -711,8 +728,7 @@ export function WorkflowCanvas() {
           {showMinimap && (
             // maskColor and nodeColor default to hardcoded light-mode values that
             // never invert: the viewport rectangle was invisible in light (1.05:1)
-            // and a bright reversed frame in dark (6.58:1). The test-mode banner
-            // moved to bottom-centre, so this corner is no longer contested.
+            // and a bright reversed frame in dark (6.58:1).
             <MiniMap
               bgColor="var(--sidebar)"
               className="rounded-lg border shadow-sm"
@@ -720,6 +736,8 @@ export function WorkflowCanvas() {
               nodeColor="var(--muted-foreground)"
               nodeStrokeColor="var(--border)"
               pannable
+              position="top-right"
+              style={minimapMargin(isMobile)}
               zoomable
             />
           )}

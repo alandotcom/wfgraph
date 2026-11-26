@@ -106,6 +106,15 @@ export const INSPECTOR_WIDTH_PX = 340;
 export const INSPECTOR_INSET_PX = 8;
 
 /**
+ * How far from the canvas's right edge a layer floating over the canvas ends,
+ * whether or not the Inspector card is open: past the card's width and inset,
+ * and a 12px gap. The agent's box and the minimap keep it, so each holds one
+ * position as the card opens and closes and the open card never covers it.
+ */
+export const INSPECTOR_CLEARANCE_PX =
+  INSPECTOR_WIDTH_PX + INSPECTOR_INSET_PX + 12;
+
+/**
  * The pixels the Inspector card covers at the right edge of the canvas,
  * counting its inset, while it is open, and 0 while it is closed. The canvas
  * camera keeps placed steps clear of it.
