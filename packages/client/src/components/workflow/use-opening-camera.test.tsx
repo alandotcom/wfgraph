@@ -251,6 +251,32 @@ describe("useOpeningCamera", () => {
     expect(stopped.right).toBeLessThanOrEqual(CANVAS.width - REVEAL_PADDING_PX);
   });
 
+  it("places the stopped step clear of the open Inspector card, in one move", async () => {
+    // The Inspector opens with the run's stopped step, so it already covers
+    // the canvas's right edge when the camera places the run.
+    const inspector = document.createElement("section");
+    inspector.dataset.slot = "inspector-card";
+    inspector.dataset.coversWidth = "348";
+    document.body.append(inspector);
+    try {
+      const camera = await renderOpeningCamera({
+        nodes: LARGE_GRAPH,
+        search: { view: "runs", executionId: "run_1" },
+        run: { stoppedNodeId: "stop" },
+      });
+
+      await camera.open(WORKFLOW_FIT_VIEW_MAX_ZOOM);
+
+      expect(camera.motion.moves).toHaveLength(1);
+      const stopped = screenBox(LARGE_GRAPH[2], camera.viewport());
+      expect(stopped.right).toBeLessThanOrEqual(
+        CANVAS.width - 348 - REVEAL_PADDING_PX
+      );
+    } finally {
+      inspector.remove();
+    }
+  });
+
   it("anchors the Lifecycle card at the canvas center when the run did not stop", async () => {
     const camera = await renderOpeningCamera({
       nodes: LARGE_GRAPH,
