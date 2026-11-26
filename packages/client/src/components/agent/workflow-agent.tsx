@@ -1,6 +1,7 @@
 /**
- * The build agent on the canvas: one prompt line at the bottom of the canvas,
- * and the conversation, which opens as a panel directly above the line. The
+ * The build agent on the canvas: a prompt at the bottom of the canvas, and the
+ * conversation, which opens as a panel directly above it. At rest the prompt
+ * is a one-line pill; focus grows it upward into the full prompt line. The
  * agent works on the whole workflow, so it sits with the workflow rather than
  * in the details column, which is about one step. A step the person selected
  * is offered as a chip they may attach to the message; nothing is attached
@@ -41,6 +42,7 @@ import { cn } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { AgentThread } from "#src/components/agent/agent-thread";
+import { focusStepWhenFocusIsLost } from "#src/components/workflow/step-focus-landing";
 import { useSelectedStep } from "#src/components/workflow/use-selected-step";
 import {
   ATTACHED_STEPS_KEY,
@@ -66,7 +68,7 @@ type AgentRuntime = ReturnType<typeof useAgentRuntime>;
 
 /** The words in the composer before anything is typed. */
 export const AGENT_COMPOSER_PLACEHOLDER =
-  "Ask about this workflow, or describe a change";
+  "Ask about this workflow or describe a change";
 
 /**
  * Where the agent shows: `canvas` floats the line and the panel over the
@@ -153,74 +155,101 @@ function ConversationHeader({
   );
 }
 
+/** The grow and shrink between the pill and the full line, in the 150 to 250ms band. */
+const PROMPT_TRANSITION = "duration-200 ease-out motion-reduce:transition-none";
+
 /**
  * The prompt line: the attached step's chip or the selected step offered as
  * one, the text field, and Send, or Stop while the agent works. `mark` draws a
  * quiet dot, named for what it means, while the agent is working or has
- * replied since the conversation was collapsed.
+ * replied since the conversation was collapsed. `pill` draws the line at rest:
+ * fully rounded, one row, with the chip row closed to no height and out of
+ * the tab order.
  */
 function PromptLine({
   input,
+  pill,
   attached,
   offered,
   mark,
   onAttach,
   onDetach,
   onSend,
-  onFocus,
+  onActivate,
   onOpen,
 }: {
   input: RefObject<HTMLTextAreaElement | null>;
+  pill: boolean;
   attached: AttachedStep | null;
   offered: AttachedStep | null;
   mark: "working" | "replied" | null;
   onAttach: (step: AttachedStep) => void;
   onDetach: () => void;
   onSend: () => void;
-  onFocus: () => void;
-  /** Opens the conversation from a line that already has focus. */
+  /** Opens the conversation when the thread holds messages. */
+  onActivate: () => void;
+  /** Opens the conversation, empty or not. */
   onOpen: () => void;
 }) {
   const showsOffer = offered !== null && offered.id !== attached?.id;
+  const showsChips = !pill && (attached !== null || showsOffer);
   return (
     <div
-      className="flex flex-col gap-1 rounded-xl border bg-card px-2 py-1.5 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring"
+      className={cn(
+        "flex flex-col border bg-card shadow-sm transition-[border-radius,padding] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring",
+        PROMPT_TRANSITION,
+        pill ? "rounded-3xl px-1.5 py-1" : "rounded-xl px-2 py-1.5"
+      )}
       data-slot="agent-prompt-line"
+      data-state={pill ? "pill" : "grown"}
     >
-      {attached || showsOffer ? (
-        <div className="flex flex-wrap items-center gap-1 px-1">
-          {attached ? (
-            <span
-              className="flex items-center gap-1 rounded-md border bg-muted py-0.5 pr-0.5 pl-1.5 text-xs"
-              data-slot="agent-attached-step"
-            >
-              {attachedStepText(attached)}
+      {/* The chip row opens from no height to its own, so the line grows
+          upward from a bottom edge that stays put. */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows]",
+          PROMPT_TRANSITION,
+          showsChips ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+        inert={!showsChips}
+      >
+        {/* The gap to the text row is this row's own bottom padding, inside
+            the box that closes, so the closed row takes no space. */}
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex flex-wrap items-center gap-1 px-1 pb-1">
+            {attached ? (
+              <span
+                className="flex items-center gap-1 rounded-md border bg-muted py-0.5 pr-0.5 pl-1.5 text-xs"
+                data-slot="agent-attached-step"
+              >
+                {attachedStepText(attached)}
+                <Button
+                  aria-label={`Remove ${attachedStepText(attached)}`}
+                  onClick={onDetach}
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X />
+                </Button>
+              </span>
+            ) : null}
+            {showsOffer ? (
               <Button
-                aria-label={`Remove ${attachedStepText(attached)}`}
-                onClick={onDetach}
-                size="icon-xs"
+                aria-label={`Attach ${attachedStepText(offered)}`}
+                className="text-muted-foreground"
+                onClick={() => onAttach(offered)}
+                size="xs"
                 type="button"
                 variant="ghost"
               >
-                <X />
+                <Plus />
+                {attachedStepText(offered)}
               </Button>
-            </span>
-          ) : null}
-          {showsOffer ? (
-            <Button
-              aria-label={`Attach ${attachedStepText(offered)}`}
-              className="text-muted-foreground"
-              onClick={() => onAttach(offered)}
-              size="xs"
-              type="button"
-              variant="ghost"
-            >
-              <Plus />
-              {attachedStepText(offered)}
-            </Button>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      ) : null}
+      </div>
       <ComposerPrimitive.Root
         className="flex items-end gap-2"
         onSubmit={(event) => {
@@ -248,12 +277,17 @@ function PromptLine({
         <ComposerPrimitive.Input
           aria-label="Message the agent"
           cancelOnEscape={false}
-          className="max-h-32 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm"
-          // Focus opens the conversation, and a line that kept focus when the
-          // conversation collapsed opens it on a click, or on Enter or Down
-          // while it is empty.
-          onClick={onOpen}
-          onFocus={onFocus}
+          className={cn(
+            "min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm",
+            // The pill holds one row: a placeholder longer than the pill is
+            // cut at its end where it would otherwise wrap to a second row,
+            // which happens only on a canvas too narrow for the 352px pill.
+            pill ? "max-h-8 overflow-hidden whitespace-nowrap" : "max-h-32"
+          )}
+          // Focus and a click may open the conversation (`onActivate` decides),
+          // and Enter or Down in an empty line always opens it.
+          onClick={onActivate}
+          onFocus={onActivate}
           onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
             const empty = isBlank(event.currentTarget.value);
             if (event.key === "ArrowDown" && empty) {
@@ -321,9 +355,18 @@ function AgentSurface({
   );
   const reviewShown = useAtomValue(isReviewSheetShownAtom);
   const running = useAuiState((state) => state.thread.isRunning);
+  const threadEmpty = useAuiState(
+    (state) => state.thread.messages.length === 0
+  );
+  const promptBlank = useAuiState((state) =>
+    isBlank(state.thread.composer.text)
+  );
   const offered = useOfferedStep();
   const [attached, setAttached] = useState<AttachedStep | null>(null);
   const [unseen, setUnseen] = useState(false);
+  // Whether focus is anywhere inside the agent: the line, its chips, its
+  // buttons, or the open conversation.
+  const [focused, setFocused] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const wasRunning = useRef(running);
   const wasOpenRef = useRef(open);
@@ -374,6 +417,25 @@ function AgentSurface({
     keepClosedOnFocus.current = false;
   }, [setOpen]);
 
+  // On the canvas the prompt rests as a pill while nothing holds it open: no
+  // focus inside the agent, no text, and no open conversation. A phone keeps
+  // the full line below its main view.
+  const pill = variant === "canvas" && !focused && promptBlank && !open;
+
+  const focusLine = () => {
+    input.current?.focus({ preventScroll: true });
+  };
+
+  // Escape in an empty line with the conversation closed hands focus to the
+  // selected step's outline row or card, or to the page when nothing is
+  // selected, and the line returns to the pill.
+  const returnFocusToCanvas = () => {
+    input.current?.blur();
+    if (offered !== null) {
+      focusStepWhenFocusIsLost(offered.id);
+    }
+  };
+
   const send = () => {
     const { text } = runtime.thread.composer.getState();
     if (isBlank(text) || running) {
@@ -402,9 +464,17 @@ function AgentSurface({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape" && open && !event.defaultPrevented) {
+    if (event.key !== "Escape" || event.defaultPrevented) {
+      return;
+    }
+    if (open) {
       event.preventDefault();
       close();
+      return;
+    }
+    if (variant === "canvas" && event.target === input.current && promptBlank) {
+      event.preventDefault();
+      returnFocusToCanvas();
     }
   };
 
@@ -414,15 +484,30 @@ function AgentSurface({
       input={input}
       mark={open ? null : running ? "working" : unseen ? "replied" : null}
       offered={offered}
-      onAttach={setAttached}
-      onDetach={() => setAttached(null)}
-      onFocus={() => {
-        if (!keepClosedOnFocus.current) {
+      // The pressed chip leaves the page with its row, so focus goes back to
+      // the line, which keeps it grown and lets the person keep typing.
+      onAttach={(step) => {
+        setAttached(step);
+        focusLine();
+      }}
+      onDetach={() => {
+        setAttached(null);
+        focusLine();
+      }}
+      // On the canvas an empty thread has nothing to show, so focus only
+      // grows the pill; Enter or Down in the empty line still opens it with
+      // its suggestions. A phone opens the conversation on focus either way.
+      onActivate={() => {
+        if (
+          !keepClosedOnFocus.current &&
+          (variant === "phone" || !threadEmpty)
+        ) {
           setOpen(true);
         }
       }}
       onOpen={() => setOpen(true)}
       onSend={send}
+      pill={pill}
     />
   );
   const conversation = open ? (
@@ -461,13 +546,31 @@ function AgentSurface({
         reviewShown && "hidden"
       )}
       data-slot="workflow-agent"
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node && event.currentTarget.contains(next))) {
+          setFocused(false);
+        }
+      }}
+      onFocus={() => setFocused(true)}
       onKeyDown={onKeyDown}
     >
       {conversation}
       <div
         className={cn(
-          "pointer-events-auto w-full",
-          variant === "canvas" ? "max-w-[35rem]" : "p-2"
+          "pointer-events-auto",
+          variant === "canvas"
+            ? cn(
+                // A third of the canvas at rest, held between 352px and
+                // 560px, and the full 560px once grown. The box widens about
+                // its centre and keeps its bottom edge.
+                "transition-[width]",
+                PROMPT_TRANSITION,
+                pill
+                  ? "w-[min(100%,clamp(22rem,33%,35rem))]"
+                  : "w-[min(100%,35rem)]"
+              )
+            : "w-full p-2"
         )}
         data-slot="agent-composer"
       >

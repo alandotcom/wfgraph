@@ -369,11 +369,21 @@ scrolls inside the card while the header stays put.
 
 The build agent works on the whole workflow, so it sits on the canvas rather
 than in the Inspector. In Draft and Runs, for a viewer who may use it on
-a server that offers one, one prompt line floats at the bottom centre of the
-canvas, up to 560px wide, on the card surface with a hairline border and
-shadow-sm, clear of the zoom controls on the left and of the open Inspector on
-the right. Its placeholder reads "Ask about this workflow, or describe a
-change". Focusing it, or sending, opens the conversation directly above it: a
+a server that offers one, the agent's prompt floats at the bottom centre of
+the canvas on the card surface with a hairline border and shadow-sm, clear of
+the zoom controls on the left and of the open Inspector on the right. At rest,
+with no text, no focus inside it and the conversation closed, it is a one-line
+pill: fully rounded, a third of the canvas wide held between 352px and 560px,
+with Send inside its right end and no chips. Its placeholder reads "Ask about
+this workflow or describe a change". Focus or a click grows it upward into the
+prompt line, 560px wide, with its chip row and room for several lines of text.
+Its bottom edge holds still while it grows, over 200ms easing out, and under
+reduced motion it changes at once. It returns to the pill when focus leaves it
+while it is empty with the conversation closed, and on Escape in the empty
+line, which hands focus back to the selected step. Focusing the line opens the
+conversation once the thread holds messages; Enter or Down in an empty line
+opens it in every case, which is where an empty thread's suggestions show.
+Sending opens it too. The conversation sits directly above the line: a
 Popover-filled panel up to 560px wide and 60% of the canvas tall, with a
 hairline ring and shadow-lg, holding the thread, the suggestions, tool
 activity, errors, **New conversation**, and **Close conversation**. That
@@ -385,7 +395,7 @@ conversation covers the canvas where an edit lands, so the agent's first edit
 in a turn collapses it to the line, whose dot says the agent is still working,
 and when the turn ends the camera shows the steps it added or changed if they
 are out of view. With a
-step selected, the line offers it as a chip, such as "+ Step 4 · Send 24-hour
+step selected, the grown line offers it as a chip, such as "+ Step 4 · Send 24-hour
 reminder"; pressing it attaches the step to the message being written, its ×
 removes it, and nothing is attached unless the person attaches it. Every fit
 and every camera placement keeps the graph above the line and above the 24px
@@ -664,8 +674,9 @@ Below `md`, 900px, the outline is the editor's main view and fills the width.
 A **Map** control in the toolbar shows the canvas in the outline's place, and
 pressing it again returns to the outline. The canvas under the outline keeps
 its camera and leaves the tab order. `[` does nothing there.
-The agent's prompt line sits below either view, above the status strip, so
-the outline's last row and the bottom of the map scroll clear of it, and its
+The agent's prompt line sits below either view, above the status strip, at
+its full height with no pill, so the outline's last row and the bottom of the
+map scroll clear of it, and its
 conversation covers the whole screen under a header whose Back returns to it. Details are a sequence of sheets over the outline or the canvas.
 Selecting a step, Condition, Lifecycle node, Event Split,
 Group, or connection opens its summary sheet over the bottom of the
