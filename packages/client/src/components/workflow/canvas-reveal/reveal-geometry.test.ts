@@ -83,15 +83,21 @@ describe("usableAboveSheet", () => {
 });
 
 describe("measureObstacles", () => {
-  function box(input: { top: number; height: number }): DOMRect {
+  function box(input: {
+    top: number;
+    height: number;
+    left?: number;
+    width?: number;
+  }): DOMRect {
+    const { left = 300, width = 560 } = input;
     return {
       top: input.top,
       bottom: input.top + input.height,
-      left: 300,
-      right: 860,
-      width: 560,
+      left,
+      right: left + width,
+      width,
       height: input.height,
-      x: 300,
+      x: left,
       y: input.top,
       toJSON: () => ({}),
     };
@@ -110,6 +116,26 @@ describe("measureObstacles", () => {
     try {
       expect(measureObstacles(canvas)).toEqual([
         { x: 0, y: 736 - 24, width: 560, height: 52 + 24 },
+      ]);
+    } finally {
+      area.remove();
+    }
+  });
+
+  it("counts the outline floating at the canvas's top left as covered", () => {
+    const area = document.createElement("div");
+    area.dataset.slot = "canvas-box";
+    const canvas = document.createElement("div");
+    const outline = document.createElement("section");
+    outline.dataset.slot = "floating-outline";
+    area.append(outline, canvas);
+    document.body.append(area);
+    canvas.getBoundingClientRect = () => box({ top: 0, height: 800 });
+    outline.getBoundingClientRect = () =>
+      box({ top: 12, height: 320, left: 312, width: 288 });
+    try {
+      expect(measureObstacles(canvas)).toEqual([
+        { x: 12, y: 12, width: 288, height: 320 },
       ]);
     } finally {
       area.remove();
