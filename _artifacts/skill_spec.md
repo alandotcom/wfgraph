@@ -783,6 +783,28 @@ sources, apart from the source checks each later batch records.
   review state. Discovery and a fresh consumer session are unverified, as for
   every earlier batch.
 
+### The validate_workflow step list (packages at 4.1.2, branch hc/r1-agentknow)
+
+- `validate_workflow` also answers `steps`, each numbered step's `id`,
+  `stepNumber` and `label` in run order, from the numbering `read_workflow`
+  uses. The built-in agent's prompt points at that list for step numbers
+  after a write. `docs/embedding.md` names the field beside the other
+  `validate_workflow` fields, which is the MCP section.
+- The built-in turn loop, which `streamAgentTurn` runs too, retries a model
+  step once when the provider could not parse a tool call's arguments as
+  JSON, opening the retry with a note naming the tool. The changeset states
+  it; no skill teaches the loop's failure handling, and the build-agent
+  skill's sentence that a failed stream reaches the conversation as one
+  `error` part still holds.
+- mcp: the tool-result bullet names `steps` beside the other fields.
+- No change: build-agent (it teaches the runner contract and `selectedNodes`,
+  neither of which changed), wfgraph-core and the other skills, whose cited
+  sections of `docs/embedding.md` did not change.
+- Checks: `packages/agent/src/tools/graph-read-tools.test.ts` covers the list
+  against `read_workflow` and after an insert in the same turn;
+  `packages/core/src/backend/agent/chat.test.ts` and `step-loop.test.ts`
+  cover the retry and its bound.
+
 ### Remaining work
 
 1. Add discovery prompts for every skill, and executable task checks for

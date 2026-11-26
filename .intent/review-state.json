@@ -3,10 +3,10 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "e5998331a971a32aa296a9e32df4249b4f12b8ec50600ce9b88bb87c31249500",
+      "fingerprint": "1ee53c46b82d6f67aefb1bff68566214d1bdaa79588b21cdcef971fe6b4f878a",
       "snapshot": {
         "README.md": "5f892a1af0314742b9fff202057bf97b99bf8eab5181d1dbe6243ae857da3297",
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
         "packages/core/skills/wfgraph-core/SKILL.md": "653f65cc0e19f3ebaa97caf6494c81b8d91dc4cc25be86a85230f3509829fcfe",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "9b9c938bd96a5eec053b8211fab94827f114f41f46ea437fb025e75a08f176d4",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "7601f4d699e59a0bd1eecfd671d0235e5dd980ac0c9d2540d52f1fb26a880418",
@@ -14,15 +14,14 @@
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "a574fb9bfffa1659a09dc217f03354ede1bd86150e06ccd0c8ff9a37f3050bec",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "ea2a062a0fd7f183c00007b481e38e6de64e8b1c4b76d6d48ddae765b91b1cef",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "6839c255f3c0a3c439bde1cf0b18be040ad0045f1a655cbad020fe9daa220693",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "3aa43342b0e7311ff74eb620c6db0c439d6b54bc08e3814e2f169f80f23ed99e",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "The only docs/embedding.md change since the last recording is one sentence in Test runs call your handler naming the skip marker (top-level status \"skipped\", or a reasonCode starting test_mode_). The entry skill makes no claim about test runs, and its routing line to the integrations sub-skill still describes it.",
+      "reason": "The router skill routes MCP work to wfgraph-core/mcp and names no validate_workflow field; the mcp skill change and the embedding.md MCP paragraph alter nothing it routes.",
       "evidence": [
-        "git diff 3b99bc72..cbefcd44 -- docs/embedding.md",
-        "doc commits 8d777d8c (docs/embedding.md, Test runs call your handler) and 9d40f7a9 (docs/integrations.md, The In test runs field)"
+        "packages/core/skills/wfgraph-core/SKILL.md has no validate_workflow or stepNumber text"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -41,20 +40,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "3646eba182ccac8f4412ee9a88bbdde28ff010be2b237d78629bc950401a1544",
+      "fingerprint": "c71af339e4284f5a017bb1a7e7539c1d1ba43b33c1e987eb74559d6ce859a2d4",
       "snapshot": {
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
         "docs/integrations.md": "7a00925bb0b4c7f0b15c8533e6b0416e8a7db774081c7fc98996137e54cb5657",
         "packages/client/src/lib/test-run-skip.ts": "f1fe8451622dc9eb782d1192eec96b26e89e9c27059acc32411d80e204d56e5f",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "a574fb9bfffa1659a09dc217f03354ede1bd86150e06ccd0c8ff9a37f3050bec"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "The only docs/embedding.md change since the last recording is one sentence in Test runs call your handler naming the skip marker (top-level status \"skipped\", or a reasonCode starting test_mode_). The host-actions skill already teaches that a handler doing nothing in a test run answers a top-level status of \"skipped\", which the editor shows as Skipped (test run); the reasonCode marker belongs to integrations. The new docs/integrations.md section concerns integration config fields, not host defineAction.",
+      "reason": "docs/embedding.md changed only in its MCP section, which gains one paragraph naming validate_workflow's steps field; this skill does not cite or teach that section.",
       "evidence": [
-        "git diff 3b99bc72..cbefcd44 -- docs/embedding.md docs/integrations.md",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md (Test runs call the handler)",
-        "packages/client/src/lib/test-run-skip.ts"
+        "git diff origin/main -- docs/embedding.md shows the one added paragraph after the validate_workflow canSave/canPublish paragraph"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -77,28 +74,27 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "ab3f2ce471320ae2212c1c6b05defa5fcd698e37410a982a7543c1752f83efbc",
+      "fingerprint": "6fb0b27c3cbee79d2cdfea79ec1d83f8f945ae5b0ffdf40014bd1c7d0bd9fd78",
       "snapshot": {
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
         "packages/plugins/README.md": "30c8b45b5bd662156cf0875cbe5ddcadae94871f2993388da154383bbd2ad2de",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "f5e1bf6047f8205bb673c5fd22711bd61b7bf1b24e37e11b68cd3f8b45e4ec7f"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "The only docs/embedding.md change since the last recording is one sentence in Test runs call your handler naming the skip marker (top-level status \"skipped\", or a reasonCode starting test_mode_). The plugins skill already names the In test runs setting and its key testBehavior and its log-only default; the marker sentence teaches a plugin user nothing more.",
+      "reason": "docs/embedding.md changed only in its MCP section, which gains one paragraph naming validate_workflow's steps field; this skill does not cite or teach that section.",
       "evidence": [
-        "git diff 3b99bc72..cbefcd44 -- docs/embedding.md",
-        "packages/plugins/skills/wfgraph-plugins/SKILL.md (Test runs and connection rules)"
+        "git diff origin/main -- docs/embedding.md shows the one added paragraph after the validate_workflow canSave/canPublish paragraph"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "562254549c7df1f149c7e05053d8334d02942b1a8636c305859bde0d9e5fff7a",
+      "fingerprint": "9b75ca71d22aa04b3eb2859e011896f82f08865c7fd79ca0b3b0e6f7993ab91e",
       "snapshot": {
         "README.md": "5f892a1af0314742b9fff202057bf97b99bf8eab5181d1dbe6243ae857da3297",
         "_artifacts/domain_map.yaml": "3c7d0d48cbe085f4a12a0dc982a2f4c8a2495af0baa055fe1cae7715903036a2",
-        "_artifacts/skill_spec.md": "9dfd76fb683bac6c1d6633af33f70ebecec39e3a0ce999696dbea36274ecf766",
+        "_artifacts/skill_spec.md": "08de799e256161ee6ad8e302a49032b499c7fec1f543c15cf7ec4caaa288b7e2",
         "_artifacts/skill_tree.yaml": "a89e9ea91c88e5c2f7c05c50cba5fc51cfa937b188d73fcf0721b7cb03264dce",
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "7a00925bb0b4c7f0b15c8533e6b0416e8a7db774081c7fc98996137e54cb5657",
         "packages/agent/src/tools/test-run-behavior.ts": "d9b1b69db202391c5d5447895bf30b9fc2c33fd0e6b1dc2553baf12db486eeb6",
@@ -110,7 +106,7 @@
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "a574fb9bfffa1659a09dc217f03354ede1bd86150e06ccd0c8ff9a37f3050bec",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "ea2a062a0fd7f183c00007b481e38e6de64e8b1c4b76d6d48ddae765b91b1cef",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "6839c255f3c0a3c439bde1cf0b18be040ad0045f1a655cbad020fe9daa220693",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "3aa43342b0e7311ff74eb620c6db0c439d6b54bc08e3814e2f169f80f23ed99e",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/agent/config.ts": "b7d7412566fe7badef45b1a40dcd8d501b6d15a1286137f24b2282b1ed7427fd",
         "packages/core/src/backend/agent/mcp-http.ts": "eb64621d16127a927adbfaca3d011cd02f6918f8ca3f3acac702e412e8d84dd4",
@@ -131,15 +127,11 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "f5e1bf6047f8205bb673c5fd22711bd61b7bf1b24e37e11b68cd3f8b45e4ec7f",
         "packages/shared/src/authorization/operations.ts": "189a61d3f9979abd4843ef0b1038ebda56ddc9823c8550369848163024e54323"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "updated",
-      "reason": "domain_map.yaml: the integrations gap on the In test runs select as a vendor-integration contract is resolved, citing the new docs/integrations.md section. skill_spec.md: the Remaining Gaps row is resolved and a history entry records this change set. skill_tree.yaml needed no change (intent maintainer sync: Nothing to synchronize). Prior tasks, decisions and remaining work are kept.",
+      "reason": "skill_spec.md records the validate_workflow step list batch: the mcp skill update, the no-change verdicts and the checks.",
       "evidence": [
-        "skill guidance commit cbefcd44 (docs(skills): teach the In test runs field and the skip marker to integration authors)",
-        "_artifacts/domain_map.yaml",
-        "_artifacts/skill_spec.md",
-        "pnpm exec intent maintainer sync: Nothing to synchronize",
-        "pnpm run skills:validate: Validated 10 skill files, all passed"
+        "_artifacts/skill_spec.md section 'The validate_workflow step list'"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -156,17 +148,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "c5c75e90e46ffeef86d80ba17bc819e0a1d31c21ce501b64dc45d2ab775bd296",
+      "fingerprint": "15947c45c139d16714f8841f314427076546aab13dd49696c32f5e798669067c",
       "snapshot": {
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "9b9c938bd96a5eec053b8211fab94827f114f41f46ea437fb025e75a08f176d4",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "189a61d3f9979abd4843ef0b1038ebda56ddc9823c8550369848163024e54323"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "The only docs/embedding.md change since the last recording is one sentence in Test runs call your handler naming the skip marker (top-level status \"skipped\", or a reasonCode starting test_mode_). The auth skill teaches permissions and grants, which the sentence does not touch.",
-      "evidence": ["git diff 3b99bc72..cbefcd44 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only in its MCP section, which gains one paragraph naming validate_workflow's steps field; this skill does not cite or teach that section.",
+      "evidence": [
+        "git diff origin/main -- docs/embedding.md shows the one added paragraph after the validate_workflow canSave/canPublish paragraph"
+      ]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
       "fingerprint": "3ee0533adfeac10df9fefff86d8615bebf429b7b1a61076fcf0440caab43de0d",
@@ -194,18 +188,20 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "057eb917214aba3508bd400f896399ff727a397bc51f1326f8150b37d3dd52e5",
+      "fingerprint": "bd5c048d7ca8f6d4fbdc4b955f8640917855fa6671f314912c0638586f9aa49d",
       "snapshot": {
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "The only docs/embedding.md change since the last recording is one sentence in Test runs call your handler naming the skip marker (top-level status \"skipped\", or a reasonCode starting test_mode_). No logging, tracing or health section changed.",
-      "evidence": ["git diff 3b99bc72..cbefcd44 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only in its MCP section, which gains one paragraph naming validate_workflow's steps field; this skill does not cite or teach that section.",
+      "evidence": [
+        "git diff origin/main -- docs/embedding.md shows the one added paragraph after the validate_workflow canSave/canPublish paragraph"
+      ]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
       "fingerprint": "f7b9e4046cfb3c14d3e427344152b7e5c4b475bd530b856e7e1e993bf6476543",
@@ -247,17 +243,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "bfb8e15a05f1d0d624f119d07d265bda7ca73433a02dacf22fb9f6aebcf34c55",
+      "fingerprint": "ca514c222478bd8c1a83d984048ad0aed73eadd6b1851cb7091df6dca142572a",
       "snapshot": {
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "b8130c59d3f831e0fbf03a0f81be482206a08e46277e0ac5169d9f7586aa35d3"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "The only docs/embedding.md change since the last recording is one sentence in Test runs call your handler naming the skip marker (top-level status \"skipped\", or a reasonCode starting test_mode_). No Worker or Hyperdrive section changed.",
-      "evidence": ["git diff 3b99bc72..cbefcd44 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only in its MCP section, which gains one paragraph naming validate_workflow's steps field; this skill does not cite or teach that section.",
+      "evidence": [
+        "git diff origin/main -- docs/embedding.md shows the one added paragraph after the validate_workflow canSave/canPublish paragraph"
+      ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
       "fingerprint": "cc7599f1637d2993b948d3e4600eaf434e6b2298e4821136ed54c0d1b63ea320",
@@ -837,29 +835,27 @@
       ]
     },
     "source:packages/core/src/backend/agent/chat.test.ts": {
-      "fingerprint": "dd009ae3f5b3787c97c0173ca8d5204df7ecb0bf9eb1f00df3727807d7bed9ac",
+      "fingerprint": "a59246c3e1f5b3b85eba5ba130f943eeb6ec74268bcfe3a2b6bc28831bb627e1",
       "snapshot": {
-        "packages/core/src/backend/agent/chat.test.ts": "b859d27d095e70adb590a85024f66e1ced7bc5ecef943492c7abcae4252589cf"
+        "packages/core/src/backend/agent/chat.test.ts": "358012d895a943146269c30f440ef73ba1540628bb1350e3fb84aaf6e893e4df"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "Build agent internals and their tests (publication validation wording, chat wiring). No provider option, runner contract or grant the build-agent skill teaches changed here.",
+      "reason": "Tests for the retry; no published guidance cites them.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/core/src/backend/agent/chat.test.ts"
+        "git diff origin/main -- packages/core/src/backend/agent/chat.test.ts"
       ]
     },
     "source:packages/core/src/backend/agent/chat.ts": {
-      "fingerprint": "9e825fe185f9945f4c1a70339c586f8040c207d75f8a65ee5b8b192f45b51d84",
+      "fingerprint": "506c722506de44ba5ca793616620f8e830895f6de4381ae14cbf5d5ee26f5ab5",
       "snapshot": {
-        "packages/core/src/backend/agent/chat.ts": "bf322561d0c7e7e4a5173856d3dc21ca065b3c65665eddd266b912e3bf4f1e86"
+        "packages/core/src/backend/agent/chat.ts": "bb9d277707d42651cb92820be19fcece71ea764a103aca041b67689547de76a4"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
-      "outcome": "updated",
-      "reason": "The chat service builds turn.selectedNodes from the attached step ids and adds each step's stepNumber. The build-agent skill states the new meaning and field.",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
+      "outcome": "no-change",
+      "reason": "agenticSteps retries a step once after a provider tool-argument JSON parse failure. No skill teaches the loop's failure handling, and the changeset states the behavior.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/core/src/backend/agent/chat.ts",
-        "skill guidance commit 0e28c68d (docs(skills): teach the skipped test-run status and the agent's prompt line)",
-        "packages/core/src/backend/services/agent/chat.test.ts"
+        "git diff origin/main -- packages/core/src/backend/agent/chat.ts"
       ]
     },
     "source:packages/core/src/backend/agent/tool-session.test.ts": {
@@ -2914,17 +2910,14 @@
       "evidence": ["git diff 3b99bc72..0e28c68d -- CONTEXT.md"]
     },
     "source:packages/agent/src/prompt.ts": {
-      "fingerprint": "88bd8556839d0b0d10a54118640a2f3ad91ede5ef56e4cd49ec0e72707cd8117",
+      "fingerprint": "ade4f19cde7cb11efbec713b24378239418448fff1d77877c333e679885d721a",
       "snapshot": {
-        "packages/agent/src/prompt.ts": "6bb09b9234e714d012955cdf8019e8322978e523e818b4271d5e881aeaa082d8"
+        "packages/agent/src/prompt.ts": "a56889349a9b989b9d41b7c0d7ae48a480a4d5380b1c65b70fa6abd0e4e4e2a8"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
-      "outcome": "updated",
-      "reason": "The build agent's tools and prompt: read_workflow and read_nodes give stepNumber and testRun, read_run and start_test_run describe test runs through testRun, and the prompt names steps by number. The build-agent skill now states the testRun sentence for a host action and the stepNumber a runner receives; the mcp skill describes none of these fields.",
-      "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/agent/src/prompt.ts",
-        "skill guidance commit 0e28c68d (docs(skills): teach the skipped test-run status and the agent's prompt line)"
-      ]
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
+      "outcome": "no-change",
+      "reason": "The prompt sentence about step numbers after a write now points at validate_workflow's steps field. The prompt is internal; the mcp skill already names the field, and no skill quotes the prompt.",
+      "evidence": ["git diff origin/main -- packages/agent/src/prompt.ts"]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/changes-summary.ts": {
       "fingerprint": "e0a9fcc639a546a0ab195c3e0f9f23d7b59d75b5ac01917356e88f8ff6a154b1",
@@ -3074,9 +3067,9 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "7955d91f0024677f14652eab54d17e92d4e388565eac2c3791bd9b0cbcff1a01",
+      "fingerprint": "f7d731e07363ba04e2faac5d6420f38a7739fd209061baf7f4bcbb636958816a",
       "snapshot": {
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
         "packages/agent/src/tools/test-run-behavior.ts": "d9b1b69db202391c5d5447895bf30b9fc2c33fd0e6b1dc2553baf12db486eeb6",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "7601f4d699e59a0bd1eecfd671d0235e5dd980ac0c9d2540d52f1fb26a880418",
         "packages/core/src/backend/agent/config.ts": "b7d7412566fe7badef45b1a40dcd8d501b6d15a1286137f24b2282b1ed7427fd",
@@ -3086,24 +3079,28 @@
         "packages/core/src/backend/agent/providers/openrouter.ts": "8bfd2d9ccc3080d27507854358d41814bdbe1e6485ee57a47b47a608f046ab33",
         "packages/core/src/backend/agent/runner.ts": "e68d5e0bd18a6c3e5f02952af3421a734face7288da4eefc188a0005e456e439"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "The only docs/embedding.md change since the last recording is one sentence in Test runs call your handler naming the skip marker (top-level status \"skipped\", or a reasonCode starting test_mode_). The build-agent skill already says a host action's test-run behaviour is the handler's and routes the runMode check to host-actions.",
-      "evidence": ["git diff 3b99bc72..cbefcd44 -- docs/embedding.md"]
+      "reason": "The skill teaches the runner contract, selectedNodes and streamAgentTurn. The new steps field is an MCP and tool-result detail, and the one-time retry of an unparsable tool call stays inside the built-in loop; a stream that fails still reaches the conversation as one error part.",
+      "evidence": [
+        "build-agent/SKILL.md lines on 'A stream that fails reaches the conversation as one error part' and streamAgentTurn remain accurate; chat.test.ts covers the retry and its bound"
+      ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "e73d8a643aa951e3637777e2ea26664db8326ac4db1f0b32bdef6448e093c6f6",
+      "fingerprint": "77b549d13c15b9a2b90ebdfba56c1f62b274ee98e3268933bad871ab1f951784",
       "snapshot": {
-        "docs/embedding.md": "143ab184352e4f34a9d9b380b3701dc9fefa14a4dc681cd49287b445eb4a0557",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "6839c255f3c0a3c439bde1cf0b18be040ad0045f1a655cbad020fe9daa220693",
+        "docs/embedding.md": "39430d89e7618b26bb157042bcec0d6cda9425306054f1917722d03125c537af",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "3aa43342b0e7311ff74eb620c6db0c439d6b54bc08e3814e2f169f80f23ed99e",
         "packages/core/src/backend/agent/mcp-http.ts": "eb64621d16127a927adbfaca3d011cd02f6918f8ca3f3acac702e412e8d84dd4",
         "packages/core/src/backend/agent/mcp-server.ts": "3f293721d68459abaeeb103ac2dcaee540f1b825e14f3c7454ac97fc7f91b652",
         "packages/core/src/mcp.ts": "d333f50179ef656eb25ddde62d59f9548c8ee2c12a8f59c4157b2adb2a74d416"
       },
-      "head": "cbefcd447ee60ca1b0d3878268503fa46d32452d",
-      "outcome": "no-change",
-      "reason": "The only docs/embedding.md change since the last recording is one sentence in Test runs call your handler naming the skip marker (top-level status \"skipped\", or a reasonCode starting test_mode_). No MCP section or tool changed.",
-      "evidence": ["git diff 3b99bc72..cbefcd44 -- docs/embedding.md"]
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
+      "outcome": "updated",
+      "reason": "validate_workflow now answers steps, each numbered step's id, stepNumber and label in run order; the tool-result bullet names it beside the other fields.",
+      "evidence": [
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md validate_workflow bullet; packages/agent/src/tools/graph-read-tools.test.ts validate_workflow cases"
+      ]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
       "fingerprint": "a9593fc154a998f98c5a0ae696eeee810b317bcbe9119d69bf1532fdd447285a",
@@ -3250,16 +3247,14 @@
       ]
     },
     "source:packages/agent/src/prompt.test.ts": {
-      "fingerprint": "cf88915b577fbcf13d3bd2d9f92a0b5d4cf2f3a28ade88e1b19864e487499871",
+      "fingerprint": "260aa49c8737bc17bb650374df789526e84db3bebb8afa4932cc817cdbc8b3d3",
       "snapshot": {
-        "packages/agent/src/prompt.test.ts": "c746b0ea8a4458f4dad53db1236b75ab7318ba3e48d6f02447edaed460bc045a"
+        "packages/agent/src/prompt.test.ts": "031ef449e9a61ae0ab6091e607732a7f31ac9bafb33a155dde7ac89ccb65ec32"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "Unit tests for the agent's prompt and read tools. They verify behavior the build-agent skill now states and teach an adopter nothing themselves.",
-      "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/agent/src/prompt.test.ts"
-      ]
+      "reason": "Test pin for the prompt sentence; no published guidance cites it.",
+      "evidence": ["git diff origin/main -- packages/agent/src/prompt.test.ts"]
     },
     "source:packages/agent/src/testing.ts": {
       "fingerprint": "1bc6ac6b936dfd5099a879d20ee0e7273b823ed8eec356dcc7b9c5b8e116e59c",
@@ -3359,28 +3354,27 @@
       ]
     },
     "source:packages/agent/src/tools/graph-read-tools.test.ts": {
-      "fingerprint": "96b5fdcee8af633973ee977bc8d5bf5f1b47a63992189de490afc2eb1e3a2f42",
+      "fingerprint": "e79c8580b5d48749ee7e690c0a36f6fba2fc2c342871a713495c555730bb046e",
       "snapshot": {
-        "packages/agent/src/tools/graph-read-tools.test.ts": "d49724407e63b0f9f1175a84c4b8d6cda90dae2201a161878552bf3c068c91d1"
+        "packages/agent/src/tools/graph-read-tools.test.ts": "dfc704606a6af0d40e52020230ddbba39a4bc900e5711f2e38485f6014542e72"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "no-change",
-      "reason": "Unit tests for the agent's prompt and read tools. They verify behavior the build-agent skill now states and teach an adopter nothing themselves.",
+      "reason": "Tests for the steps field; no published guidance cites them.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/agent/src/tools/graph-read-tools.test.ts"
+        "git diff origin/main -- packages/agent/src/tools/graph-read-tools.test.ts"
       ]
     },
     "source:packages/agent/src/tools/graph-read-tools.ts": {
-      "fingerprint": "8b0eb14b5bcb2bb0cfefa0522681b0915099cf1954513597731fffb5468f767d",
+      "fingerprint": "280e18fccb1ad2da9a1dbbf2490c04b3dc1e57daa4d993b2530532d797135495",
       "snapshot": {
-        "packages/agent/src/tools/graph-read-tools.ts": "bd37e1d99349966e7907aa26a5719790d12c1f2321a249d8b5588282961f54b4"
+        "packages/agent/src/tools/graph-read-tools.ts": "8c465d35e8e4d33009c3df7826d0f30b153a28a697a1f41e42b3b7d4e356e534"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "updated",
-      "reason": "The build agent's tools and prompt: read_workflow and read_nodes give stepNumber and testRun, read_run and start_test_run describe test runs through testRun, and the prompt names steps by number. The build-agent skill now states the testRun sentence for a host action and the stepNumber a runner receives; the mcp skill describes none of these fields.",
+      "reason": "validate_workflow gains the steps field, which the mcp skill and docs/embedding.md now name.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/agent/src/tools/graph-read-tools.ts",
-        "skill guidance commit 0e28c68d (docs(skills): teach the skipped test-run status and the agent's prompt line)"
+        "git diff origin/main -- packages/agent/src/tools/graph-read-tools.ts"
       ]
     },
     "source:packages/agent/src/tools/graph-write-tools.test.ts": {
@@ -6274,14 +6268,14 @@
       ]
     },
     "source:tsconfig.json": {
-      "fingerprint": "2838b09400207c9409be73e90e4e8eaa23326aee0625767cfb4eff9cdb63c3c8",
+      "fingerprint": "c3bc7a2536f9375df6308a22313eda7e042706bb706ad1f58a576f1b72ba2ca4",
       "snapshot": {
-        "tsconfig.json": "3c304738c6a377ea85d5c46902e4648e672cba57e2b5d4e5fac61681f2dc970a"
+        "tsconfig.json": "b2368f377fd18f7fba70087b8128c0074609308ceece8f6f2793e478dd879c85"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
       "outcome": "out-of-scope",
-      "reason": "Repository type-check paths, changed the same way as tsconfig.build.json for the per-integration entries. Repository configuration an adopter never sees.",
-      "evidence": ["git diff origin/main...718ca8a4 -- tsconfig.json"]
+      "reason": "Three effect/ai AiError exports join the allowed unstable API list; repository tooling with no adopter guidance.",
+      "evidence": ["git diff origin/main -- tsconfig.json"]
     },
     "source:.claude/skills/verify-durable-executor/model/Delivery.cfg": {
       "fingerprint": "fa68b28723ca89c15efbf9e413c22e1eae66188570829de4bc358a68563446c7",
@@ -13920,6 +13914,30 @@
       "reason": "Shared graph, outline, layout, summary, Group and time helpers for the editor and its messages. Group rules a draft save or Publish enforces are unchanged, and no skill teaches these helpers.",
       "evidence": [
         "git diff 3b99bc72..0e28c68d -- packages/shared/src/utils/wait-time.ts"
+      ]
+    },
+    "source:packages/core/src/backend/agent/step-loop.test.ts": {
+      "fingerprint": "9222040bff8487cb093c8c99dfebafa0ae3f3f0664fb3813e2af634d9b1ec1f4",
+      "snapshot": {
+        "packages/core/src/backend/agent/step-loop.test.ts": "48dc48de174f1ac9336bf28462ed459abc4b9e65879e1791b3cd7216bd81cff4"
+      },
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
+      "outcome": "no-change",
+      "reason": "Tests for the retry option; no published guidance cites them.",
+      "evidence": [
+        "git diff origin/main -- packages/core/src/backend/agent/step-loop.test.ts"
+      ]
+    },
+    "source:packages/core/src/backend/agent/step-loop.ts": {
+      "fingerprint": "3ccbde52ad250ce13a087a2ca3831c1cdf1fda073d88f03a5efeeb4ff34ce584",
+      "snapshot": {
+        "packages/core/src/backend/agent/step-loop.ts": "499d900276d227e9fa412e50a8daa497cdcab7476675e2f387f1abdf80063045"
+      },
+      "head": "e6da1f9454820fc38aa4a40a043b0a51b839b660",
+      "outcome": "no-change",
+      "reason": "runAgentStepLoop gains a bounded retry option, an internal module no skill teaches.",
+      "evidence": [
+        "git diff origin/main -- packages/core/src/backend/agent/step-loop.ts"
       ]
     }
   }
