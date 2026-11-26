@@ -64,7 +64,6 @@ async function renderEditorInRuns(input: {
   store.set(loadWorkflowGraphAtom, { nodes: [], edges: [] });
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");
-  store.set(outlineHiddenAtom, input.outlineHidden === true);
   const rootRoute = createRootRoute({ component: () => <Outlet /> });
   const workflowRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -115,6 +114,10 @@ async function renderEditorInRuns(input: {
     </JotaiProvider>
   );
   await view.findByTestId("canvas");
+  // `[` hides the outline in the view the route has opened.
+  if (input.outlineHidden === true) {
+    act(() => store.set(outlineHiddenAtom, true));
+  }
   const inspector = () =>
     view.container.querySelector<HTMLElement>('[data-slot="inspector-card"]');
   const title = () =>
@@ -122,6 +125,11 @@ async function renderEditorInRuns(input: {
     undefined;
   const floatingOutline = () =>
     view.container.querySelector<HTMLElement>('[data-slot="floating-outline"]');
+  // Hidden, the outline stays mounted, out of sight and inert.
+  const outlineShown = () => {
+    const outline = floatingOutline();
+    return outline !== null && !outline.hidden && !outline.inert;
+  };
   const rows = () => view.queryAllByTestId("workflow-run-summary-row");
   const show = async (next: WorkflowRouteSearch) => {
     await act(async () => {
@@ -132,7 +140,17 @@ async function renderEditorInRuns(input: {
       });
     });
   };
-  return { view, store, router, inspector, title, floatingOutline, rows, show };
+  return {
+    view,
+    store,
+    router,
+    inspector,
+    title,
+    floatingOutline,
+    outlineShown,
+    rows,
+    show,
+  };
 }
 
 /** Two steps in a row, as one run's pinned graph. */
@@ -210,7 +228,7 @@ describe("EditorLayout in Runs", () => {
 
   it("opens a failed run on the step that failed while the outline is hidden", async () => {
     serveFailedRun("exec_f");
-    const { store, title, floatingOutline } = await renderEditorInRuns({
+    const { store, title, outlineShown } = await renderEditorInRuns({
       search: { view: "runs", executionId: "exec_f" },
       outlineHidden: true,
     });
@@ -219,7 +237,35 @@ describe("EditorLayout in Runs", () => {
       expect(store.get(activeSelectionAtom).nodeIds).toEqual(["receipt"])
     );
     await waitFor(() => expect(title()).toBe("Send receipt"));
-    expect(floatingOutline()).toBeNull();
+    expect(outlineShown()).toBe(false);
+  });
+
+  it("opens the next and previous run with J and K while the outline is hidden", async () => {
+    served.items = [
+      execution("exec_c", "completed"),
+      execution("exec_b", "completed"),
+      execution("exec_a", "completed"),
+    ];
+    const { router, title, outlineShown } = await renderEditorInRuns({
+      search: { view: "runs", executionId: "exec_b" },
+      outlineHidden: true,
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
+    expect(outlineShown()).toBe(false);
+
+    fireEvent.keyDown(document.body, { key: "j" });
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        executionId: "exec_a",
+      })
+    );
+    fireEvent.keyDown(document.body, { key: "k" });
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({
+        executionId: "exec_b",
+      })
+    );
+    expect(outlineShown()).toBe(false);
   });
 
   it("brings back the hidden run list on Back from a run, with focus on that run's row", async () => {
@@ -227,17 +273,17 @@ describe("EditorLayout in Runs", () => {
       execution("exec_b", "completed"),
       execution("exec_a", "completed"),
     ];
-    const { view, title, rows, floatingOutline } = await renderEditorInRuns({
+    const { view, title, rows, outlineShown } = await renderEditorInRuns({
       search: { view: "runs", executionId: "exec_b" },
       outlineHidden: true,
     });
     await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
-    expect(floatingOutline()).toBeNull();
+    expect(outlineShown()).toBe(false);
 
     fireEvent.click(view.getByRole("button", { name: "Back" }));
 
     await waitFor(() => expect(rows()).toHaveLength(2));
-    expect(floatingOutline()).not.toBeNull();
+    expect(outlineShown()).toBe(true);
     // The list is newest first, so exec_b's row is the first.
     await waitFor(() =>
       expect(

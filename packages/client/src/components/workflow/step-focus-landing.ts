@@ -37,6 +37,16 @@ export function stepBeforeRemoved(input: {
 }
 
 /**
+ * The outline row of `nodeId` while the outline shows it, or null. The
+ * floating outline stays mounted while `[` hides it, out of sight and inert,
+ * and a row there cannot take focus.
+ */
+export function shownOutlineRow(nodeId: string): HTMLElement | null {
+  const row = document.getElementById(outlineRowElementId(nodeId));
+  return row === null || row.closest("[hidden], [inert]") !== null ? null : row;
+}
+
+/**
  * Focuses the outline row of `nodeId`, or else its card on the canvas: `card`
  * when it is still on the page, or the card found by its id. Every move passes
  * `preventScroll`. Answers whether either took focus. Closing the Inspector
@@ -46,7 +56,7 @@ export function focusStepRowOrCard(
   nodeId: string,
   card?: Element | null
 ): boolean {
-  const row = document.getElementById(outlineRowElementId(nodeId));
+  const row = shownOutlineRow(nodeId);
   const ownCard =
     card instanceof HTMLElement && card.isConnected
       ? card
@@ -85,9 +95,10 @@ export function focusStepWhenFocusIsLost(
  * nothing when the outline is not shown.
  */
 export function focusOutlineCurrentRow(): void {
-  document
-    .querySelector<HTMLElement>(
-      '[data-slot="outline-body"] [role="treeitem"][tabindex="0"]'
-    )
-    ?.focus({ preventScroll: true });
+  const row = document.querySelector<HTMLElement>(
+    '[data-slot="outline-body"] [role="treeitem"][tabindex="0"]'
+  );
+  if (row?.closest("[hidden], [inert]") === null) {
+    row.focus({ preventScroll: true });
+  }
 }

@@ -20,6 +20,11 @@ export type OutlineControls = {
    * phone shows the outline or the map through its Map control instead.
    */
   canHide: boolean;
+  /**
+   * Whether "Find a step" and Cmd+F have steps to filter: everywhere but the
+   * run list.
+   */
+  canFind: boolean;
   /** What the shortcut and the palette command do now, in words. */
   toggleLabel: string;
   /** Hide the outline, or show it again. */
@@ -51,6 +56,7 @@ export function useOutlineControls(): OutlineControls {
   return {
     shown,
     canHide,
+    canFind: !runList,
     toggleLabel: shown ? "Hide outline" : "Show outline",
     toggle: () => {
       if (canHide) {
@@ -72,25 +78,29 @@ export function useOutlineControls(): OutlineControls {
 }
 
 /**
- * Cmd+F or Ctrl+F while the outline is out of view brings it back and puts the
- * cursor in its filter field. While the outline is on screen it answers the
- * chord itself.
+ * Cmd+F or Ctrl+F brings the outline into view and puts the cursor in its
+ * filter field. On the run list, which has no steps to filter, the chord is
+ * left to the browser.
  */
 export function useFindStepShortcut(controls: OutlineControls): void {
-  useDomEvent(document, "keydown", (event) => {
-    if (
-      controls.shown ||
-      event.key.toLowerCase() !== "f" ||
-      !(event.metaKey || event.ctrlKey) ||
-      event.altKey ||
-      event.shiftKey ||
-      !editorChordAllowed(event, { inTextFields: true })
-    ) {
-      return;
-    }
-    event.preventDefault();
-    controls.findStep();
-  });
+  useDomEvent(
+    document,
+    "keydown",
+    (event) => {
+      if (
+        event.key.toLowerCase() !== "f" ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        !editorChordAllowed(event, { inTextFields: true })
+      ) {
+        return;
+      }
+      event.preventDefault();
+      controls.findStep();
+    },
+    { enabled: controls.canFind }
+  );
 }
 
 /**

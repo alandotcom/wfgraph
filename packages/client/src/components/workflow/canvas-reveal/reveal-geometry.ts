@@ -166,17 +166,20 @@ export function measureObstacles(canvas: HTMLElement): Rect[] {
     canvas.parentElement ??
     canvas;
   return OBSTACLE_SELECTORS.flatMap((selector) =>
-    [...canvasArea.querySelectorAll(selector)].map((element) => {
-      const rect = element.getBoundingClientRect();
-      const above =
-        selector === AGENT_COMPOSER_SELECTOR ? AGENT_CONTEXT_ROW_PX : 0;
-      return {
-        x: rect.left - origin.left,
-        y: rect.top - origin.top - above,
-        width: rect.width,
-        height: rect.height + above,
-      };
-    })
+    // A hidden obstacle, such as the outline `[` hid, measures no box.
+    [...canvasArea.querySelectorAll(selector)]
+      .filter((element) => element.closest("[hidden]") === null)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const above =
+          selector === AGENT_COMPOSER_SELECTOR ? AGENT_CONTEXT_ROW_PX : 0;
+        return {
+          x: rect.left - origin.left,
+          y: rect.top - origin.top - above,
+          width: rect.width,
+          height: rect.height + above,
+        };
+      })
   );
 }
 
