@@ -102,7 +102,7 @@ export function RunsColumn() {
       .querySelector<HTMLElement>(
         '[data-slot="details-panel"] [data-slot="reveal-title"], [data-slot="mobile-reveal"] [data-slot="reveal-title"]'
       )
-      ?.focus();
+      ?.focus({ preventScroll: true });
   };
 
   return (

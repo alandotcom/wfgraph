@@ -332,6 +332,32 @@ describe("WorkflowOutline", () => {
     ]);
   });
 
+  it("scrolls only its own list to a selected row, and moves focus without scrolling", async () => {
+    const { store } = renderOutline();
+    const list = await tree();
+    const scrollIntoView = vi.fn();
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
+      scrollIntoView
+    );
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+
+    act(() => store.set(selectOnlyNodeAtom, "Deposit covers the visit?"));
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(row("Send deposit receipt"))
+    );
+    fireEvent.keyDown(document, { key: "f", metaKey: true });
+
+    // `scrollIntoView` scrolls every scroll container up to the document, so
+    // the outline never calls it, and every focus move passes `preventScroll`.
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(focus.mock.calls.length).toBeGreaterThan(0);
+    for (const call of focus.mock.calls) {
+      expect(call[0]).toEqual({ preventScroll: true });
+    }
+    vi.restoreAllMocks();
+  });
+
   it("offers Add a step at every open end, which opens the picker on that outlet", async () => {
     const { store } = renderOutline();
     const list = await tree();
