@@ -352,8 +352,8 @@ describe("checkCancelFilters", () => {
     });
 
     const message = refusalOf(check);
-    expect(message).toContain("cancel filter");
-    expect(message).toContain("before cancellation");
+    expect(message).toContain("“Only stop when” for Appointment canceled");
+    expect(message).toContain("before a run is canceled");
   });
 
   it("refuses a filter reading a field the Cancel Event does not carry", () => {

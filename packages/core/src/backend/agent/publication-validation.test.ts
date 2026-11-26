@@ -930,7 +930,7 @@ describe("validateAgentPublication and lifecycle filters", () => {
     expect(blockersFor(filterOn("email", ""))).toEqual([
       {
         kind: "invalid_start_filter",
-        message: expect.stringContaining("unfinished"),
+        message: expect.stringContaining("has a rule that is not finished"),
       },
     ]);
   });

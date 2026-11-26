@@ -38,6 +38,7 @@ import {
   readCancelFilter,
   readCancelFilterLayout,
 } from "@wfgraph/shared/lifecycle/cancel-filters";
+import { FILTER_RULE_NAMES } from "@wfgraph/shared/lifecycle/filter-helpers";
 import {
   readStartFilter,
   readStartFilterLayout,
@@ -62,7 +63,7 @@ const ROLE_COPY = {
     label: START_RULE_NAMES.starts,
     pickerPlaceholder: "Add start event",
     help: [
-      "Each arrival of a Start Event starts a run, unless “Only start when” turns it away.",
+      `Each arrival of a Start Event starts a run, unless “${FILTER_RULE_NAMES.start}” turns it away.`,
     ],
     entityIdentity: (label: string) =>
       `Each Event's ${label} binding provides the ${label} ID tracked by the run. Correlation Paths are not used.`,
@@ -74,7 +75,7 @@ const ROLE_COPY = {
     pickerPlaceholder: "Add cancel event",
     help: [
       "A Cancel Event sends active runs down the Canceled branch.",
-      "“Only stop when” limits which arrivals stop a run.",
+      `“${FILTER_RULE_NAMES.cancel}” limits which arrivals stop a run.`,
     ],
     entityIdentity: (label: string) =>
       `Each Event's ${label} binding provides its ${label} ID. A Cancel Event only affects active runs with the same ID. Correlation Paths are not used.`,
@@ -526,7 +527,7 @@ function LifecycleFilterEditor({
           : "This event has no fields to filter."
       }
       fields={fields}
-      label={role === "start" ? START_RULE_NAMES.startFilter : "Only stop when"}
+      label={FILTER_RULE_NAMES[role]}
       onChange={handleChange}
       revealUnfinished={revealUnfinished}
       value={model}

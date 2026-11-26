@@ -549,7 +549,7 @@ describe("validateStartFilters", () => {
           catalog
         )
       )
-    ).toContain("unfinished");
+    ).toContain("has a rule that is not finished");
   });
 
   it("refuses a filter reading a field the Start Event does not carry", () => {

@@ -619,7 +619,7 @@ describe("conditions", () => {
       })
     ).toEqual({
       valid: false,
-      error: "String set conditions require at least one value",
+      error: "At least one value is required.",
       incomplete: true,
     });
   });
@@ -794,7 +794,7 @@ describe("conditions", () => {
     const compiled = compileConditionModel(model);
     expect(compiled.valid).toBe(false);
     if (!compiled.valid) {
-      expect(compiled.error).toBe("Text conditions require a value");
+      expect(compiled.error).toBe("A value is required.");
     }
   });
 
@@ -812,7 +812,7 @@ describe("conditions", () => {
 
     expect(compiled.valid).toBe(false);
     if (!compiled.valid) {
-      expect(compiled.error).toBe("Name the key this rule compares");
+      expect(compiled.error).toBe("A key is required.");
       // The flag, not the sentence, is what the node badge and the Wait node's
       // own check read.
       expect(compiled.incomplete).toBe(true);

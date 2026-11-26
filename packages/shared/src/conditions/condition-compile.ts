@@ -93,7 +93,7 @@ function compileTimestampConditionRule(
     if (!isPositiveInteger(amount)) {
       return {
         valid: false,
-        error: "Timestamp amount must be a positive integer",
+        error: "The amount must be a whole number of 1 or more.",
         incomplete: true,
       };
     }
@@ -133,7 +133,7 @@ function compileTimestampConditionRule(
   if (!isIsoTimestamp(rule.dateTime)) {
     return {
       valid: false,
-      error: "Timestamp absolute operators require a valid date-time",
+      error: "A date and time is required.",
       incomplete: true,
     };
   }
@@ -160,7 +160,7 @@ function compileStringConditionRule(
     if (rule.values.length === 0) {
       return {
         valid: false,
-        error: "String set conditions require at least one value",
+        error: "At least one value is required.",
         incomplete: true,
       };
     }
@@ -179,7 +179,7 @@ function compileStringConditionRule(
   if (!rule.value.trim()) {
     return {
       valid: false,
-      error: "Text conditions require a value",
+      error: "A value is required.",
       incomplete: true,
     };
   }
@@ -204,7 +204,7 @@ function compileNumberConditionRule(
   if (!Number.isFinite(rule.value)) {
     return {
       valid: false,
-      error: "Number conditions require a finite numeric value",
+      error: "A number is required.",
       incomplete: true,
     };
   }
@@ -416,7 +416,7 @@ export function compileConditionRule(
   if (rule.recordKey !== undefined && !rule.recordKey.trim()) {
     return {
       valid: false,
-      error: "Name the key this rule compares",
+      error: "A key is required.",
       incomplete: true,
     };
   }

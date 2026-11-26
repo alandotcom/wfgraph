@@ -581,10 +581,10 @@ describe("Lifecycle form", () => {
           region("Starts when").querySelector(
             '[data-slot="condition-rule-issue"]'
           )?.textContent
-        ).toBe("Text conditions require a value");
+        ).toBe("A value is required.");
       });
       expect(shownIssues(region("Starts when"))).toEqual([
-        "Text conditions require a value",
+        "A value is required.",
       ]);
     });
 
@@ -596,7 +596,7 @@ describe("Lifecycle form", () => {
       });
 
       expect(shownIssues(region("Starts when"))).toEqual([
-        "Text conditions require a value",
+        "A value is required.",
       ]);
     });
   });

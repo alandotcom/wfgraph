@@ -47,6 +47,15 @@ function roleLabel(role: FilterRole): string {
   return `${role} filter`;
 }
 
+/**
+ * The name each filter goes by in the Start's form, which is how its Publish
+ * refusals name it.
+ */
+export const FILTER_RULE_NAMES = {
+  start: "Only start when",
+  cancel: "Only stop when",
+} as const satisfies Record<FilterRole, string>;
+
 function eventNames(
   rules: LifecycleRules,
   role: FilterRole
@@ -170,6 +179,12 @@ function unreadableFilterRule(input: {
   return undefined;
 }
 
+/**
+ * Checks every stored filter of `role` the way Publish does, and names what it
+ * refuses the way the Start's form shows it: the filter by its name in the
+ * form, and an Event by its label. A filter one control stands for across
+ * several Events names no Event for a problem of the filter itself.
+ */
 export function checkFilters(input: {
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
@@ -181,12 +196,17 @@ export function checkFilters(input: {
     return refuseLifecycleRules(read.error);
   }
 
-  const label = roleLabel(role);
+  const name = `“${FILTER_RULE_NAMES[role]}”`;
+  const sharedFilter =
+    eventNames(rules, role).length > 1 &&
+    readFilterLayout(rules, role).collapsed;
   for (const [eventName, model] of read.models) {
+    const eventLabel = findEvent(catalog, eventName)?.label ?? eventName;
+    const filter = sharedFilter ? name : `${name} for ${eventLabel}`;
     const compiled = compileConditionModel(model);
     if (!compiled.valid) {
       return refuseUnfinishedLifecycleRules(
-        `The ${label} for "${eventName}" is unfinished. Complete it, or remove it.`
+        `${filter} has a rule that is not finished. Finish the rule, or remove it.`
       );
     }
 
@@ -198,9 +218,11 @@ export function checkFilters(input: {
           )
         ) {
           const timing =
-            role === "start" ? "before a run exists" : "before cancellation";
+            role === "start"
+              ? "before a run exists"
+              : "before a run is canceled";
           return refuseLifecycleRules(
-            `The ${label} for "${eventName}" refers to a value from a run. A ${label} is read ${timing}, so it can only compare payload fields against literals.`
+            `${filter} compares a value from a run. It is read ${timing}, so it can compare an Event's fields only with values typed into the rule.`
           );
         }
       }
@@ -209,7 +231,7 @@ export function checkFilters(input: {
     const unreadable = unreadableFilterRule({ model, catalog, eventName });
     if (unreadable) {
       return refuseLifecycleRules(
-        `The ${label} for "${eventName}" ${unreadable}. Rebuild the rule against a field "${eventName}" declares, or filter each Event separately.`
+        `${name} for ${eventLabel} ${unreadable}. Rebuild the rule against a field ${eventLabel} carries, or filter each Event separately.`
       );
     }
   }

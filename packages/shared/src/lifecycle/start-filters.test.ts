@@ -485,7 +485,7 @@ describe("checkStartFilters", () => {
     ).toBe(true);
   });
 
-  it("refuses an unfinished filter", () => {
+  it("refuses an unfinished filter, naming its Event as the form does", () => {
     const check = checkStartFilters({
       rules: rules({
         startFilters: {
@@ -495,7 +495,32 @@ describe("checkStartFilters", () => {
       catalog,
     });
 
-    expect(refusalOf(check)).toContain("unfinished");
+    // The form shows the Event's label and the filter's name; the Event's
+    // type key appears nowhere a builder edits the filter.
+    expect(refusalOf(check)).toBe(
+      "“Only start when” for Appointment created has a rule that is not finished. Finish the rule, or remove it."
+    );
+    expect(!check.valid && check.unfinished).toBe(true);
+  });
+
+  it("names no Event for an unfinished filter every Start Event shares", () => {
+    const shared = filterOn("appointment.id", "");
+    const check = checkStartFilters({
+      rules: rules({
+        startEvents: ["app/appointment.created", "app/appointment.canceled"],
+        startFilters: {
+          "app/appointment.created": shared,
+          "app/appointment.canceled": shared,
+        },
+      }),
+      catalog,
+    });
+
+    const refusal = refusalOf(check);
+    expect(refusal).toBe(
+      "“Only start when” has a rule that is not finished. Finish the rule, or remove it."
+    );
+    expect(refusal).not.toContain("app/");
   });
 
   // The silent failure this exists for: the rule compiles, evaluates, and reads

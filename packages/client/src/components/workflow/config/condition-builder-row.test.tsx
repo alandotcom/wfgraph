@@ -738,7 +738,7 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
       disabled: true,
     });
 
-    expect(view.getByText("Text conditions require a value")).toBeTruthy();
+    expect(view.getByText("A value is required.")).toBeTruthy();
   });
 
   it("says nothing about a rule that is ready to run", () => {
@@ -749,7 +749,7 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
       { disabled: true }
     );
 
-    expect(view.queryByText("Text conditions require a value")).toBeNull();
+    expect(view.queryByText("A value is required.")).toBeNull();
     expect(view.getByText(/ada@example.com/)).toBeTruthy();
   });
 
@@ -1415,7 +1415,7 @@ describe("ConditionBuilderRow unfinished rules wait", () => {
     chooseField(view, "patientName");
 
     expect(issues(view)).toEqual([]);
-    expect(view.queryByText("Text conditions require a value")).toBeNull();
+    expect(view.queryByText("A value is required.")).toBeNull();
   });
 
   it("names the blank value once the value field is left empty", async () => {
@@ -1427,7 +1427,7 @@ describe("ConditionBuilderRow unfinished rules wait", () => {
     fireEvent.blur(value);
 
     await vi.waitFor(() => {
-      expect(issues(view)).toEqual(["Text conditions require a value"]);
+      expect(issues(view)).toEqual(["A value is required."]);
     });
   });
 
@@ -1438,7 +1438,7 @@ describe("ConditionBuilderRow unfinished rules wait", () => {
 
     chooseField(view, "patientName");
 
-    expect(issues(view)).toEqual(["Text conditions require a value"]);
+    expect(issues(view)).toEqual(["A value is required."]);
   });
 
   it("waits again when a left rule is given a new field", async () => {
