@@ -16,6 +16,7 @@ import {
 import { FieldIssuesProvider } from "#src/components/workflow/config/field-issues";
 import { loadWorkflowGraphAtom } from "#src/lib/workflow-graph-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
+import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
 import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibility";
@@ -144,6 +145,18 @@ function waitNode(events: string[]): WorkflowNode {
 
 function rulesOf(config: Record<string, unknown>): LifecycleRules {
   return config.lifecycleRules as LifecycleRules;
+}
+
+/** The field of every rule in a stored filter model, in the order they read. */
+function ruleFieldsOf(model: string | undefined): string[] {
+  const parsed = parseConditionModel(model ?? "");
+  if (!parsed.valid) {
+    throw new Error("the filter holds no condition model");
+  }
+
+  return parsed.model.groups.flatMap((group) =>
+    group.conditions.map((rule) => rule.field)
+  );
 }
 
 /** The "Add a rule" item that shows each optional rule's controls. */
@@ -1672,6 +1685,34 @@ describe("LifecyclePanel start filters", () => {
     });
   });
 
+  // The Event name row a shared filter offers says which Event arrived, so a
+  // rule seeded on it would read "Event name is nothing". A new rule starts on
+  // the first field every Event carries, the one "Filter the arrivals" seeds.
+  it("starts a rule added to a shared filter on a field every Event carries", async () => {
+    const shared = filterOnTenant();
+    let latest: Record<string, unknown> = withStartEvents(
+      ["app/appointment.created", "ops/nightly.swept"],
+      { "app/appointment.created": shared, "ops/nightly.swept": shared }
+    );
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Add condition" }));
+    fireEvent.click(view.getByRole("button", { name: "Add rule set" }));
+
+    await waitFor(() => {
+      expect(
+        ruleFieldsOf(rulesOf(latest).startFilters?.["ops/nightly.swept"])
+      ).toEqual(["tenantId", "tenantId", "tenantId"]);
+    });
+  });
+
   // Stamping here would write a rule that reads false on every arrival of the
   // Event that was added, because the compiler guards each field for presence.
   it("leaves an added Event unfiltered when it lacks the filter's field", async () => {
@@ -1882,6 +1923,31 @@ describe("LifecyclePanel cancel filters", () => {
         "app/appointment.created": shared,
         "ops/nightly.swept": shared,
       });
+    });
+  });
+
+  it("starts a rule added to a shared filter on a field every Event carries", async () => {
+    const shared = filterOnTenant();
+    let latest: Record<string, unknown> = withCancelEvents(
+      ["app/appointment.created", "ops/nightly.swept"],
+      { "app/appointment.created": shared, "ops/nightly.swept": shared }
+    );
+    const view = renderWithCatalog(
+      <ControlledPanel
+        initialConfig={latest}
+        onConfigChange={(config) => {
+          latest = config;
+        }}
+      />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Add condition" }));
+    fireEvent.click(view.getByRole("button", { name: "Add rule set" }));
+
+    await waitFor(() => {
+      expect(
+        ruleFieldsOf(rulesOf(latest).cancelFilters?.["ops/nightly.swept"])
+      ).toEqual(["tenantId", "tenantId", "tenantId"]);
     });
   });
 

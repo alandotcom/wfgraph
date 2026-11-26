@@ -73,6 +73,11 @@ type ConditionBuilderRowProps = {
   description: string;
   /** The fields rules may be built from, already typed. */
   fields: ConditionSelectableField[];
+  /**
+   * The field a new rule or rule set starts on, defaulting to the first of
+   * `fields`. Null offers no field to start on, which disables adding a rule.
+   */
+  seedField?: ConditionSelectableField | null | undefined;
   /** What to say when there are none. */
   emptyFieldsMessage: string;
   /** Serialized `ConditionModel`, empty when nothing is configured yet. */
@@ -386,6 +391,7 @@ export function ConditionBuilderRow({
   stickyHeader,
   description,
   fields: availableFields,
+  seedField: seedFieldOption,
   emptyFieldsMessage,
   value: storedValue,
   onChange,
@@ -397,7 +403,10 @@ export function ConditionBuilderRow({
   // The live draft's nodes name the source of any template reference a rule's
   // value holds in the summary.
   const nodes = useAtomValue(nodesAtom);
-  const seedField = availableFields[0] ?? null;
+  const seedField =
+    seedFieldOption === undefined
+      ? (availableFields[0] ?? null)
+      : seedFieldOption;
 
   const modelValue = storedValue.trim();
   const modelParseResult = parseConditionModel(modelValue);
