@@ -526,7 +526,7 @@ describe("Condition editor", () => {
     expect(view.queryByRole("button", { name: /Disable/ })).toBeNull();
   });
 
-  it("keeps each rule on one line with its remove button", async () => {
+  it("keeps each rule in one grid with its remove button", async () => {
     const { view } = await renderCondition({
       config: storedRules(singleRule),
     });
@@ -535,7 +535,8 @@ describe("Condition editor", () => {
     const row = remove.parentElement;
     expect(row?.classList.contains("grid")).toBe(true);
     expect(row?.classList.contains("flex-wrap")).toBe(false);
-    expect(row?.children).toHaveLength(4);
+    // The field, the operator with the value, and the remove button.
+    expect(row?.children).toHaveLength(3);
   });
 
   it("writes rule and description edits in one autosave and keeps its scroll", async () => {
