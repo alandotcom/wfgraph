@@ -1,6 +1,6 @@
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect, it } from "@effect/vitest";
-import { Chat, LanguageModel, Response } from "effect/ai";
+import { AiError, Chat, LanguageModel, type Prompt, Response } from "effect/ai";
 import type {
   AgentDocument,
   WorkflowDraftService,
@@ -68,6 +68,19 @@ const draft: WorkflowDraftService = {
 };
 
 const part = Response.makePart;
+
+/** The failure a provider raises for a tool call whose arguments are not JSON. */
+function unparsableArguments(toolName: string, module = "TestLanguageModel") {
+  return AiError.make({
+    module,
+    method: "streamText",
+    reason: new AiError.ToolParameterValidationError({
+      toolName,
+      description:
+        "Failed securely JSON parse tool parameters: SyntaxError: Expected double-quoted property name in JSON at position 31579",
+    }),
+  });
+}
 
 describe("withGraphParts", () => {
   it.effect(
@@ -219,6 +232,124 @@ describe("withGraphParts", () => {
           },
         ]);
       })
+  );
+
+  it.effect(
+    "tells the model a tool call's arguments were not valid JSON and runs the step once more",
+    () =>
+      Effect.gen(function* () {
+        const toolkit = yield* Effect.provide(
+          agentToolkit,
+          agentToolkitLayer.pipe(Layer.provide(layerFromDraft(draft)))
+        );
+        const session = yield* Chat.fromPrompt([]);
+        const prompts: Prompt.Prompt[] = [];
+        const modelLayer = Layer.effect(
+          LanguageModel.LanguageModel,
+          LanguageModel.make({
+            generateText: () => Effect.succeed([]),
+            streamText: (options) => {
+              prompts.push(options.prompt);
+              return prompts.length === 1
+                ? Stream.fail(unparsableArguments("set_lifecycle_rules"))
+                : Stream.fromIterable([
+                    part("text-delta", { id: "reply", delta: "Done." }),
+                    part("finish", {
+                      reason: "stop",
+                      usage: new Response.Usage({
+                        inputTokens: { total: 10 },
+                        outputTokens: { total: 2 },
+                      }),
+                    }),
+                  ]);
+            },
+          })
+        );
+
+        const parts = yield* Stream.runCollect(
+          agenticSteps({
+            session,
+            toolkit,
+            observeTrace: () => undefined,
+          }).pipe(Stream.provide(modelLayer))
+        );
+
+        expect(
+          parts.map((stepped) => [stepped.step, stepped.part.type])
+        ).toEqual([
+          [2, "text-delta"],
+          [2, "finish"],
+        ]);
+        const note = prompts[1]?.content.at(-1);
+        expect(note?.role).toBe("user");
+        expect(JSON.stringify(note?.content)).toContain(
+          "Your call to set_lifecycle_rules did not run because its arguments were not valid JSON"
+        );
+      })
+  );
+
+  it.effect(
+    "fails the turn when the retried step's arguments are not valid JSON either",
+    () =>
+      Effect.gen(function* () {
+        const toolkit = yield* Effect.provide(
+          agentToolkit,
+          agentToolkitLayer.pipe(Layer.provide(layerFromDraft(draft)))
+        );
+        const session = yield* Chat.fromPrompt([]);
+        let modelCalls = 0;
+        const modelLayer = Layer.effect(
+          LanguageModel.LanguageModel,
+          LanguageModel.make({
+            generateText: () => Effect.succeed([]),
+            streamText: () => {
+              modelCalls += 1;
+              return Stream.fail(unparsableArguments("set_lifecycle_rules"));
+            },
+          })
+        );
+
+        const exit = yield* Stream.runDrain(
+          agenticSteps({
+            session,
+            toolkit,
+            observeTrace: () => undefined,
+          }).pipe(Stream.provide(modelLayer))
+        ).pipe(Effect.exit);
+
+        expect(modelCalls).toBe(2);
+        expect(exit._tag).toBe("Failure");
+      })
+  );
+
+  it.effect("ends the turn on the toolkit's own parameter failure", () =>
+    Effect.gen(function* () {
+      const toolkit = yield* Effect.provide(
+        agentToolkit,
+        agentToolkitLayer.pipe(Layer.provide(layerFromDraft(draft)))
+      );
+      const session = yield* Chat.fromPrompt([]);
+      let modelCalls = 0;
+      const modelLayer = Layer.effect(
+        LanguageModel.LanguageModel,
+        LanguageModel.make({
+          generateText: () => Effect.succeed([]),
+          streamText: () => {
+            modelCalls += 1;
+            return Stream.fail(unparsableArguments("read_workflow", "Toolkit"));
+          },
+        })
+      );
+
+      const exit = yield* Stream.runDrain(
+        agenticSteps({ session, toolkit, observeTrace: () => undefined }).pipe(
+          Stream.provide(modelLayer)
+        )
+      ).pipe(Effect.exit);
+
+      expect(modelCalls).toBe(1);
+      expect(exit._tag).toBe("Failure");
+    })
   );
 
   it.effect("turns a provider error and finish into one browser error", () =>

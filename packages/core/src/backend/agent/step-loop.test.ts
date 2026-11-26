@@ -112,6 +112,74 @@ describe("runAgentStepLoop", () => {
     })
   );
 
+  it.effect("runs a step once more after a retryable failure", () =>
+    Effect.gen(function* () {
+      const retries: unknown[] = [];
+      const parts = yield* Stream.runCollect(
+        runAgentStepLoop({
+          limit: 3,
+          step: (_step, retry) => {
+            retries.push(retry?.failure);
+            return retry
+              ? Stream.succeed({ type: "text" as const })
+              : Stream.fail("unreadable arguments");
+          },
+          calledTool: () => false,
+          stepCompletion: () => ({ calledTool: false }),
+          retryable: (failure) => failure === "unreadable arguments",
+        })
+      );
+
+      expect(retries).toEqual([undefined, "unreadable arguments"]);
+      expect(parts).toEqual([{ type: "text" }]);
+    })
+  );
+
+  it.effect("fails the turn on a second retryable failure", () =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const exit = yield* Stream.runDrain(
+        runAgentStepLoop({
+          limit: 5,
+          step: () => {
+            calls += 1;
+            return Stream.fail("unreadable arguments");
+          },
+          calledTool: () => false,
+          stepCompletion: () => ({ calledTool: false }),
+          retryable: () => true,
+        })
+      ).pipe(Effect.exit);
+
+      expect(calls).toBe(2);
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        expect(String(exit.cause)).toContain("unreadable arguments");
+      }
+    })
+  );
+
+  it.effect("fails the turn on a failure retryable refuses", () =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const exit = yield* Stream.runDrain(
+        runAgentStepLoop({
+          limit: 5,
+          step: () => {
+            calls += 1;
+            return Stream.fail("rate limited");
+          },
+          calledTool: () => false,
+          stepCompletion: () => ({ calledTool: false }),
+          retryable: (failure) => failure === "unreadable arguments",
+        })
+      ).pipe(Effect.exit);
+
+      expect(calls).toBe(1);
+      expect(exit._tag).toBe("Failure");
+    })
+  );
+
   it.effect("allows a turn to finish after more than 24 model steps", () =>
     Effect.gen(function* () {
       let calls = 0;

@@ -8,22 +8,34 @@ export type AgentStepCompletion = {
   readonly failure?: Error | undefined;
 };
 
+/** The failure of the model step before this one, which this step retries. */
+export type AgentStepRetry<Failure> = { readonly failure: Failure };
+
 /**
  * Repeat one model step while its response calls a tool.
  *
  * The step limit applies to model calls. A final response that calls no tool
- * ends the stream and does not start another step.
+ * ends the stream and does not start another step. A step whose stream fails
+ * with a failure that `retryable` accepts runs once more as the next step, and
+ * `step` receives that failure so it can tell the model what went wrong. One
+ * turn retries at most once, so a second such failure ends the stream.
  */
 export function runAgentStepLoop<Part, Failure, Requirements>(input: {
   readonly limit: number;
-  readonly step: (step: number) => Stream.Stream<Part, Failure, Requirements>;
+  readonly step: (
+    step: number,
+    retry: AgentStepRetry<Failure> | undefined
+  ) => Stream.Stream<Part, Failure, Requirements>;
   readonly calledTool: (part: Part) => boolean;
   readonly stepCompletion: (part: Part) => AgentStepCompletion | undefined;
   readonly stepFailure?: ((part: Part) => Error | undefined) | undefined;
+  readonly retryable?: ((failure: Failure) => boolean) | undefined;
   readonly onStepStart?: ((step: number) => void) | undefined;
 }): Stream.Stream<Part, Failure | Error, Requirements> {
   const run = (
-    remaining: number
+    remaining: number,
+    retried: boolean,
+    retry: AgentStepRetry<Failure> | undefined
   ): Stream.Stream<Part, Failure | Error, Requirements> => {
     if (remaining <= 0) {
       return Stream.fail(
@@ -37,9 +49,17 @@ export function runAgentStepLoop<Part, Failure, Requirements>(input: {
     let completion: AgentStepCompletion | undefined;
     let completionCount = 0;
     let stepFailure: Error | undefined;
+    let nextRetry: AgentStepRetry<Failure> | undefined;
     const step = input.limit - remaining + 1;
     return Stream.fromEffect(Effect.sync(() => input.onStepStart?.(step))).pipe(
-      Stream.flatMap(() => input.step(step)),
+      Stream.flatMap(() => input.step(step, retry)),
+      Stream.catch((failure) => {
+        if (retried || !input.retryable?.(failure)) {
+          return Stream.fail(failure);
+        }
+        nextRetry = { failure };
+        return Stream.empty;
+      }),
       Stream.tap((part) =>
         Effect.sync(() => {
           if (input.calledTool(part)) {
@@ -58,6 +78,9 @@ export function runAgentStepLoop<Part, Failure, Requirements>(input: {
       ),
       Stream.concat(
         Stream.suspend(() => {
+          if (nextRetry) {
+            return run(remaining - 1, true, nextRetry);
+          }
           if (stepFailure) {
             return Stream.fail(stepFailure);
           }
@@ -88,11 +111,13 @@ export function runAgentStepLoop<Part, Failure, Requirements>(input: {
               )
             );
           }
-          return calledTool ? run(remaining - 1) : Stream.empty;
+          return calledTool
+            ? run(remaining - 1, retried, undefined)
+            : Stream.empty;
         })
       )
     );
   };
 
-  return run(input.limit);
+  return run(input.limit, false, undefined);
 }

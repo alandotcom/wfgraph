@@ -13,7 +13,13 @@
  */
 
 import { Effect, type Layer, Stream } from "effect";
-import { Chat, type LanguageModel, Prompt, type Toolkit } from "effect/ai";
+import {
+  AiError,
+  Chat,
+  type LanguageModel,
+  Prompt,
+  type Toolkit,
+} from "effect/ai";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
 import type { AgentDocument } from "@wfgraph/agent/document";
 import { buildSystemPrompt } from "@wfgraph/agent/prompt";
@@ -199,6 +205,31 @@ export function makeBuiltInAgentRunner(
 }
 
 /**
+ * The tool whose call the model provider could not parse, when `failure` is
+ * that refusal, and undefined for any other failure. A provider fails the
+ * whole step when a tool call's arguments are not valid JSON, as a runaway
+ * call cut off mid-object is, before the call reaches the step's parts. The
+ * toolkit raises the same reason for arguments that parse but do not match a
+ * tool's parameters, after the call is already in the history, and that
+ * failure is left to end the turn.
+ */
+function toolWithUnparsableArguments(failure: unknown): string | undefined {
+  return AiError.isAiError(failure) &&
+    failure.module !== "Toolkit" &&
+    failure.reason._tag === "ToolParameterValidationError"
+    ? failure.reason.toolName
+    : undefined;
+}
+
+/**
+ * The message the retried step opens with, telling the model why its call
+ * did not run. The rejected arguments stay out of it.
+ */
+function unparsableArgumentsNote(toolName: string): string {
+  return `Your call to ${toolName} did not run because its arguments were not valid JSON. Nothing changed. Call ${toolName} again with one complete JSON object, and split a large change into several smaller calls.`;
+}
+
+/**
  * The turn as a loop: one model call, then another if it asked for a tool.
  *
  * `Chat` keeps the history, so each step sees the tool results of the one before
@@ -208,6 +239,11 @@ export function makeBuiltInAgentRunner(
  * The next step is decided by whether this one called a tool, which is only
  * known once the stream has finished, so it is read through a flag and the
  * continuation is suspended until then.
+ *
+ * A step that fails because the provider could not parse a tool call's
+ * arguments runs once more, opening with a note that names the tool. `Chat`
+ * keeps what the failed step streamed before the failure, and the unparsed
+ * call itself never reached the history.
  */
 export function agenticSteps(input: {
   readonly session: Chat.Chat;
@@ -219,11 +255,17 @@ export function agenticSteps(input: {
   // reading them.
   return runAgentStepLoop({
     limit: AGENT_TURN_STEP_LIMIT,
-    step: (step) => {
+    step: (step, retry) => {
+      const toolName = retry && toolWithUnparsableArguments(retry.failure);
       return input.session
-        .streamText({ prompt: [], toolkit: input.toolkit, concurrency: 1 })
+        .streamText({
+          prompt: toolName ? unparsableArgumentsNote(toolName) : [],
+          toolkit: input.toolkit,
+          concurrency: 1,
+        })
         .pipe(Stream.map((part) => ({ step, part })));
     },
+    retryable: (failure) => toolWithUnparsableArguments(failure) !== undefined,
     calledTool: ({ part }) => part.type === "tool-call",
     stepCompletion: ({ part }) => {
       if (part.type !== "finish") {
