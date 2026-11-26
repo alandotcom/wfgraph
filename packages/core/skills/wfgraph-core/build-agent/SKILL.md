@@ -44,8 +44,10 @@ gateway or model").
 
 The editor's build agent is a chat that reads the host's catalog and edits the
 open workflow's draft. A person types to it in a prompt line at the bottom of
-the canvas, and its conversation opens above that line. It is off until `agent`
-turns it on, and the editor then shows no prompt line. A turn runs on the
+the canvas, and its conversation opens above that line. A person can hide
+that line with Cmd+J (Ctrl+J), which leaves a small Show agent control in its
+place and is remembered in that browser. The agent is off until `agent` turns
+it on, and until then the editor shows neither the line nor that control. A turn runs on the
 server, in the process that serves the request, and the server stores nothing
 about a conversation: the browser sends the history with each message and
 keeps the thread in its own storage.
