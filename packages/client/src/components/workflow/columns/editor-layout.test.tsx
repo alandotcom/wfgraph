@@ -24,6 +24,7 @@ import {
   outlineHiddenAtom,
   phoneShowsMapAtom,
 } from "./editor-columns-store";
+import { useOutlineControls } from "./use-outline-controls";
 
 /**
  * The viewport itself, because the layout is read through media queries that
@@ -304,6 +305,26 @@ describe("EditorLayout", () => {
 
       expect(store.get(phoneShowsMapAtom)).toBe(false);
       expect(store.get(outlineFilterFocusRequestAtom)).toBe(true);
+    });
+
+    it("leaves no request waiting while the run list is the outline", () => {
+      setViewportWidth(1440);
+      const store = renderLayout();
+      act(() => showWorkspaceRoute(store, { view: "runs" }));
+      let controls: ReturnType<typeof useOutlineControls> | null = null;
+      function Probe() {
+        controls = useOutlineControls();
+        return null;
+      }
+      render(
+        <JotaiProvider store={store}>
+          <Probe />
+        </JotaiProvider>
+      );
+
+      act(() => controls?.findStep());
+
+      expect(store.get(outlineFilterFocusRequestAtom)).toBe(false);
     });
 
     it("leaves Cmd+F to the outline while it is on screen", () => {

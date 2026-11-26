@@ -789,7 +789,8 @@ shortcut remains available. A compact **Find a step** control stays in the
 trailing group while the search control is hidden. It and Cmd+F (Ctrl+F)
 bring the outline into view, over the canvas or in place of a phone's
 map, and put the cursor in its "Filter steps" field. The command palette's
-**Find a step** row does the same. It sits between the two
+**Find a step** row does the same. On the run list, which has no steps to
+filter, they do nothing. It sits between the two
 groups in DOM order, so Tab reaches it in the position it appears. The workspace
 control, the Run split button, and **Publish** form the trailing group, which
 sticks to the shell's right edge so a scrolling row never carries a write control out of reach. The
