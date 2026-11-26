@@ -24,7 +24,7 @@ import { whenChosen } from "#src/lib/select-choice";
 import { lifecycleRuleTargetId } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
 import type { ScheduleIssue } from "@wfgraph/shared/lifecycle/cron-schedule";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { ConfigGroup, RemoveGroupButton } from "./config-section";
+import { ConfigGroup, ConfigHelp, RemoveGroupButton } from "./config-section";
 import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
 import {
   browserTimeZone,
@@ -44,6 +44,10 @@ import {
   unsavedScheduleMessage,
 } from "./lifecycle-schedule";
 import type { LifecycleRuleGroupProps } from "./use-lifecycle-rules-editor";
+
+/** What the fields of a custom cron expression are, in order. */
+const CRON_HELP =
+  "Five fields: minute, hour, day of month, month, and day of week.";
 
 /** How many upcoming fire times each schedule lists. */
 const READOUT_FIRES = 3;
@@ -316,7 +320,12 @@ function ScheduleTiming({
       </div>
       {row.preset === "custom" ? (
         <div className="space-y-1">
-          <Label htmlFor={cronId}>Cron expression</Label>
+          <div className="flex items-center gap-1">
+            <Label htmlFor={cronId}>Cron expression</Label>
+            <ConfigHelp label="Cron expression">
+              <p>{CRON_HELP}</p>
+            </ConfigHelp>
+          </div>
           <Input
             aria-describedby={cronHelpId}
             aria-invalid={invalid || undefined}
@@ -329,8 +338,10 @@ function ScheduleTiming({
             spellCheck={false}
             value={row.cron}
           />
-          <p className="text-muted-foreground text-xs" id={cronHelpId}>
-            Five fields: minute, hour, day of month, month, and day of week.
+          {/* Behind the icon, the help stays in the document for the
+              input's `aria-describedby`. */}
+          <p className="sr-only" id={cronHelpId}>
+            {CRON_HELP}
           </p>
         </div>
       ) : null}

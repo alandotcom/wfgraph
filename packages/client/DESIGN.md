@@ -429,8 +429,10 @@ that holds settings only: first what it does, then its Connection and every
 setting as its field, each under one label, and after a divider its editable
 **Label** and **Notes**, which is the step's description. Disabling,
 duplicating and deleting the step are commands of the Inspector header's ⋯ menu and
-the context menu. A field's help sits behind an info icon on its label when it
-runs longer than one short line. What it does is one field, **Does**, that names the action with its category,
+the context menu. Every field's help sits behind an info icon on its label. A
+field that takes inserted values and has no placeholder of its own says "Type @
+to insert a value…" as its placeholder, and one with its own placeholder says
+it in its help. What it does is one field, **Does**, that names the action with its category,
 such as "Appointments · Send Patient Message", or the action alone for a
 built-in step such as Wait. Pressing it opens, in place of the form, the same
 searchable list grouped by category that adding a step uses, with focus in its
@@ -522,7 +524,9 @@ domain nouns for the same rules. A set rule's **Remove**, a small control on
 its label row, puts it back to its default, every arrival starting its own run,
 no schedule, no Cancel Event, or no Entity, and focus moves to **Add a rule**.
 What a choice does, which runs count as related, and the binding an Event with
-one binding uses sit behind the info icon on the rule's label. Start Filters and
+one binding uses sit behind the info icon on the rule's label, and each control
+inside a rule keeps its help behind an info icon on its own label, such as a
+Correlation Path or a custom cron expression. Start Filters and
 eligibility are separate rules, and each one's help says what it reads: the
 arriving Event's payload, or the Entity's current state from the host. A
 refusal Publish would give shows beneath the rule its check reads while that

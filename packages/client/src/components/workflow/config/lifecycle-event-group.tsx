@@ -43,7 +43,7 @@ import {
   readStartFilterLayout,
 } from "@wfgraph/shared/lifecycle/start-filters";
 import { ConditionBuilderRow } from "./condition-builder-row";
-import { ConfigGroup, RemoveGroupButton } from "./config-section";
+import { ConfigGroup, ConfigHelp, RemoveGroupButton } from "./config-section";
 import { EventMultiCombobox } from "./event-combobox";
 import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
 import type { LifecycleRuleGroupProps } from "./use-lifecycle-rules-editor";
@@ -551,10 +551,18 @@ function CorrelationPathInput({
 
   return (
     <div className="space-y-1">
-      <Label className="text-muted-foreground text-xs" htmlFor={inputId}>
-        Correlation Path
-        <span className="sr-only">{` for ${eventName}`}</span>
-      </Label>
+      <div className="flex items-center gap-1">
+        <Label className="text-muted-foreground text-xs" htmlFor={inputId}>
+          Correlation Path
+          <span className="sr-only">{` for ${eventName}`}</span>
+        </Label>
+        <ConfigHelp label="Correlation Path">
+          <p>
+            Workflow Graph uses this field to identify which runs belong
+            together.
+          </p>
+        </ConfigHelp>
+      </div>
       <Select
         disabled={disabled}
         items={[
@@ -583,9 +591,6 @@ function CorrelationPathInput({
           ))}
         </SelectContent>
       </Select>
-      <p className="text-muted-foreground text-xs">
-        Workflow Graph uses this field to identify which runs belong together.
-      </p>
     </div>
   );
 }

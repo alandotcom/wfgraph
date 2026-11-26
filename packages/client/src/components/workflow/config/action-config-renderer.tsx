@@ -314,17 +314,11 @@ const TEMPLATE_INSERT_HINT =
   "Type @ to insert a value from the Event or an earlier step.";
 
 /**
- * The longest help a field shows as a line under its label. Longer help moves
- * behind the info icon beside the label, so each setting reads as its label
- * and its control.
- */
-const INLINE_HELP_MAX_LENGTH = 48;
-
-/**
  * Renders a single base field: its label, its control, and the issues that
- * name it. A template field with no placeholder of its own says in its
- * placeholder that typing @ inserts a value, and one with a placeholder says
- * it in its help.
+ * name it. Its help sits behind the info icon beside the label, so each
+ * setting reads as its label and its control. A template field with no
+ * placeholder of its own says in its placeholder that typing @ inserts a
+ * value, and one with a placeholder says it in its help.
  */
 function renderField(
   field: ActionConfigFieldBase,
@@ -360,7 +354,6 @@ function renderField(
       : undefined;
   const helpSentences = compact([field.description, insertHint]);
   const help = helpSentences.join(" ");
-  const helpBehindIcon = help.length > INLINE_HELP_MAX_LENGTH;
   const label = field.label ?? field.key;
 
   const descriptionId = help ? `${field.key}-description` : undefined;
@@ -373,21 +366,23 @@ function renderField(
       key={field.key}
       role={descriptionId ? "group" : undefined}
     >
-      {field.label ? (
+      {field.label || help ? (
         <div className="ml-1 flex min-h-6 items-center gap-1">
           {/* The id is what names the template fields, whose editor is a
               contenteditable div that `htmlFor` cannot reach. The asterisk is
               decorative once `required` reaches the control as
               `aria-required`. */}
-          <Label htmlFor={field.key} id={`${field.key}-label`}>
-            {field.label}
-            {field.required ? (
-              <span aria-hidden="true" className="text-destructive">
-                *
-              </span>
-            ) : null}
-          </Label>
-          {helpBehindIcon ? (
+          {field.label ? (
+            <Label htmlFor={field.key} id={`${field.key}-label`}>
+              {field.label}
+              {field.required ? (
+                <span aria-hidden="true" className="text-destructive">
+                  *
+                </span>
+              ) : null}
+            </Label>
+          ) : null}
+          {help ? (
             <ConfigHelp label={label}>
               {helpSentences.map((sentence) => (
                 <p key={sentence}>{sentence}</p>
@@ -399,12 +394,7 @@ function renderField(
       {help ? (
         // Behind the icon, the help stays in the document for the control's
         // `aria-describedby`.
-        <p
-          className={
-            helpBehindIcon ? "sr-only" : "ml-1 text-muted-foreground text-xs"
-          }
-          id={descriptionId}
-        >
+        <p className="sr-only" id={descriptionId}>
           {help}
         </p>
       ) : null}

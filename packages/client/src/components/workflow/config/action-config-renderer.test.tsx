@@ -10,7 +10,7 @@
  * the plain text field, whose placeholder is a DOM attribute.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { ActionConfigRenderer } from "#src/components/workflow/config/action-config-renderer";
@@ -137,6 +137,28 @@ describe("ActionConfigRenderer", () => {
         .getByRole("textbox", { name: "Subject" })
         .getAttribute("aria-describedby")
     ).toBe(description.id);
+  });
+
+  it("puts a field's help behind the info icon beside its label, however short", () => {
+    renderFields({
+      fields: [
+        {
+          key: "count",
+          label: "Count",
+          type: "number",
+          description: "How many.",
+        },
+      ],
+    });
+
+    // The help stays in the document only for the control's description.
+    expect(screen.getByText("How many.").className).toBe("sr-only");
+    fireEvent.click(screen.getByRole("button", { name: "About Count" }));
+    expect(
+      within(screen.getByRole("dialog", { name: "Count" })).getByText(
+        "How many."
+      )
+    ).toBeTruthy();
   });
 
   it("tells a template field with no description how to insert a value", () => {

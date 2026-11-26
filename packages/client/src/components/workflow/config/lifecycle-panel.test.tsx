@@ -1803,6 +1803,19 @@ describe("LifecyclePanel cancel filters", () => {
     expect(
       view.queryByText(/Only runs with the same tracked Entity ID/)
     ).toBeNull();
+    // What a Correlation Path does sits behind its own info icon.
+    expect(
+      view.queryByText(
+        "Workflow Graph uses this field to identify which runs belong together."
+      )
+    ).toBeNull();
+    const [correlationHelp] = view.getAllByRole("button", {
+      name: "About Correlation Path",
+    });
+    if (!correlationHelp) {
+      throw new Error("no Correlation Path help is on screen");
+    }
+    fireEvent.click(correlationHelp);
     expect(
       view.getByText(
         "Workflow Graph uses this field to identify which runs belong together."
