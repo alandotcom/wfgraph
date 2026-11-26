@@ -459,6 +459,39 @@ describe("Event Split Browse", () => {
     ).toBeTruthy();
   });
 
+  it("drops the jump's field request when Back leaves before it is answered", async () => {
+    const { view, aside, store } = await renderEventSplit({
+      nodes: [lifecycleNode, splitNode, sendNode],
+      edges: BASE_EDGES,
+    });
+
+    // Back right after the jump, before the start's field took focus.
+    const owner = view.getByRole("button", { name: "Open start Events" });
+    owner.focus();
+    fireEvent.click(owner);
+    const back = view.getByRole("button", { name: "Back" });
+    back.focus();
+    fireEvent.click(back);
+
+    expect(view.getByRole("heading", { name: "Split" })).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-slot")).toBe(
+        "reveal-title"
+      )
+    );
+    expect(aside()?.contains(document.activeElement)).toBe(true);
+
+    // Opening the start later is a press of its own, and asks for no field.
+    act(() => store.set(selectOnlyNodeAtom, lifecycleNode.id));
+    expect(await view.findByLabelText("Starts when")).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-slot")).toBe(
+        "reveal-title"
+      )
+    );
+    expect(document.activeElement).not.toBe(view.getByLabelText("Starts when"));
+  });
+
   it("returns to the split on Escape", async () => {
     const { view, aside } = await renderEventSplit({
       nodes: [lifecycleNode, splitNode, sendNode],
