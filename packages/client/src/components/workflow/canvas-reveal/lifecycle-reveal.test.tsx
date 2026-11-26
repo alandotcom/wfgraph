@@ -319,7 +319,9 @@ describe("Lifecycle form", () => {
       view.getByRole("combobox", { name: "If a run is already in progress" })
         .textContent
     ).toContain("Start the newest run");
-    expect(view.getByLabelText("Label")).toBeTruthy();
+    // The start's name is edited in the Inspector's title, not in the form.
+    expect(view.getByRole("textbox", { name: "Name" })).toBeTruthy();
+    expect(view.queryByLabelText("Label")).toBeNull();
     expect(view.queryByRole("button", { name: /^Edit/ })).toBeNull();
     expect(view.queryByRole("button", { name: /^Done/ })).toBeNull();
     expect(

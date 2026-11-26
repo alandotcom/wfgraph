@@ -14,9 +14,7 @@ import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
 import { ACTION_FILTER_ID } from "#src/components/workflow/config/action-grid";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { revealFocusTarget } from "./reveal-subject";
-
-/** The element id of every Draft editor's Label field. */
-const LABEL_TARGET_ID = "label";
+import { REVEAL_NAME_FIELD_ID } from "./reveal-title";
 
 /** Whether `node` is a step whose inspector shows the action picker. */
 function showsActionPicker(node: WorkflowNode): boolean {
@@ -29,18 +27,18 @@ function showsActionPicker(node: WorkflowNode): boolean {
 /**
  * The element a general edit of `node` focuses: the action picker's search
  * for a step with no action, nothing for an Event Split, which has no field,
- * and the label otherwise.
+ * and the name in the Inspector's title otherwise.
  */
 export function editFocusTarget(node: WorkflowNode): string | null {
   if (showsActionPicker(node)) {
     return ACTION_FILTER_ID;
   }
-  return isEventSplitNode(node) ? null : LABEL_TARGET_ID;
+  return isEventSplitNode(node) ? null : REVEAL_NAME_FIELD_ID;
 }
 
 /**
  * The element a step just added focuses: the action picker's search, else the
- * first required field it leaves empty, else its label.
+ * first required field it leaves empty, else its name in the title.
  */
 export function newStepFocusTarget(
   node: WorkflowNode,

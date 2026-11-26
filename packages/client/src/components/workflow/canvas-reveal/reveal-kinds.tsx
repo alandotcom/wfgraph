@@ -398,8 +398,8 @@ const CONDITION_KIND: RevealKind = {
 };
 
 /**
- * A Draft Group frame: its label and description, its summary, and its
- * commands. A phone shows the summary on a
+ * A Draft Group frame: its summary, its notes, and its commands, with its
+ * name in the title. A phone shows the summary on a
  * summary sheet and the rest in the full-screen editor.
  */
 const GROUP_KIND: RevealKind = {

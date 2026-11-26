@@ -3,6 +3,7 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { editFocusTarget, newStepFocusTarget } from "./reveal-edit-target";
+import { REVEAL_NAME_FIELD_ID } from "./reveal-title";
 
 const catalog: ExtensionCatalog = {
   entities: [],
@@ -41,13 +42,13 @@ function step(
 }
 
 describe("editFocusTarget", () => {
-  it("focuses the action picker of a step with no action, and the label otherwise", () => {
+  it("focuses the action picker of a step with no action, and the name in the title otherwise", () => {
     expect(editFocusTarget(step({}))).toBe("action-filter");
     expect(editFocusTarget(step({ actionType: "notices/send-letter" }))).toBe(
-      "label"
+      REVEAL_NAME_FIELD_ID
     );
-    expect(editFocusTarget(step({}, "lifecycle"))).toBe("label");
-    expect(editFocusTarget(step({}, "group"))).toBe("label");
+    expect(editFocusTarget(step({}, "lifecycle"))).toBe(REVEAL_NAME_FIELD_ID);
+    expect(editFocusTarget(step({}, "group"))).toBe(REVEAL_NAME_FIELD_ID);
   });
 
   it("names no field for an Event Split, which has none", () => {
@@ -64,13 +65,13 @@ describe("newStepFocusTarget", () => {
     ).toBe("body");
   });
 
-  it("focuses the label once every required field holds a value", () => {
+  it("focuses the name in the title once every required field holds a value", () => {
     expect(
       newStepFocusTarget(
         step({ actionType: "notices/send-letter", body: "Hello" }),
         catalog
       )
-    ).toBe("label");
+    ).toBe(REVEAL_NAME_FIELD_ID);
   });
 
   it("focuses a new Wait's duration and a new Condition's rule builder", () => {

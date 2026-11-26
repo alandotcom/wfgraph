@@ -2,7 +2,7 @@ import { useAtomValue } from "jotai";
 import { sortBy } from "es-toolkit/array";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { NodeDetailsFields } from "#src/components/workflow/node-properties-form";
+import { NodeNotesField } from "#src/components/workflow/node-properties-form";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
@@ -246,7 +246,7 @@ function GroupSummarySections({
 
 /**
  * The inspector of a Group: its summary, its steps and boundary, any issues,
- * then its Label and Notes after a divider. Ungroup and Delete Group and steps
+ * then its Notes after a divider. Ungroup and Delete Group and steps
  * are commands of the Inspector header's ⋯ menu and the context menu.
  */
 export function GroupEditor({ subject, focusField }: RevealBodyProps) {
@@ -266,7 +266,7 @@ export function GroupEditor({ subject, focusField }: RevealBodyProps) {
         issuesTitled={false}
       />
       <div className="space-y-4 border-t px-4 pt-4">
-        <NodeDetailsFields
+        <NodeNotesField
           disabled={isGenerating || !can(WfGraphOperations.workflowUpdate.id)}
           node={node}
         />
@@ -277,7 +277,7 @@ export function GroupEditor({ subject, focusField }: RevealBodyProps) {
 
 /**
  * The summary sheet of a Group on a phone: its notes and its summary. The
- * full-screen editor holds its Label and Notes; a phone offers no Ungroup or
+ * full-screen editor holds its Notes; a phone offers no Ungroup or
  * Delete, which are topology edits.
  */
 export function GroupSummarySheet({ subject, focusField }: RevealBodyProps) {

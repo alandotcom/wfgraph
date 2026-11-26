@@ -271,24 +271,24 @@ describe("NodeConfigPanel with nothing selected", () => {
 });
 
 describe("NodeConfigPanel config scoping", () => {
-  it("puts what the step does before its Label and Notes", async () => {
+  it("puts what the step does before its Notes, and leaves its name to the title", async () => {
     installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
     const { view } = renderPanel({
       nodes: [lifecycleNode(), waitNode({ waitMode: "delay" })],
       selected: "wait_1",
     });
 
-    const label = await view.findByLabelText("Label");
-    const notes = view.getByLabelText("Notes");
+    const notes = await view.findByLabelText("Notes");
     const does = view.getByLabelText("Does");
 
     expect(view.queryByText("Node Metadata")).toBeNull();
     expect(
-      does.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING
+      does.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
-    expect(
-      label.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    // The Inspector's title edits the step's name, so the form has no field
+    // for it.
+    expect(view.queryByLabelText("Label")).toBeNull();
+    expect(view.queryByText("Label")).toBeNull();
     // Disabling and deleting the step are the menus' commands.
     expect(view.queryByRole("button", { name: /Disable step/ })).toBeNull();
     expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
@@ -439,7 +439,7 @@ describe("NodeConfigPanel authorization", () => {
       selected: "wait_1",
     });
 
-    await view.findByLabelText("Label");
+    await view.findByLabelText("Notes");
     expect(
       view.queryByText(
         "You are viewing a public workflow. Duplicate it to make changes."

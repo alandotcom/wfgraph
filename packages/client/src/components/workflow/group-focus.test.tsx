@@ -651,6 +651,22 @@ describe("canvas Delete gesture", () => {
     );
   });
 
+  it("renames a Group from the Inspector's title, which its form leaves out", async () => {
+    const { store, reveal, select } = await renderEditor();
+    await select("outreach");
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
+    const inspector = within(reveal() ?? document.body);
+    expect(inspector.queryByLabelText("Label")).toBeNull();
+
+    fireEvent.change(inspector.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Second outreach" },
+    });
+
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "outreach")?.data.label
+    ).toBe("Second outreach");
+  });
+
   it("shows a read-only viewer the step's name as plain text in the Inspector", async () => {
     const { view, reveal, select } = await renderEditor("", undefined, {
       canEdit: false,
@@ -673,7 +689,7 @@ describe("canvas Delete gesture", () => {
       expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"])
     );
     await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
-    const label = view.getByRole("textbox", { name: "Label" });
+    const label = view.getByRole("textbox", { name: "Name" });
     label.focus();
 
     fireEvent.keyDown(label, { key: "Delete", code: "Delete" });

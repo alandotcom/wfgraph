@@ -300,7 +300,7 @@ describe("mobile Reveal for an ordinary step", () => {
     expect(sheet()).toBeNull();
   });
 
-  it("edits through the inspector and autosaves, and offers no delete", async () => {
+  it("renames from the sheet's title and autosaves, and offers no delete", async () => {
     const { view, store, select, update } = await renderMobile();
     await select("wait");
     // The summary sheet keeps the enable toggle, which states its consequence:
@@ -313,9 +313,16 @@ describe("mobile Reveal for an ordinary step", () => {
     expect(
       view.getByText("Disabling ends the path at this step.")
     ).toBeTruthy();
+    // The summary sheet's title is the step's name, a 44px field with 1rem
+    // text; the sheets' forms hold no Label field.
+    const summaryName = view.getByRole("textbox", { name: "Name" });
+    expect(summaryName.className).toContain("h-11");
+    expect(summaryName.className).toContain("text-base");
+    expect(view.queryByLabelText("Label")).toBeNull();
     fireEvent.click(view.getByRole("button", { name: "Edit step" }));
+    expect(view.queryByLabelText("Label")).toBeNull();
 
-    fireEvent.change(view.getByLabelText("Label"), {
+    fireEvent.change(view.getByRole("textbox", { name: "Name" }), {
       target: { value: "Wait a week" },
     });
     expect(

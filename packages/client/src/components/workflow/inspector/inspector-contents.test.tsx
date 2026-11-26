@@ -544,19 +544,35 @@ describe("InspectorContents presentation states", () => {
 });
 
 describe("InspectorContents editing", () => {
-  it("writes label and description edits to the draft in one autosave", async () => {
+  it.each([
+    { kind: "the start", nodeId: "lifecycle" },
+    { kind: "an action step", nodeId: "send" },
+    { kind: "a Wait", nodeId: "wait" },
+    { kind: "a Condition", nodeId: "condition" },
+  ])(
+    "names $kind in its title and draws no Label field",
+    async ({ nodeId }) => {
+      const { view, select } = await renderReveal();
+      await select(nodeId);
+
+      expect(view.getByRole("textbox", { name: "Name" })).toBeTruthy();
+      expect(view.queryByLabelText("Label")).toBeNull();
+      expect(view.queryByText("Label")).toBeNull();
+    }
+  );
+
+  it("writes name and notes edits to the draft in one autosave", async () => {
     const { view, store, update, select, level } = await renderReveal();
     await select("send");
+    const name = () => view.getByRole("textbox", { name: "Name" });
 
-    fireEvent.change(view.getByLabelText("Label"), {
+    fireEvent.change(name(), {
       target: { value: "Send confirmation" },
     });
     fireEvent.change(view.getByLabelText("Notes"), {
       target: { value: "The day before" },
     });
-    expect((view.getByLabelText("Label") as HTMLInputElement).value).toBe(
-      "Send confirmation"
-    );
+    expect((name() as HTMLInputElement).value).toBe("Send confirmation");
     expect(level()).toBe("browse");
 
     const saved = store.get(nodesAtom).find((item) => item.id === "send");
@@ -573,7 +589,7 @@ describe("InspectorContents editing", () => {
   it("makes typing in one field one undo step per pause or blur", async () => {
     const { view, store, select } = await renderReveal();
     await select("send");
-    const label = view.getByLabelText("Label");
+    const label = view.getByRole("textbox", { name: "Name" });
     const type = (value: string) =>
       fireEvent.change(label, { target: { value } });
 
@@ -611,7 +627,7 @@ describe("InspectorContents editing", () => {
     const graphUpdate = store.get(workflowGraphUpdateAtom);
 
     await select("send");
-    fireEvent.change(view.getByLabelText("Label"), {
+    fireEvent.change(view.getByRole("textbox", { name: "Name" }), {
       target: { value: "Send reminder" },
     });
     await escape();
@@ -636,9 +652,9 @@ describe("InspectorContents keyboard and focus", () => {
 
     // The Inspector card slides away on that same Escape.
     expect(store.get(inspectorOpenAtom)).toBe(true);
-    const label = view.getByLabelText("Label");
-    label.focus();
-    await escape(label);
+    const notes = view.getByLabelText("Notes");
+    notes.focus();
+    await escape(notes);
     expect(level()).toBe("browse");
     expect(document.activeElement).toBe(card);
     expect(store.get(inspectorOpenAtom)).toBe(false);
@@ -652,7 +668,7 @@ describe("InspectorContents keyboard and focus", () => {
     const { view, store, select } = await renderReveal();
     const card = view.getByText("Send reminder card");
     await select("send");
-    view.getByLabelText("Label").focus();
+    view.getByLabelText("Notes").focus();
 
     fireEvent.click(view.getByRole("button", { name: "Close" }));
 
@@ -667,15 +683,15 @@ describe("InspectorContents keyboard and focus", () => {
     await act(async () => {
       store.set(dismissInspectorAtom);
     });
-    const label = view.getByLabelText("Label");
-    label.focus();
+    const notes = view.getByLabelText("Notes");
+    notes.focus();
 
-    await escape(label);
+    await escape(notes);
     await escape(document.body);
 
     // Nothing unwound: the card stays closed on the same selection, and
     // nothing moved focus out of the field.
-    expect(document.activeElement).toBe(label);
+    expect(document.activeElement).toBe(notes);
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
   });
 
@@ -746,15 +762,15 @@ describe("InspectorContents keyboard and focus", () => {
   it("leaves Escape to a control that holds a popup open", async () => {
     const { view, select, escape } = await renderReveal();
     await select("send");
-    const label = view.getByLabelText("Label");
-    label.setAttribute("aria-expanded", "true");
+    const notes = view.getByLabelText("Notes");
+    notes.setAttribute("aria-expanded", "true");
 
-    label.focus();
-    await escape(label);
-    expect(document.activeElement).toBe(label);
+    notes.focus();
+    await escape(notes);
+    expect(document.activeElement).toBe(notes);
 
-    label.removeAttribute("aria-expanded");
-    await escape(label);
+    notes.removeAttribute("aria-expanded");
+    await escape(notes);
     expect(document.activeElement).toBe(view.getByText("Send reminder card"));
   });
 
@@ -886,7 +902,7 @@ describe("InspectorContents over a React Flow canvas", () => {
 });
 
 describe("InspectorContents edit focus", () => {
-  it("opens the step from the context menu's Edit with focus in its label", async () => {
+  it("opens the step from the context menu's Edit with focus in its name", async () => {
     const { view, level } = await renderReveal({}, { canvas: FlowCanvas });
     expect(
       view.queryByRole("complementary", { name: "Step inspector" })
@@ -899,7 +915,9 @@ describe("InspectorContents edit focus", () => {
 
     expect(level()).toBe("browse");
     await waitFor(() =>
-      expect(document.activeElement).toBe(view.getByLabelText("Label"))
+      expect(document.activeElement).toBe(
+        view.getByRole("textbox", { name: "Name" })
+      )
     );
   });
 

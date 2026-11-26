@@ -217,8 +217,8 @@ export function useStepMenuItems(input: {
       label: `Edit ${nodeLabel}`,
       icon: <SlidersHorizontal />,
       group: "edit",
-      // Edit opens the Inspector with keyboard focus in the object's label,
-      // or in the action picker of a step with no action yet.
+      // Edit opens the Inspector with keyboard focus in the object's name in
+      // its title, or in the action picker of a step with no action yet.
       run: () => {
         selectOnlyNode(nodeId);
         navigation.openNode({
