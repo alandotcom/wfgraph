@@ -17,6 +17,7 @@ describe("canvasInteractionState", () => {
         comparisonActive: true,
       })
     ).toEqual({
+      editsDraft: false,
       comparisonVisible: true,
       insertsNodes: false,
       editsTopology: false,
@@ -38,6 +39,7 @@ describe("canvasInteractionState", () => {
         overlayActive: true,
       })
     ).toEqual({
+      editsDraft: false,
       comparisonVisible: false,
       insertsNodes: false,
       editsTopology: false,

@@ -17,6 +17,7 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
 import { stepOutlets } from "#src/components/workflow/connection-handle";
+import { useCanvasInteraction } from "#src/components/workflow/canvas-interaction";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import { useAddStepAfter } from "#src/components/workflow/use-add-step";
 import {
@@ -87,16 +88,16 @@ function stepsNoun(count: number): string {
  * Duplicate, Group, Ungroup, Collapse or Expand a Group, and Delete. When
  * `selectedIds` holds `nodeId` and at least one other node, the commands are
  * the ones that apply to the whole selection, each naming its count. Each item
- * only runs its command; the menu closes itself.
+ * only runs its command; the menu closes itself. It offers nothing while
+ * `useCanvasInteraction` takes no topology edits, and disables the rows that
+ * insert steps while it inserts none.
  */
 export function useStepMenuItems(input: {
   nodeId: string | undefined;
   selectedIds: ReadonlySet<string>;
-  /** Whether the person may edit the draft now. */
-  canEdit: boolean;
-  /** Whether Add step after and Duplicate may insert steps. */
-  canInsert: boolean;
 }): readonly StepMenuItem[] {
+  const interaction = useCanvasInteraction();
+  const canInsert = interaction.insertsNodes;
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const collapsedGroupIds = useAtomValue(collapsedGroupIdsAtom);
@@ -118,7 +119,7 @@ export function useStepMenuItems(input: {
   const deleteCanvasSelection = useSetAtom(deleteCanvasSelectionAtom);
 
   const node = nodes.find((item) => item.id === input.nodeId);
-  if (!(input.canEdit && node)) {
+  if (!(interaction.editsTopology && node)) {
     return [];
   }
   if (input.selectedIds.size > 1 && input.selectedIds.has(node.id)) {
@@ -133,7 +134,7 @@ export function useStepMenuItems(input: {
       });
     return bulkItems({
       selected,
-      canInsert: input.canInsert,
+      canInsert,
       grouping: analyzeGroupableSelection({
         nodes,
         edges,
@@ -215,7 +216,7 @@ export function useStepMenuItems(input: {
           : `Add step after ${outlet.label}`,
       icon: <Plus />,
       group: "add",
-      disabled: !input.canInsert,
+      disabled: !canInsert,
       run: () => addStepAfter({ source: { nodeId, handle: outlet.handle } }),
     });
   }
@@ -235,7 +236,7 @@ export function useStepMenuItems(input: {
       icon: <CopyPlus />,
       group: "arrange",
       shortcut: chord("D"),
-      disabled: isLifecycle || !input.canInsert,
+      disabled: isLifecycle || !canInsert,
       run: () => showGraphEditRefusal(duplicateSelection(nodeId)),
     },
     {

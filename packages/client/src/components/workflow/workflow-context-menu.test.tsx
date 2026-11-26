@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, within } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayContainer } from "#src/components/overlays/overlay-container";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
@@ -16,6 +16,11 @@ import {
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
 
 const catalog: ExtensionCatalog = {
   actions: [],
@@ -97,12 +102,7 @@ function renderMenu(
       <QueryClientProvider client={new QueryClient()}>
         <ExtensionCatalogProvider value={catalog}>
           <OverlayProvider>
-            <WorkflowContextMenu
-              canEdit
-              canInsert
-              menuState={menuState}
-              onClose={() => {}}
-            />
+            <WorkflowContextMenu menuState={menuState} onClose={() => {}} />
             <OverlayContainer />
           </OverlayProvider>
         </ExtensionCatalogProvider>
@@ -112,6 +112,11 @@ function renderMenu(
 
   return { ...view, store };
 }
+
+beforeEach(() => {
+  installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+});
+afterEach(resetAuthorizationGrantsForTests);
 
 describe("WorkflowContextMenu", () => {
   it("toggles the selected node between enabled and disabled", () => {

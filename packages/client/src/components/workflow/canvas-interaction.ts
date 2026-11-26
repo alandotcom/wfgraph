@@ -2,14 +2,18 @@
  * What the workflow canvas lets a person do below and above `md`. Every surface
  * that changes which steps exist, how they connect, how they are grouped, or
  * where they sit reads `useTopologyAuthoring`, directly or through
- * `useTopologyCapabilities`.
+ * `useTopologyCapabilities` or `useCanvasInteraction`.
  */
 
+import { useAtomValue, useAtomValueRawSync } from "jotai";
 import { useCallback } from "react";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { can } from "#src/lib/authorization";
 import { canUngroup } from "#src/lib/node-group";
+import { isExecutionOverlayActiveAtom } from "#src/lib/workflow-graph-presentation-store";
+import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { reviewDisplayGraphAtom } from "#src/lib/workflow-review-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 /**
@@ -48,6 +52,8 @@ export function useTopologyCapabilities(): TopologyCapabilities {
   };
 }
 
+export type CanvasInteraction = ReturnType<typeof canvasInteractionState>;
+
 export function canvasInteractionState({
   editingLocked,
   comparisonActive,
@@ -63,6 +69,12 @@ export function canvasInteractionState({
   const comparisonVisible = comparisonActive && !overlayActive;
   const editsTopology = !editingLocked && topologyAuthoring;
   return {
+    /**
+     * Whether the Draft accepts edits at all: settings, moves and history.
+     * False while anything but the editable Draft owns the canvas, or for a
+     * person without the `workflowUpdate` grant.
+     */
+    editsDraft: !editingLocked,
     comparisonVisible,
     /**
      * Whether adding, pasting, and duplicating steps is offered. On a focused
@@ -83,4 +95,26 @@ export function canvasInteractionState({
     /** The key that drags a selection box, null where multi-select is off. */
     selectionKeyCode: topologyAuthoring ? "Shift" : null,
   };
+}
+
+/**
+ * What the canvas lets this person do now: `canvasInteractionState` for their
+ * `workflowUpdate` grant, the editing lock (a run, the review sheet, a running
+ * agent turn), the review sheet's comparison, the open run and the form
+ * factor. The canvas, its context menu, the outline's row gestures and the
+ * step menus all read this one answer, so none of them can offer a command
+ * the canvas refuses.
+ */
+export function useCanvasInteraction(): CanvasInteraction {
+  const topologyAuthoring = useTopologyAuthoring();
+  const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  // The overlay synchronizer can write this before subscriptions mount.
+  const overlayActive = useAtomValueRawSync(isExecutionOverlayActiveAtom);
+  const comparisonActive = useAtomValue(reviewDisplayGraphAtom) !== null;
+  return canvasInteractionState({
+    editingLocked: editingLocked || !can(WfGraphOperations.workflowUpdate.id),
+    comparisonActive,
+    overlayActive,
+    topologyAuthoring,
+  });
 }

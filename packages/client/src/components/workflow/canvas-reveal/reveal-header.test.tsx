@@ -14,6 +14,7 @@ import {
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -105,6 +106,16 @@ describe("RevealHeader", () => {
     expect(
       store.get(nodesAtom).find((node) => node.id === "send")?.data.enabled
     ).toBe(false);
+  });
+
+  it("offers no ⋯ menu while the canvas takes no edits", () => {
+    const store = renderHeader();
+    expect(screen.getByRole("button", { name: "More actions" })).toBeTruthy();
+
+    // A running agent turn holds the draft, as the canvas does.
+    act(() => store.set(activeAgentTurnIdAtom, Symbol("turn")));
+
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
   it("runs the shell's close on Close", () => {

@@ -186,6 +186,10 @@ async function renderEditor(
   },
   options: { reveal?: boolean; canEdit?: boolean } = {}
 ) {
+  // A person without the edit grant sees the canvas read-only.
+  if (options.canEdit === false) {
+    installAuthorizationGrantsForTests([]);
+  }
   const store = createStore();
   store.set(workflowApiAtom, {
     update: vi.fn(async () => savedWorkflow("wf_1")),
@@ -211,7 +215,7 @@ async function renderEditor(
       >
         <WorkspaceRouteSync />
         <RunStatusProjection />
-        <WorkflowCanvas canEdit={options.canEdit ?? true} />
+        <WorkflowCanvas />
         {options.reveal === false ? null : <DetailsPanel />}
         <Probe />
       </div>
@@ -809,8 +813,6 @@ describe("a Group drawn in place", () => {
           <ExtensionCatalogProvider value={catalog}>
             <OverlayProvider>
               <WorkflowContextMenu
-                canEdit
-                canInsert
                 menuState={{
                   type: "node",
                   nodeId: "outreach",
@@ -974,8 +976,6 @@ describe("adding a step after a step and inserting one into a connection", () =>
           <ExtensionCatalogProvider value={catalog}>
             <OverlayProvider>
               <WorkflowContextMenu
-                canEdit
-                canInsert
                 menuState={{
                   type: "node",
                   nodeId,
@@ -1064,8 +1064,6 @@ describe("adding a step after a step and inserting one into a connection", () =>
           <ExtensionCatalogProvider value={catalog}>
             <OverlayProvider>
               <WorkflowContextMenu
-                canEdit
-                canInsert
                 menuState={{
                   type: "edge",
                   edgeId: "welcome-case",

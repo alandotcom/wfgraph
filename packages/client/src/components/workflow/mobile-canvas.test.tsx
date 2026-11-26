@@ -146,7 +146,7 @@ async function renderEditor(initialSearch = "") {
       <div className="relative" data-testid="canvas-area">
         <WorkspaceRouteSync />
         <MobileRevealCovered>
-          <WorkflowCanvas canEdit />
+          <WorkflowCanvas />
         </MobileRevealCovered>
         <DetailsPanel />
         <MobileReveal />

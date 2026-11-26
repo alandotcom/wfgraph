@@ -30,11 +30,9 @@ import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-ori
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { useInspectRunNode } from "#src/components/workflow/use-run-node-evidence";
 import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
-import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
+import { useCanvasInteraction } from "#src/components/workflow/canvas-interaction";
 import { contextMenuAtom } from "#src/components/workflow/workflow-context-menu";
 import { scrollIntoScroller } from "#src/lib/scroll-into-scroller";
-import { can } from "#src/lib/authorization";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
 import { expandGroupAtom } from "#src/lib/collapsed-groups";
 import {
@@ -52,7 +50,6 @@ import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import { editOfNode, workflowEdits } from "#src/lib/workflow-edits";
 import {
-  canvasEditingLockedAtom,
   canvasSelectionAtom,
   edgesAtom,
   executionOverlayGraphAtom,
@@ -207,16 +204,13 @@ export function WorkflowOutline({
   const testSkipped = openRun?.testSkipped ?? NO_NODE_IDS;
 
   const editing = view === "draft" && !reviewShown;
-  const locked = useAtomValue(canvasEditingLockedAtom);
-  const topologyAuthoring = useTopologyAuthoring();
   const setContextMenu = useSetAtom(contextMenuAtom);
-  // Whether a row answers right-click, Shift-click and Cmd-click the way its
-  // canvas card does: in an editable Draft, where the canvas offers them.
-  const authoring =
-    editing &&
-    !locked &&
-    topologyAuthoring &&
-    can(WfGraphOperations.workflowUpdate.id);
+  // Whether a row answers right-click, Shift-click and Cmd-click, offers its
+  // Add a step rows and `/`, and moves steps with Alt+Up and Alt+Down: where
+  // the canvas offers the same, by the canvas's own answer.
+  const interaction = useCanvasInteraction();
+  const authoring = editing && interaction.editsTopology;
+  const inserting = editing && interaction.insertsNodes;
   // While the review sheet shows, the graph holds removed steps too, and the
   // rows keep the draft's numbers so they match the cards.
   const draftNumbers = useMemo(
@@ -273,13 +267,14 @@ export function WorkflowOutline({
       outlineRowList,
     ]
   );
-  // The draft's outline offers a step at every open end of a path.
+  // The draft's outline offers a step at every open end of a path, to a
+  // person who can add one.
   const draftRows = useMemo(
     () =>
-      editing && graph
+      inserting && graph
         ? withAddStepRows({ rows: outlineRowList, edges: graph.edges })
         : outlineRowList,
-    [editing, graph, outlineRowList]
+    [inserting, graph, outlineRowList]
   );
   const rows: readonly OutlineDisplayRow[] = run?.rows ?? draftRows;
   const unreachable = useMemo(
@@ -559,7 +554,7 @@ export function WorkflowOutline({
 
   /** Open the step picker `/` opens, to add a step on the row's open outlet. */
   const addStepAt = (row: OutlineAddRow) => {
-    if (!editing) return;
+    if (!inserting) return;
     openPalette({ id: "add-step", after: row.source });
   };
 
@@ -570,7 +565,7 @@ export function WorkflowOutline({
    * none of its own, so those rows say where to add instead.
    */
   const addStepAfter = (row: OutlineDisplayRow) => {
-    if (!editing) return;
+    if (!inserting) return;
     if (
       row.kind === "group" ||
       row.kind === "continues" ||
@@ -597,7 +592,7 @@ export function WorkflowOutline({
    * the new order.
    */
   const moveStep = (row: OutlineDisplayRow, direction: "up" | "down") => {
-    if (!editing) return;
+    if (!authoring) return;
     if (row.kind !== "step") {
       showGraphEditRefusal({ refusal: "Select a step to move it." });
       return;
