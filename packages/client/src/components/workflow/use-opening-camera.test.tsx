@@ -23,6 +23,7 @@ import {
   expectSteadyCamera,
   recordCameraMotion,
 } from "./camera-motion-test-support";
+import { inspectorCoveredWidthAtom } from "./canvas-reveal/canvas-reveal-state";
 import { REVEAL_PADDING_PX } from "./canvas-reveal/reveal-geometry";
 import { useOpeningCamera } from "./use-opening-camera";
 import {
@@ -172,6 +173,7 @@ async function renderOpeningCamera(input: {
   const motion = recordCameraMotion(flowState());
 
   return {
+    store,
     start,
     motion,
     /** Open the workflow, or enter a view at `zoomLimit`, as the canvas does. */
@@ -252,37 +254,32 @@ describe("useOpeningCamera", () => {
   });
 
   it("places the stopped step clear of the open Inspector card, in one move", async () => {
-    // The Inspector opens with the run's stopped step, so it already covers
+    // A run opens the Inspector on its summary, so the card already covers
     // the canvas's right edge when the camera places the run.
-    const inspector = document.createElement("section");
-    inspector.dataset.slot = "inspector-card";
-    inspector.dataset.coversWidth = "348";
-    document.body.append(inspector);
-    try {
-      const camera = await renderOpeningCamera({
-        nodes: LARGE_GRAPH,
-        search: { view: "runs", executionId: "run_1" },
-        run: { stoppedNodeId: "stop" },
-      });
+    const camera = await renderOpeningCamera({
+      nodes: LARGE_GRAPH,
+      search: { view: "runs", executionId: "run_1" },
+      run: { stoppedNodeId: "stop" },
+    });
+    const covered = camera.store.get(inspectorCoveredWidthAtom);
+    expect(covered).toBeGreaterThan(0);
 
-      await camera.open(WORKFLOW_FIT_VIEW_MAX_ZOOM);
+    await camera.open(WORKFLOW_FIT_VIEW_MAX_ZOOM);
 
-      expect(camera.motion.moves).toHaveLength(1);
-      const stopped = screenBox(LARGE_GRAPH[2], camera.viewport());
-      expect(stopped.right).toBeLessThanOrEqual(
-        CANVAS.width - 348 - REVEAL_PADDING_PX
-      );
-    } finally {
-      inspector.remove();
-    }
+    expect(camera.motion.moves).toHaveLength(1);
+    const stopped = screenBox(LARGE_GRAPH[2], camera.viewport());
+    expect(stopped.right).toBeLessThanOrEqual(
+      CANVAS.width - covered - REVEAL_PADDING_PX
+    );
   });
 
-  it("anchors the Lifecycle card at the canvas center when the run did not stop", async () => {
+  it("anchors the Lifecycle card at the center of the canvas the Inspector leaves when the run did not stop", async () => {
     const camera = await renderOpeningCamera({
       nodes: LARGE_GRAPH,
       search: { view: "runs", executionId: "run_1" },
       run: { stoppedNodeId: null },
     });
+    const covered = camera.store.get(inspectorCoveredWidthAtom);
 
     await camera.open(WORKFLOW_FIT_VIEW_MAX_ZOOM);
 
@@ -290,7 +287,7 @@ describe("useOpeningCamera", () => {
     const viewport = camera.viewport();
     const lifecycle = screenBox(LARGE_GRAPH[0], viewport);
     expect((lifecycle.left + lifecycle.right) / 2).toBeCloseTo(
-      CANVAS.width / 2
+      (CANVAS.width - covered) / 2
     );
   });
 

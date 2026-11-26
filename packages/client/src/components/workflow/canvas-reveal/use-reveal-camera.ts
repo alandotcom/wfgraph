@@ -26,6 +26,7 @@ import {
   usableCanvasRect,
 } from "./reveal-geometry";
 import { revealPlacementRequestAtom } from "./reveal-requests";
+import { inspectorCoveredWidthAtom } from "./canvas-reveal-state";
 
 /**
  * Answers each placement request once: the command palette, an issue, an
@@ -101,7 +102,10 @@ export function useRevealCamera(input: {
         inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
       const usable = usableCanvasRect({
         canvas: size,
-        rightOccupiedWidth: measureCoveredRightWidth(element),
+        rightOccupiedWidth: measureCoveredRightWidth(
+          element,
+          store.get(inspectorCoveredWidthAtom)
+        ),
         obstacles: measureObstacles(element),
       });
       if (usable === null) {

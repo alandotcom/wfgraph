@@ -1,7 +1,8 @@
 /**
  * What the Inspector and the mobile Reveal sheets show, derived from the
  * active address's selection, presented graph, and stored desktop
- * presentation; whether the Inspector card is open; and the writes that open and close the card and move Runs between
+ * presentation; whether the Inspector card is open and how much of the canvas
+ * it covers; and the writes that open and close the card and move Runs between
  * a run and a node's evidence. Levels create no history entry.
  */
 
@@ -97,6 +98,21 @@ export const inspectorOpenAtom = atom((get): boolean => {
     get(canvasRevealAtom).presentation.dismissedSubjectKey !== subject.key
   );
 });
+
+/** The Inspector card's width, in pixels. */
+export const INSPECTOR_WIDTH_PX = 340;
+
+/** The gap between the Inspector card and the canvas box's edges, in pixels. */
+export const INSPECTOR_INSET_PX = 8;
+
+/**
+ * The pixels the Inspector card covers at the right edge of the canvas,
+ * counting its inset, while it is open, and 0 while it is closed. The canvas
+ * camera keeps placed steps clear of it and the agent's box ends short of it.
+ */
+export const inspectorCoveredWidthAtom = atom((get): number =>
+  get(inspectorOpenAtom) ? INSPECTOR_WIDTH_PX + INSPECTOR_INSET_PX : 0
+);
 
 /**
  * Close the Inspector card and keep the selection, until the subject changes

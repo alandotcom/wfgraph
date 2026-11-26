@@ -21,6 +21,32 @@ import { workflowFitViewOptions } from "#src/components/workflow/workflow-viewpo
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { showMinimapAtom } from "#src/lib/workflow-ui-store";
 
+/** The side of one control button at `md` and wider, `md:size-7`, in pixels. */
+const DESKTOP_BUTTON_PX = 28;
+
+/**
+ * The most buttons the column holds: zoom in, zoom out, fit view, the minimap
+ * toggle and Tidy layout.
+ */
+const MOST_BUTTONS = 5;
+
+/** React Flow's margin between a `Panel` and the canvas edge, in pixels. */
+const PANEL_MARGIN_PX = 15;
+
+/** The gap an element floating over the canvas keeps from the controls. */
+const CLEARANCE_GAP_PX = 20;
+
+/**
+ * The room the controls take in the canvas's bottom-left corner at `md` and
+ * wider, with the gap an element floating over the canvas keeps from them, in
+ * pixels: `height` above the bottom edge, which the floating outline ends
+ * short of, and `width` from the left edge, which the agent's box starts past.
+ */
+export const DESKTOP_CONTROLS_CLEARANCE_PX = {
+  width: PANEL_MARGIN_PX + DESKTOP_BUTTON_PX + CLEARANCE_GAP_PX,
+  height: PANEL_MARGIN_PX + MOST_BUTTONS * DESKTOP_BUTTON_PX + CLEARANCE_GAP_PX,
+} as const;
+
 type ControlsProps = {
   onReflow?: (() => void) | undefined;
   canReflow?: boolean | undefined;

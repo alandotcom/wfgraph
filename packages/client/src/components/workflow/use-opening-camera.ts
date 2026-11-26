@@ -4,7 +4,11 @@ import type { RefObject } from "react";
 import { compact } from "es-toolkit/array";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { canvasRevealAtom } from "./canvas-reveal/canvas-reveal-state";
+import { useIsMobile } from "#src/hooks/use-mobile";
+import {
+  canvasRevealAtom,
+  inspectorCoveredWidthAtom,
+} from "./canvas-reveal/canvas-reveal-state";
 import {
   measureCoveredRightWidth,
   measureObstacles,
@@ -38,6 +42,8 @@ export function useOpeningCamera(input: {
   const store = useStore();
   const flowStore = useStoreApi();
   const { getNodesBounds, setViewport } = useReactFlow();
+  // A phone has no Inspector card.
+  const isMobile = useIsMobile();
 
   /** The painted nodes the placement keeps in view after placing the graph. */
   const nodesToPlace = (): WorkflowNode[] => {
@@ -66,7 +72,12 @@ export function useOpeningCamera(input: {
     const element = input.canvas.current;
     const usable = usableCanvasRect({
       canvas,
-      rightOccupiedWidth: element ? measureCoveredRightWidth(element) : 0,
+      rightOccupiedWidth: element
+        ? measureCoveredRightWidth(
+            element,
+            isMobile ? 0 : store.get(inspectorCoveredWidthAtom)
+          )
+        : 0,
       obstacles: element ? measureObstacles(element) : [],
     }) ?? { x: 0, y: 0, ...canvas };
     const opening = openingViewport({

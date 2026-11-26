@@ -1,7 +1,11 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import type { ReactNode } from "react";
+import { DESKTOP_CONTROLS_CLEARANCE_PX } from "#src/components/flow-elements/controls";
 import {
   canvasRevealAtom,
+  INSPECTOR_INSET_PX,
+  INSPECTOR_WIDTH_PX,
+  inspectorCoveredWidthAtom,
   inspectorOpenAtom,
   inspectorSubjectAtom,
 } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
@@ -16,18 +20,6 @@ import {
   useOutlineControls,
   useOutlineShortcut,
 } from "./use-outline-controls";
-
-/** The Inspector card's width, in pixels. */
-export const INSPECTOR_WIDTH_PX = 340;
-
-/** The gap between the Inspector card and the canvas box's edges, in pixels. */
-const INSPECTOR_INSET_PX = 8;
-
-/**
- * The room the floating outline leaves at the bottom of the canvas for the
- * zoom controls in the bottom-left corner, in pixels.
- */
-const OUTLINE_BOTTOM_CLEARANCE_PX = 184;
 
 /**
  * The outline floating at the top left of the canvas: plain rows over the
@@ -44,7 +36,7 @@ function FloatingOutline({ children }: { children: ReactNode }) {
       data-column="outline"
       data-slot="floating-outline"
       style={{
-        maxHeight: `calc(100% - 12px - ${OUTLINE_BOTTOM_CLEARANCE_PX}px)`,
+        maxHeight: `calc(100% - 12px - ${DESKTOP_CONTROLS_CLEARANCE_PX.height}px)`,
       }}
     >
       <div className="pointer-events-auto flex min-h-0 flex-col">
@@ -58,9 +50,7 @@ function FloatingOutline({ children }: { children: ReactNode }) {
  * The Inspector: one card floating at the right edge of the canvas, holding
  * the details panel. It slides in on `open` and out again without changing
  * the canvas box, so nothing reflows. Closed it stays mounted, out of sight and
- * inert, so the panel keeps its state. `data-covers-width` tells the canvas
- * camera how much of the canvas it covers while open, with its inset, because
- * it may still be sliding in when the camera measures.
+ * inert, so the panel keeps its state.
  */
 function InspectorCard({
   open,
@@ -72,12 +62,14 @@ function InspectorCard({
   return (
     <section
       aria-label="Inspector"
-      className="absolute inset-y-2 right-2 z-20 flex flex-col overflow-clip rounded-xl border bg-card shadow-lg transition-transform duration-200 ease-out motion-reduce:transition-none"
-      data-covers-width={open ? INSPECTOR_WIDTH_PX + INSPECTOR_INSET_PX : 0}
+      className="absolute z-20 flex flex-col overflow-clip rounded-xl border bg-card shadow-lg transition-transform duration-200 ease-out motion-reduce:transition-none"
       data-open={open}
       data-slot="inspector-card"
       inert={!open}
       style={{
+        top: INSPECTOR_INSET_PX,
+        right: INSPECTOR_INSET_PX,
+        bottom: INSPECTOR_INSET_PX,
         width: INSPECTOR_WIDTH_PX,
         transform: open
           ? "translateX(0)"
@@ -89,13 +81,7 @@ function InspectorCard({
   );
 }
 
-/**
- * The pixels the agent's box keeps clear at the left of the canvas, for the
- * zoom controls in the bottom-left corner.
- */
-const COMPOSER_LEFT_CLEARANCE_PX = 64;
-
-/** The gap between the agent's box and the canvas box's right edge. */
+/** The gap between the agent's box and what it ends short of on the right. */
 const COMPOSER_RIGHT_GAP_PX = 12;
 
 /**
@@ -105,22 +91,15 @@ const COMPOSER_RIGHT_GAP_PX = 12;
  * open. It takes no pointer events itself, so the canvas around the line
  * stays usable.
  */
-function ComposerBox({
-  inspectorOpen,
-  children,
-}: {
-  inspectorOpen: boolean;
-  children: ReactNode;
-}) {
+function ComposerBox({ children }: { children: ReactNode }) {
+  const coveredWidth = useAtomValue(inspectorCoveredWidthAtom);
   return (
     <div
       className="pointer-events-none absolute inset-y-3 z-10"
       data-slot="agent-composer-box"
       style={{
-        left: COMPOSER_LEFT_CLEARANCE_PX,
-        right: inspectorOpen
-          ? INSPECTOR_WIDTH_PX + INSPECTOR_INSET_PX + COMPOSER_RIGHT_GAP_PX
-          : COMPOSER_RIGHT_GAP_PX,
+        left: DESKTOP_CONTROLS_CLEARANCE_PX.width,
+        right: coveredWidth + COMPOSER_RIGHT_GAP_PX,
       }}
     >
       {children}
@@ -272,9 +251,7 @@ export function EditorLayout({
       >
         {controls.shown ? <FloatingOutline>{outline}</FloatingOutline> : null}
         {canvas}
-        {composer ? (
-          <ComposerBox inspectorOpen={inspectorOpen}>{composer}</ComposerBox>
-        ) : null}
+        {composer ? <ComposerBox>{composer}</ComposerBox> : null}
         <InspectorCard open={inspectorOpen}>{details}</InspectorCard>
       </div>
       {overlay}

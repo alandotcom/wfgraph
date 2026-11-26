@@ -16,6 +16,7 @@ import {
 import { revealPlacementRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import {
   dismissInspectorAtom,
+  inspectorCoveredWidthAtom,
   inspectorOpenAtom,
 } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { EditorLayout } from "./editor-layout";
@@ -132,6 +133,7 @@ describe("EditorLayout", () => {
     const store = renderLayout();
     expect(inspector()?.dataset.open).toBe("false");
     expect(inspector()?.hasAttribute("inert")).toBe(true);
+    expect(store.get(inspectorCoveredWidthAtom)).toBe(0);
 
     act(() => store.set(selectOnlyNodeAtom, "send"));
 
@@ -142,6 +144,28 @@ describe("EditorLayout", () => {
 
     act(() => store.set(clearSelectionAtom));
     expect(inspector()?.dataset.open).toBe("false");
+  });
+
+  it("keeps the agent's box clear of the open card", () => {
+    setViewportWidth(1440);
+    const store = renderLayout();
+    const composerRight = () =>
+      Number.parseFloat(
+        document.querySelector<HTMLElement>('[data-slot="agent-composer-box"]')
+          ?.style.right ?? ""
+      );
+    const closedRight = composerRight();
+
+    act(() => store.set(selectOnlyNodeAtom, "send"));
+
+    // The card covers at least its own width, and the box ends past all of it.
+    const covered = store.get(inspectorCoveredWidthAtom);
+    expect(covered).toBeGreaterThanOrEqual(
+      Number.parseFloat(inspector()?.style.width ?? "")
+    );
+    expect(composerRight()).toBeGreaterThan(covered);
+    act(() => store.set(clearSelectionAtom));
+    expect(composerRight()).toBe(closedRight);
   });
 
   it("closes the Inspector while several steps are selected", () => {
