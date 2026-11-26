@@ -71,7 +71,7 @@ export type StepMenuItem = {
 };
 
 /** A chord with this keyboard's modifier, such as ⌘D or Ctrl+D. */
-function chord(key: string): string {
+export function chord(key: string): string {
   return isApplePlatform(currentPlatform()) ? `⌘${key}` : `Ctrl+${key}`;
 }
 
