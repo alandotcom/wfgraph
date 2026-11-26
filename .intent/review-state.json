@@ -3,13 +3,13 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "9201dd211072b893e4a54b06046bf07443622d1b58fe7892a1c371d4cbb492f2",
+      "fingerprint": "06e679a519c686737ce7b88fffebe04f0f2882239fc0258cbdec110487ab40ed",
       "snapshot": {
         "README.md": "5f892a1af0314742b9fff202057bf97b99bf8eab5181d1dbe6243ae857da3297",
         "docs/embedding.md": "c1c6ea5128827fa9bf05375a7ad87cc9fd624880399276b00e1d78e2cbc73e98",
         "packages/core/skills/wfgraph-core/SKILL.md": "653f65cc0e19f3ebaa97caf6494c81b8d91dc4cc25be86a85230f3509829fcfe",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "9b9c938bd96a5eec053b8211fab94827f114f41f46ea437fb025e75a08f176d4",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "7601f4d699e59a0bd1eecfd671d0235e5dd980ac0c9d2540d52f1fb26a880418",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "6825393a8f2ab3d083ce946756fdaf0bbc51550d562fd36409783be4f9750ec0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "2d6a749bafb1a3a2fd5a518596c02f8315e8dbbe8576d26ae6a750914907ffbc",
@@ -17,12 +17,12 @@
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "3aa43342b0e7311ff74eb620c6db0c439d6b54bc08e3814e2f169f80f23ed99e",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "no-change",
-      "reason": "The router skill routes host action work to host-actions and names no editor column or Inspector; the one-word host-actions change and the embedding.md editor section alter nothing it routes.",
+      "reason": "The router skill sends build agent configuration work to build-agent and describes none of the editor's agent controls, so a person hiding the prompt line changes nothing it routes.",
       "evidence": [
-        "packages/core/skills/wfgraph-core/SKILL.md has no details column, columns or Inspector text",
-        "docs/embedding.md changed only the Action Link sentence (details column to Inspector) and the section \"Workspaces and columns\", renamed \"Workspaces and the canvas\""
+        "packages/core/skills/wfgraph-core/SKILL.md names build-agent as the route for the chat agent and has no text about the prompt line, Cmd+J or the Show agent control",
+        "The only skill text this branch head changes is build-agent/SKILL.md, in commit d4b84535"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -92,7 +92,7 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "75941077a1672eabb376642a8c32a451fba0375006b21146cbd6e0c7f1f4a5b1",
+      "fingerprint": "4dc98593b81a7a81cdbde18774c0779b84451e93fa2ebebb4e6379d1286d83f0",
       "snapshot": {
         "README.md": "5f892a1af0314742b9fff202057bf97b99bf8eab5181d1dbe6243ae857da3297",
         "_artifacts/domain_map.yaml": "b316a021714a1693ab6499ba9b3926a01bb3986f9c54dc824d05a74309e6e576",
@@ -105,7 +105,7 @@
         "packages/client/src/lib/test-run-skip.ts": "f1fe8451622dc9eb782d1192eec96b26e89e9c27059acc32411d80e204d56e5f",
         "packages/core/skills/wfgraph-core/SKILL.md": "653f65cc0e19f3ebaa97caf6494c81b8d91dc4cc25be86a85230f3509829fcfe",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "9b9c938bd96a5eec053b8211fab94827f114f41f46ea437fb025e75a08f176d4",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "7601f4d699e59a0bd1eecfd671d0235e5dd980ac0c9d2540d52f1fb26a880418",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "6825393a8f2ab3d083ce946756fdaf0bbc51550d562fd36409783be4f9750ec0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "2d6a749bafb1a3a2fd5a518596c02f8315e8dbbe8576d26ae6a750914907ffbc",
@@ -131,13 +131,12 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "f5e1bf6047f8205bb673c5fd22711bd61b7bf1b24e37e11b68cd3f8b45e4ec7f",
         "packages/shared/src/authorization/operations.ts": "189a61d3f9979abd4843ef0b1038ebda56ddc9823c8550369848163024e54323"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
-      "outcome": "updated",
-      "reason": "The domain map's Action Link task and the skill spec's assessed-scope note named the details column and the old section title; both now name the Inspector and \"Workspaces and the canvas\", and the skill spec logs this branch.",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
+      "outcome": "no-change",
+      "reason": "The build-agent skill keeps the same scope, sources and failure modes: one overview sentence now names a hidden prompt line, which adds no task, domain or failure mode to domain_map.yaml, skill_spec.md or skill_tree.yaml.",
       "evidence": [
-        "_artifacts/domain_map.yaml host-actions task: \"Link from the editor's Inspector to a host page\"",
-        "_artifacts/skill_spec.md Assessed scope names \"Workspaces and the canvas\"",
-        "_artifacts/skill_spec.md section \"The floating outline and Inspector (packages at 4.1.2, branch feat/floating-inspector)\""
+        "_artifacts/skill_spec.md lists build-agent coverage as provider entries, options, runner, streamAgentTurn, maxConcurrentTurns and per-tool grants, none of which changed",
+        "_artifacts/skill_tree.yaml build-agent entry keeps its path and sources"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -824,16 +823,16 @@
       ]
     },
     "source:packages/client/src/lib/workflow-ui-store.ts": {
-      "fingerprint": "586397435ffc80ae64178e753f6acbdea90d8d7931d6dfab8e1d11c4a73ea5b7",
+      "fingerprint": "83d44ff3392d53fed4eb6416ee9915d323e2953200253b0fbf10f7cd591c98d7",
       "snapshot": {
-        "packages/client/src/lib/workflow-ui-store.ts": "6de37c3cbb726f294fa0006af4be7f1fb8956cc7b8c953f8d8b0095196216c57"
+        "packages/client/src/lib/workflow-ui-store.ts": "e95c9b789dac256dbac4ec557be239182f6ec38607f1848e333f13e6fa74fdae"
       },
-      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "packages/client/src/lib/workflow-ui-store.ts",
-        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+        "packages/client/src/lib/workflow-ui-store.ts is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/routes/workflows/[workflowId]/page.tsx": {
@@ -3088,11 +3087,11 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "0ab71132241653d5764673f1ab878a8108d69208572af38f6cd833f666f6372a",
+      "fingerprint": "8a220d585339031ddea00a2b04da5ad26e09788ff5edb757246b97b909fbd5ef",
       "snapshot": {
         "docs/embedding.md": "c1c6ea5128827fa9bf05375a7ad87cc9fd624880399276b00e1d78e2cbc73e98",
         "packages/agent/src/tools/test-run-behavior.ts": "d9b1b69db202391c5d5447895bf30b9fc2c33fd0e6b1dc2553baf12db486eeb6",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "7601f4d699e59a0bd1eecfd671d0235e5dd980ac0c9d2540d52f1fb26a880418",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "6825393a8f2ab3d083ce946756fdaf0bbc51550d562fd36409783be4f9750ec0",
         "packages/core/src/backend/agent/config.ts": "b7d7412566fe7badef45b1a40dcd8d501b6d15a1286137f24b2282b1ed7427fd",
         "packages/core/src/backend/agent/providers/anthropic.ts": "0777874840d9941635f529b793b66cbadab709d58df3e6200f59139cd1bb359a",
         "packages/core/src/backend/agent/providers/openai-compatible.ts": "15fec14a0e2e692e16e6fbc814b0278cd179e6b5db5db91d6e4e93c568a3785b",
@@ -3100,13 +3099,14 @@
         "packages/core/src/backend/agent/providers/openrouter.ts": "8bfd2d9ccc3080d27507854358d41814bdbe1e6485ee57a47b47a608f046ab33",
         "packages/core/src/backend/agent/runner.ts": "e68d5e0bd18a6c3e5f02952af3421a734face7288da4eefc188a0005e456e439"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
-      "outcome": "no-change",
-      "reason": "The skill cites no part of docs/embedding.md that changed; the branch changed only the Action Link sentence and the editor workspace section, which describe the editor for its users.",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
+      "outcome": "updated",
+      "reason": "The skill's overview said the editor shows the prompt line whenever agent is configured, which its troubleshooting triggers rely on. A person can now hide that line with Cmd+J, leaving a Show agent control remembered in that browser, so the overview names that state.",
       "evidence": [
-        "docs/embedding.md changed only the Action Link sentence (details column to Inspector) and the section \"Workspaces and columns\", renamed \"Workspaces and the canvas\"",
-        "grep for details column, side column and Inspector in packages/core/skills/wfgraph-core/build-agent/SKILL.md finds nothing",
-        "build-agent SKILL.md still describes a prompt line at the bottom of the canvas with its conversation above it, which docs/embedding.md and CONTEXT.md still say; the resting pill is how that prompt line looks when idle"
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md \"The build agent\" now says a person can hide the line with Cmd+J (Ctrl+J), which leaves a small Show agent control and is remembered in that browser",
+        "packages/client/src/components/agent/workflow-agent.tsx renders ShowAgentControl in place of the agent-composer slot while agentHiddenAtom is true",
+        "packages/client/src/components/agent/workflow-agent.test.tsx \"keeps the box hidden across a remount, as a preference this browser stores\"",
+        "pnpm run skills:validate passed: 10 skill files"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
@@ -9113,16 +9113,16 @@
       ]
     },
     "source:packages/client/DESIGN.md": {
-      "fingerprint": "20bfb6c9bcf6d4394d36ce8db220604b9679432ce98a2fbdbe5e80d33e7708b2",
+      "fingerprint": "bfd71d1869f8eb53fb72c561b958a01c24428eedb98495afc77d00764ade76f3",
       "snapshot": {
-        "packages/client/DESIGN.md": "c3a79c64f0f8a905127de0f9e92cddc45c6eb2355ed5ae40c682ecc94f2f43c5"
+        "packages/client/DESIGN.md": "b3087cd5c113179e54eb97281f9334693a7b91df9814c3503f236e3ef3c2bb52"
       },
-      "head": "d1b76d7350ca193ea9952595ce3aa3ced5b2ce62",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "The reveal camera now leaves a selected step or Start in place when it is already clear of the outline, the Inspector and the prompt line. No published skill describes the editor's camera.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "packages/client/DESIGN.md",
-        "skills grep for camera and selection at d1b76d73"
+        "packages/client/DESIGN.md is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/PRODUCT.md": {
@@ -9188,29 +9188,29 @@
       ]
     },
     "source:packages/client/src/components/agent/workflow-agent.test.tsx": {
-      "fingerprint": "c92d0f76770937d5421237c2d0e141e8b28c49ca7abff2f688d47150a93bd9e1",
+      "fingerprint": "ab7b8bf261a81c1b1cb23647dc0e754a7104c508c160bb8d6802e800ffa4a1d1",
       "snapshot": {
-        "packages/client/src/components/agent/workflow-agent.test.tsx": "d76383eaf99763af321424c07c879bd2d02c3e2ad65215cd6f0a8fac4efa6cdf"
+        "packages/client/src/components/agent/workflow-agent.test.tsx": "34aec0384e6802743c940ea17fa9c92f2cdca27cdbacf537803cdffc11ca398b"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "packages/client/src/components/agent/workflow-agent.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/agent/workflow-agent.test.tsx is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/components/agent/workflow-agent.tsx": {
-      "fingerprint": "c9f36fce2649ff0702fd5cd66a7cadeb84dfa5e961eb4da2d0c841d51954cd69",
+      "fingerprint": "fb7ece90f3bbc5bc7103fddc9f5ff3b480e5b122267cd967a15adb02db2b69da",
       "snapshot": {
-        "packages/client/src/components/agent/workflow-agent.tsx": "abaf94a6b37bd26d8cdf14fd825cc3b1f699878c133984835fbdbeab67630784"
+        "packages/client/src/components/agent/workflow-agent.tsx": "d0a1cde9cc4cb736d95ece3a7778a5d7efff64f4b7f62683fd4b998784cfc9ce"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "packages/client/src/components/agent/workflow-agent.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/agent/workflow-agent.tsx is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/components/flow-elements/canvas.tsx": {
@@ -10172,16 +10172,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-geometry.ts": {
-      "fingerprint": "11ff0f7446a34a0894551ffd175b6834cae0ea1ac4258e5984281927d75a2132",
+      "fingerprint": "7cdd8886b43e72d024b2eecc02b345ad8b466ac55cab0ae2c2768d1a64a6b5e0",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/reveal-geometry.ts": "19e0bbec4d95abe366e374a9807d0b222bda51d9a00e111d4a87f5257ae7f73e"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-geometry.ts": "e7761f5b0231e4eba8d5a74e47c7c07254ee58988922552afdb84659a3016497"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "packages/client/src/components/workflow/canvas-reveal/reveal-geometry.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/canvas-reveal/reveal-geometry.ts is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-header.tsx": {
@@ -12018,16 +12018,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-toolbar-chrome.tsx": {
-      "fingerprint": "70f4d59c06e1c52bd2022c937c5d45f13c7f974719ac6663d0befdfc3709c3aa",
+      "fingerprint": "6d0088ccb0aea1000055d4cc7d09edf6b16eb4a8d4d14db5b899438d3a33e450",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-toolbar-chrome.tsx": "aa5965467d0a79e07a7dfeeda6834ee9d196a1560fd8bbdf87426436d911bd63"
+        "packages/client/src/components/workflow/workflow-toolbar-chrome.tsx": "d22855e28f528b22edfc2c71f6dc109cc98acf30e659ac506ac49275c0389370"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "packages/client/src/components/workflow/workflow-toolbar-chrome.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/workflow-toolbar-chrome.tsx is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-toolbar-state.test.ts": {
@@ -12496,15 +12496,16 @@
       ]
     },
     "source:packages/client/src/lib/editor-shortcuts.ts": {
-      "fingerprint": "1efb5a9ec97e5f4aa726f0ea82016c4c3963e8b9e31846014c60ab90f7e03189",
+      "fingerprint": "7d066ae20e5896f89394bb7400322de3b3d04c7535e320c4da07287d87c0cf0c",
       "snapshot": {
-        "packages/client/src/lib/editor-shortcuts.ts": "6afe5b1588961bfcc2b3159168b67044ef1ca6012e76c68ec5730524715148db"
+        "packages/client/src/lib/editor-shortcuts.ts": "ce6724336631247513b6360285df763e0d689da0f5931b47383bad71d6f5bb7b"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/lib/editor-shortcuts.ts"
+        "packages/client/src/lib/editor-shortcuts.ts is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/lib/event-split-outlets.ts": {
@@ -12885,29 +12886,29 @@
       ]
     },
     "source:packages/client/src/lib/shortcut-label.test.ts": {
-      "fingerprint": "b50669734e5aec277031b9b4cff6e2fa91c27254288f49bf2209d5ad27cc0ba6",
+      "fingerprint": "2b8e7acff888a5d46ea08037cc75dd4f99d156d1b6ee97721aabd9710440c703",
       "snapshot": {
-        "packages/client/src/lib/shortcut-label.test.ts": "dd7fbd59f0efb6e3d6c5884f4b326abb19e6baa111f12cf425be998a3c6c1b98"
+        "packages/client/src/lib/shortcut-label.test.ts": "dfcce535062469d2052689e5e35ea658cdbb7220251345d404da2faffb7b4d73"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "packages/client/src/lib/shortcut-label.test.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/lib/shortcut-label.test.ts is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/lib/shortcut-label.ts": {
-      "fingerprint": "cc4e55091bf8bd89ffc8c6daacb706aa0747ceb9ca1b27bcd193152c25e98b4a",
+      "fingerprint": "793edffd2bf81183f3e5338c3afdecf456acff9a5cb71e3ce64f4c543c7b566e",
       "snapshot": {
-        "packages/client/src/lib/shortcut-label.ts": "82dc8c5c96a7cdbc12b11f92a61acec851d15539e4c4a4f7a687e658c0735144"
+        "packages/client/src/lib/shortcut-label.ts": "bafc7a8e83e46d9311efb35f729d3ae59436cd5bdfb2970bdb48f71332cbd753"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "packages/client/src/lib/shortcut-label.ts is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/lib/shortcut-label.ts is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/lib/shortcut-reference-store.ts": {
@@ -13019,15 +13020,16 @@
       ]
     },
     "source:packages/client/src/lib/workflow-commands.test.ts": {
-      "fingerprint": "9535c8c5ea62c18b561b3d2b81e193e15c75e17cc3fde8a079a876614dcfbfb7",
+      "fingerprint": "152f43e1d2128ab94731430aec4ebdf75af3a25113c34421494954f34ad395f3",
       "snapshot": {
-        "packages/client/src/lib/workflow-commands.test.ts": "1fccf9417f7a9f5f92ea2a225ed58329238922ff4a609a733c8ea16e1a78f237"
+        "packages/client/src/lib/workflow-commands.test.ts": "18c197fe64d45b94b1aa89fa677a23d7cdd9d388f13d85e0c60fbd91b8a0d616"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "d4b84535445900a3306327eda3f3e28a13769163",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/lib/workflow-commands.test.ts"
+        "packages/client/src/lib/workflow-commands.test.ts is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
+        "git show c07dca24 --stat lists this file in the client feature commit"
       ]
     },
     "source:packages/client/src/lib/workflow-commands.tsx": {
