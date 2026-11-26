@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { DESKTOP_CONTROLS_CLEARANCE_PX } from "#src/components/flow-elements/controls";
 import {
   canvasRevealAtom,
+  INSPECTOR_CLEARANCE_PX,
   INSPECTOR_INSET_PX,
   INSPECTOR_WIDTH_PX,
   inspectorOpenAtom,
@@ -90,14 +91,6 @@ function InspectorCard({
 }
 
 /**
- * Where the agent's box ends on the right: past the Inspector card's width and
- * inset, and a 12px gap, whether or not the card is open. The prompt line then
- * keeps one position and one width as the card opens and closes, and the open
- * card never covers it.
- */
-const COMPOSER_RIGHT_PX = INSPECTOR_WIDTH_PX + INSPECTOR_INSET_PX + 12;
-
-/**
  * The box the agent's prompt line and conversation are laid out in: the
  * height of the canvas less 12px at the top and bottom, clear of the zoom
  * controls on the left, and clear of the space the Inspector card takes on
@@ -111,7 +104,7 @@ function ComposerBox({ children }: { children: ReactNode }) {
       data-slot="agent-composer-box"
       style={{
         left: DESKTOP_CONTROLS_CLEARANCE_PX.width,
-        right: COMPOSER_RIGHT_PX,
+        right: INSPECTOR_CLEARANCE_PX,
       }}
     >
       {children}

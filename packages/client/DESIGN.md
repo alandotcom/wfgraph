@@ -289,7 +289,11 @@ outline at the top left, the zoom controls at the bottom left, the agent's
 prompt line at the bottom, and the Inspector at the right edge while something
 is selected. Each of them floats inside the canvas box, so the box never
 changes size. React Flow's attribution, a 24px link in muted Caption type,
-sits at the top centre of the canvas, where none of them reach. The selected workspace uses a Graphite Ink fill with Paper text. Tone,
+sits at the top centre of the canvas, where none of them reach. The minimap,
+while the zoom controls' toggle shows it, floats 36px below the canvas's top
+edge, clear of the attribution, and ends 12px short of where the Inspector
+card starts, whether or not the card is open, so it never moves and the card
+never covers it. On a phone it sits at the top right of the map. The selected workspace uses a Graphite Ink fill with Paper text. Tone,
 rather than an accent stripe, marks the active workflow.
 
 The workflow workspace has two views: **Draft** and **Runs**. A

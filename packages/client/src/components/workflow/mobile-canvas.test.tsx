@@ -52,6 +52,8 @@ import {
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { setViewportWidth } from "#src/lib/viewport-test-support";
+import { showMinimapAtom } from "#src/lib/workflow-ui-store";
+import { INSPECTOR_CLEARANCE_PX } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 
 const catalog: ExtensionCatalog = {
   entities: [],
@@ -309,5 +311,50 @@ describe("the canvas on a phone", () => {
     expect(source.classList.contains("clickconnecting")).toBe(false);
     expect(store.get(edgesAtom)).toBe(storedEdges);
     expect(store.get(historyAtom)).toEqual([]);
+  });
+});
+
+describe("the minimap", () => {
+  const minimap = (view: Awaited<ReturnType<typeof renderEditor>>["view"]) =>
+    view.container.querySelector<HTMLElement>(".react-flow__minimap");
+
+  it("floats at the top right short of the Inspector's width, open or closed", async () => {
+    setViewportWidth(1440);
+    const editor = await renderEditor();
+    act(() => {
+      editor.store.set(showMinimapAtom, true);
+    });
+    const shown = await waitFor(() => {
+      const element = minimap(editor.view);
+      if (!element) {
+        throw new Error("the minimap is not on the canvas");
+      }
+      return element;
+    });
+    expect(shown.classList.contains("top")).toBe(true);
+    expect(shown.classList.contains("right")).toBe(true);
+    expect(shown.style.marginRight).toBe(`${INSPECTOR_CLEARANCE_PX}px`);
+    expect(shown.style.marginTop).toBe("36px");
+
+    await editor.tapNode("qualify");
+    expect(minimap(editor.view)?.style.marginRight).toBe(
+      `${INSPECTOR_CLEARANCE_PX}px`
+    );
+  });
+
+  it("keeps React Flow's side margin on a phone, which has no Inspector", async () => {
+    const editor = await renderEditor();
+    act(() => {
+      editor.store.set(showMinimapAtom, true);
+    });
+    const shown = await waitFor(() => {
+      const element = minimap(editor.view);
+      if (!element) {
+        throw new Error("the minimap is not on the canvas");
+      }
+      return element;
+    });
+    expect(shown.style.marginRight).toBe("15px");
+    expect(shown.style.marginTop).toBe("36px");
   });
 });
