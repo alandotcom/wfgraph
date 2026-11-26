@@ -140,7 +140,9 @@ const VARIANT_LAYOUTS: Record<WorkflowAgentVariant, VariantLayout> = {
     focusOpensEmptyThread: false,
     escapeReturnsToCanvas: true,
     closeControl: "close",
-    surfaceClass: () => "h-full items-center justify-end gap-2",
+    // The 20px gap above the line holds the Hide agent control's target,
+    // which reaches 19px above the line, clear of the conversation.
+    surfaceClass: () => "h-full items-center justify-end gap-5",
     conversationClass:
       "h-[60%] w-full max-w-[35rem] rounded-xl shadow-lg ring-1 ring-foreground/10",
     // A third of the canvas at rest, held between 352px and 560px, and the
@@ -442,7 +444,10 @@ function agentChord(): { label: string; aria: string } {
 /**
  * The 20px round control on the prompt line's top edge, near its right end,
  * that hides the box. It shows while the pointer is over the line or focus is
- * inside it. Tab reaches it after Send, and focusing it shows it too.
+ * inside it. Tab reaches it after Send, and focusing it shows it too. The
+ * button is a 24px square reaching up from 5px below the line's top edge,
+ * where the message field and Send begin, so its target overlaps neither; the
+ * circle sits at its foot and straddles the edge.
  */
 function HideAgentControl({ onHide }: { onHide: () => void }) {
   const chord = agentChord();
@@ -451,12 +456,14 @@ function HideAgentControl({ onHide }: { onHide: () => void }) {
       <button
         aria-keyshortcuts={chord.aria}
         aria-label="Hide agent"
-        className="pointer-events-none absolute -top-2.5 right-3 flex size-5 items-center justify-center rounded-full border bg-card text-muted-foreground opacity-0 shadow-sm outline-none transition-opacity duration-150 ease-out hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-focus-within/composer:pointer-events-auto group-focus-within/composer:opacity-100 group-hover/composer:pointer-events-auto group-hover/composer:opacity-100 motion-reduce:transition-none"
+        className="group/hide pointer-events-none absolute -top-[19px] right-3 flex size-6 items-end justify-center text-muted-foreground opacity-0 outline-none transition-opacity duration-150 ease-out hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-focus-within/composer:pointer-events-auto group-focus-within/composer:opacity-100 group-hover/composer:pointer-events-auto group-hover/composer:opacity-100 motion-reduce:transition-none"
         data-slot="agent-hide"
         onClick={onHide}
         type="button"
       >
-        <ChevronDown className="size-3" />
+        <span className="flex size-5 items-center justify-center rounded-full border bg-card shadow-sm group-focus-visible/hide:ring-2 group-focus-visible/hide:ring-ring">
+          <ChevronDown className="size-3" />
+        </span>
       </button>
     </ControlTooltip>
   );

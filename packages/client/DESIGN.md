@@ -438,7 +438,10 @@ conversation hide, since the canvas is read-only then.
 
 The person can hide the whole box. A 20px round **Hide agent** control sits on
 the line's top edge near its right end, shown while the pointer is over the
-line or focus is inside it, and its tooltip carries Cmd+J (Ctrl+J). That chord,
+line or focus is inside it, and its tooltip carries Cmd+J (Ctrl+J). Its target
+is 24px square and reaches up from where the message field and Send begin, so
+it overlaps neither, and the conversation stands 20px above the line to leave
+it room. That chord,
 from anywhere in the editor including a text field, and the palette's **Hide
 agent** do the same. Hiding collapses the conversation and keeps it. A hidden
 box leaves one quiet 32px round **Show agent** control at the foot of the
