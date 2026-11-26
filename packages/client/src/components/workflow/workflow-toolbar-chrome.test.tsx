@@ -835,25 +835,12 @@ describe("WorkflowMenuComponent", () => {
       expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
         "Rename",
         "Duplicate workflow",
-        "Version history",
-        "Review changes",
         "Copy workflow ID",
         "Delete workflow",
       ]);
     } finally {
       resetAuthorizationGrantsForTests();
     }
-  });
-
-  it("opens the review sheet from Review changes", async () => {
-    const { findByRole, getByRole, actions } = renderChrome(
-      WorkflowMenuComponent
-    );
-
-    await openWorkflowMenu(findByRole);
-    fireEvent.click(getByRole("menuitem", { name: "Review changes" }));
-
-    expect(actions.handlePublish).toHaveBeenCalledTimes(1);
   });
 
   it("offers no Delete on a draft with no id", async () => {

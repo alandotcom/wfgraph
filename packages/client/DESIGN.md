@@ -747,10 +747,9 @@ graph share the column height.
 
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 the workflow's menu under its name, and **Settings** form the leading group.
-The workflow's menu holds everything about this workflow: **Rename**,
-**Duplicate workflow**, **Version history**, **Review changes**, **Copy
-workflow ID** and **Delete workflow**. Pause and Resume are in the
-publication chip's menu, beside the state they change.
+The workflow's menu holds **Rename**, **Duplicate workflow**, **Copy workflow
+ID** and **Delete workflow**. Pause, Version history and Review changes are in
+the publication chip's menu, beside the state they change.
 **Settings** holds what is about the app: **Connections**, **Theme** and
 **Keyboard shortcuts**. There is no save command, because the draft saves by
 itself; Cmd+S (Ctrl+S) does nothing and keeps the browser's save dialog shut. Below
@@ -831,8 +830,9 @@ runs**.
 changes, and only then, checks it for blocking issues, and compares the exact draft on screen with the current publication.
 A draft with blocking issues lists them instead, and a draft with no change
 says "No changes to publish" and opens nothing. **Review changes**, in the
-command palette and the workflow's menu, runs the same path. **Version
-history** in the workflow's menu opens the sheet on the list of versions. A publish that
+command palette and the publication chip's menu, runs the same path.
+**Version history** in the chip's menu opens the sheet on the list of
+versions. A publish that
 lands ends the redo branch, so an edit undone before the publish cannot come
 back after it; Undo still steps back through the edits made before it.
 

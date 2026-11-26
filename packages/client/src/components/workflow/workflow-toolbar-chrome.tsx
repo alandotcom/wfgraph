@@ -73,7 +73,6 @@ import {
   isApplePlatform,
 } from "#src/lib/shortcut-label";
 import {
-  WorkflowCommandIcon,
   draftViewReason,
   isDraftRunDisabled,
   isPublishedRunDisabled,
@@ -734,8 +733,8 @@ export function ToolbarPublishControls({
 const PUBLICATION_COMMAND_IDS = ["version-history", "review-changes"] as const;
 
 /**
- * The two publication commands the workflow menu and the publication chip
- * share, Version history and Review changes, gated as the palette gates them.
+ * The two publication commands the publication chip offers, Version history
+ * and Review changes, gated as the palette gates them.
  */
 function usePublicationCommands(
   state: WorkflowToolbarState,
@@ -768,20 +767,11 @@ export function WorkflowPublicationChip({
   return <PublicationChip commands={commands} workflowId={workflowId} />;
 }
 
-/** One command as a menu row, with its icon and its own disabled state. */
-function CommandMenuItem({ command }: { command: WorkflowCommand }) {
-  return (
-    <DropdownMenuItem disabled={command.disabled} onClick={command.execute}>
-      <WorkflowCommandIcon id={command.id} />
-      {command.label}
-    </DropdownMenuItem>
-  );
-}
-
 /**
  * The one menu for the open workflow, under its name: Rename, Duplicate,
- * Version history, Review changes, Copy workflow ID and Delete. Pause and
- * Resume are in the publication chip's menu, beside the state they change. What is about the app rather than this workflow is under Settings.
+ * Copy workflow ID and Delete. Pause, Version history and Review changes are
+ * in the publication chip's menu, beside the state they change. What is about
+ * the app rather than this workflow is under Settings.
  */
 export function WorkflowMenuComponent({
   workflowId,
@@ -799,7 +789,6 @@ export function WorkflowMenuComponent({
 
   // Each operation keeps its own authorization check.
   const offers = workflowMenuOffers(state, workflowId);
-  const publicationCommands = usePublicationCommands(state, actions);
   const currentWorkflowId = state.currentWorkflowId;
   // The names the server would refuse, which is every workflow's but this one's.
   const otherWorkflowNames = state.allWorkflows
@@ -852,10 +841,6 @@ export function WorkflowMenuComponent({
           ) : null}
           {currentWorkflowId ? (
             <>
-              <DropdownMenuSeparator />
-              {publicationCommands.map((command) => (
-                <CommandMenuItem command={command} key={command.id} />
-              ))}
               <DropdownMenuSeparator />
               {/* The id is what a support conversation asks for. The row
                   copies it without printing it, the way the workflows page's
