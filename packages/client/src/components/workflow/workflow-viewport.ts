@@ -289,10 +289,12 @@ function axisShift(input: {
  * decreases just enough to fit them, scaled around their center, and no lower
  * than `minZoom` (the canvas's own lowest zoom unless given). Each box in
  * `optionalBounds` then grows the placed box, in order, while the grown box
- * still fits at that zoom; one that does not fit is left out. Each axis moves
- * the least distance that brings the placed box, with `context` screen pixels
- * of neighboring canvas on every side when that still fits, inside `usable`
- * less `padding`. The answer is `viewport` itself when nothing needs to move.
+ * still fits at that zoom; one that does not fit is left out. When the zoom
+ * stays and the placed box already sits inside `usable` less `padding`, the
+ * answer is `viewport` itself, so a node already in view never moves for its
+ * context. Otherwise each axis moves the least distance that brings the placed
+ * box, with `context` screen pixels of neighboring canvas on every side when
+ * that still fits, inside `usable` less `padding`.
  */
 export function revealViewport(input: {
   viewport: Viewport;
@@ -331,22 +333,33 @@ export function revealViewport(input: {
       ? grown
       : box;
   }, bounds);
+  const min = { x: usable.x + padding, y: usable.y + padding };
+  const placedLeft = scaled.x + placed.x * zoom;
+  const placedTop = scaled.y + placed.y * zoom;
+  if (
+    zoom === viewport.zoom &&
+    placedLeft >= min.x &&
+    placedTop >= min.y &&
+    placedLeft + placed.width * zoom <= min.x + room.width &&
+    placedTop + placed.height * zoom <= min.y + room.height
+  ) {
+    return viewport;
+  }
   const withContext =
     zoom === viewport.zoom &&
     placed.width * zoom + 2 * context <= room.width &&
     placed.height * zoom + 2 * context <= room.height
       ? context
       : 0;
-  const min = { x: usable.x + padding, y: usable.y + padding };
   const shiftX = axisShift({
-    start: scaled.x + placed.x * zoom - withContext,
-    end: scaled.x + (placed.x + placed.width) * zoom + withContext,
+    start: placedLeft - withContext,
+    end: placedLeft + placed.width * zoom + withContext,
     min: min.x,
     max: min.x + room.width,
   });
   const shiftY = axisShift({
-    start: scaled.y + placed.y * zoom - withContext,
-    end: scaled.y + (placed.y + placed.height) * zoom + withContext,
+    start: placedTop - withContext,
+    end: placedTop + placed.height * zoom + withContext,
     min: min.y,
     max: min.y + room.height,
   });

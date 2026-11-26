@@ -351,10 +351,44 @@ describe("revealViewport", () => {
     expect(next).toEqual({ x: 788 - 192, y: 50, zoom: 1 });
   });
 
+  it("keeps the viewport when a step in view sits closer to an edge than its context", () => {
+    // The step's top is 40 px down: inside the 24 px padding, but nearer the
+    // edge than the 64 px of context a move would keep.
+    const viewport = { x: 200, y: 40, zoom: 1 };
+    expect(revealViewport({ viewport, usable, bounds: step })).toBe(viewport);
+  });
+
+  it("keeps the Start where a workflow opens when it is selected", () => {
+    // A workflow taller than the canvas opens with its Start anchored 48 px
+    // below the top of the usable part, which is nearer than 24 px of padding
+    // plus 64 px of context. Selecting the Start must not slide the graph.
+    const lifecycle = { x: 0, y: 0, width: 192, height: 112 };
+    const opening = openingViewport({
+      usable,
+      graphBounds: { x: -200, y: 0, width: 600, height: 3000 },
+      lifecycle: { nodePosition: lifecycle, nodeWidth: lifecycle.width },
+      zoomLimit: 1,
+    });
+    expect(opening.y).toBe(48);
+    expect(
+      revealViewport({ viewport: opening, usable, bounds: lifecycle })
+    ).toBe(opening);
+  });
+
+  it("moves a Start above the usable part down with its context", () => {
+    const lifecycle = { x: 0, y: 0, width: 192, height: 112 };
+    const viewport = { x: 200, y: -300, zoom: 1 };
+    expect(revealViewport({ viewport, usable, bounds: lifecycle })).toEqual({
+      x: 200,
+      y: 24 + 64,
+      zoom: 1,
+    });
+  });
+
   it("places an optional box with the step when the two fit together", () => {
-    // The label below the step ends 524 px down, 724 px on screen. With 64 px
-    // of context that passes the padded bottom edge at 776 by 12 px.
-    const label = { x: 0, y: 500, width: 56, height: 24 };
+    // The label below the step ends 584 px down, 784 px on screen, past the
+    // padded bottom edge at 776. With 64 px of context the pair moves up 72 px.
+    const label = { x: 0, y: 560, width: 56, height: 24 };
     const viewport = { x: 200, y: 200, zoom: 1 };
     const next = revealViewport({
       viewport,
@@ -362,7 +396,7 @@ describe("revealViewport", () => {
       bounds: step,
       optionalBounds: [label],
     });
-    expect(next).toEqual({ x: 200, y: 188, zoom: 1 });
+    expect(next).toEqual({ x: 200, y: 128, zoom: 1 });
   });
 
   it("leaves out an optional box that would not fit at the step's zoom", () => {

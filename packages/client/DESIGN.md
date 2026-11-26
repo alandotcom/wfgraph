@@ -711,9 +711,10 @@ layout, moves a node, or marks the draft changed. The camera keeps its zoom
 when the nodes fit the usable canvas, the canvas less its controls, the
 MiniMap, and the part the review sheet or the Inspector covers, and zooms
 out only as far as
-fitting them needs. It then moves the least distance that keeps them and 64px
-of their neighbors inside the usable canvas, so a node already in view moves
-nothing.
+fitting them needs. Nodes already inside the usable canvas, 24px clear of its
+edges, move nothing, the start anchored where the workflow opened included.
+Otherwise the camera moves the least distance that keeps them and 64px of
+their neighbors inside the usable canvas.
 
 Below `md`, 900px, the outline is the editor's main view and fills the width.
 A **Map** control in the toolbar shows the canvas in the outline's place, and
