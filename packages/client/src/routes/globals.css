@@ -656,9 +656,28 @@
   pointer-events: auto;
 }
 
-.insert-step-control:focus-visible circle {
+.insert-step-control:focus-visible circle:not(.insert-step-hit) {
   stroke: var(--ring);
   stroke-width: 3;
+}
+
+/* The + a connection draws is a 22px circle at zoom 1. Its invisible hit
+   circle is held at 24px across on screen, and the connection itself answers
+   along an invisible stroke 24px wide on screen, 44px on a phone. Both live
+   inside `.react-flow__viewport`, so the size is divided by the live zoom,
+   capped like the handles' hit areas below. */
+.insert-step-hit {
+  r: min(calc(12px / var(--rf-zoom, 1)), 24px);
+}
+
+.react-flow__edge-interaction {
+  stroke-width: min(calc(24px / var(--rf-zoom, 1)), 48px);
+}
+
+@media (width < theme(--breakpoint-md)) {
+  .react-flow__edge-interaction {
+    stroke-width: min(calc(44px / var(--rf-zoom, 1)), 88px);
+  }
 }
 
 /* React Flow handle positioning and styling. */
@@ -765,6 +784,39 @@
     inset-inline: 0;
     top: calc(50% - 1.375rem);
     bottom: calc(50% - 1.375rem);
+  }
+}
+
+/* The agent's line holds 20px to 24px buttons: Send or Stop, the reply dot
+   and the chips. A chip's button answers at least a 24px square centred on
+   its face, inside the chip row's padding. On a phone every one of them answers a finger 44px
+   tall, from 4px below its face upward, which keeps it clear of the issues
+   chip in the status strip under the line, and the chip row is tall enough
+   to hold those areas. */
+[data-slot="agent-prompt-line"] button {
+  position: relative;
+}
+
+[data-slot="agent-chip-row"] button::before {
+  content: "";
+  position: absolute;
+  inset-inline: min(0px, calc(50% - 0.75rem));
+  top: calc(50% - 0.75rem);
+  bottom: calc(50% - 0.75rem);
+}
+
+@media (width < theme(--breakpoint-md)) {
+  [data-slot="agent-prompt-line"] button::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: auto;
+    bottom: -0.25rem;
+    height: 2.75rem;
+  }
+
+  [data-slot="agent-chip-row"] {
+    min-height: 3rem;
   }
 }
 

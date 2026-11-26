@@ -53,7 +53,9 @@ export function OutletAddStep(input: {
   return (
     <button
       aria-label="Add a step here"
-      className="nodrag nopan absolute flex size-5 -translate-x-1/2 items-center justify-center rounded-full border border-canvas-line bg-background text-foreground transition-colors hover:bg-muted"
+      // The 20px circle answers a 24px square on screen that starts at its
+      // top edge, so it reaches no further up toward the outlet's handle.
+      className="nodrag nopan absolute flex size-5 -translate-x-1/2 items-center justify-center rounded-full border border-canvas-line bg-background text-foreground transition-colors before:absolute before:top-0 before:left-1/2 before:size-[calc(24px/var(--rf-zoom,1))] before:-translate-x-1/2 before:content-[''] hover:bg-muted"
       data-slot="outlet-add-step"
       onClick={(event) => {
         event.stopPropagation();
