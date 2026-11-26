@@ -34,6 +34,10 @@ import { useRevealKeyboard } from "#src/components/workflow/canvas-reveal/use-re
 import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
 import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import {
+  closestScroller,
+  scrollIntoScroller,
+} from "#src/lib/scroll-into-scroller";
 import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { RevealLevel } from "#src/lib/workflow-navigation-state";
@@ -165,11 +169,12 @@ export function DetailsPanel() {
       : null
   );
 
-  // A field request is answered once the column shows its node, at Focus for
-  // a Runs subject that offers it. This runs after the scroll restore above,
-  // and the field's scroll becomes the position the scope keeps. The field
-  // scrolls only when it is out of view, and then only to the nearest edge,
-  // so a field already on screen stays under the pointer.
+  // A field request is answered once the Inspector shows its node, at Focus
+  // for a Runs subject that offers it. This runs after the scroll restore
+  // above, and the field's scroll becomes the position the scope keeps. Only
+  // the Inspector's own scrolling body moves, and only when the field is out
+  // of view, to its nearest edge, so a field already on screen stays under
+  // the pointer and nothing outside the card scrolls.
   useAfterPaint(
     `${fieldRequest?.nodeId ?? ""}|${fieldRequest?.targetId ?? ""}|${subject?.key ?? ""}|${level}`,
     () => {
@@ -184,8 +189,16 @@ export function DetailsPanel() {
       }
       setFieldRequest(null);
       const element = document.getElementById(fieldRequest.targetId);
-      element?.focus({ preventScroll: true });
-      element?.scrollIntoView?.({ block: "nearest" });
+      if (element === null) {
+        return;
+      }
+      element.focus({ preventScroll: true });
+      const scroller =
+        scrollRef.current ??
+        (rootRef.current ? closestScroller(element, rootRef.current) : null);
+      if (scroller) {
+        scrollIntoScroller(scroller, element);
+      }
       adoptScroll();
     }
   );

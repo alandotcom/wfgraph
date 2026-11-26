@@ -32,6 +32,7 @@ import { useInspectRunNode } from "#src/components/workflow/use-run-node-evidenc
 import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { contextMenuAtom } from "#src/components/workflow/workflow-context-menu";
+import { scrollIntoScroller } from "#src/lib/scroll-into-scroller";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
@@ -345,7 +346,7 @@ export function WorkflowOutline({
   useAfterPaint(selectedKey, () => {
     const row = selectedKey === null ? null : rowElement(selectedKey);
     if (row && scrollerRef.current) {
-      scrollRowIntoList(scrollerRef.current, row);
+      scrollIntoScroller(scrollerRef.current, row);
     }
   });
   useAfterCommit(focusRequest, () => {
@@ -760,21 +761,6 @@ export function WorkflowOutline({
       </div>
     </div>
   );
-}
-
-/**
- * Scroll `scroller` the least distance that shows `row` whole. It sets the
- * list's own `scrollTop` and nothing else, where `scrollIntoView` would also
- * scroll every scrollable ancestor up to the document.
- */
-function scrollRowIntoList(scroller: HTMLElement, row: HTMLElement): void {
-  const list = scroller.getBoundingClientRect();
-  const shown = row.getBoundingClientRect();
-  if (shown.top < list.top) {
-    scroller.scrollTop -= list.top - shown.top;
-  } else if (shown.bottom > list.bottom) {
-    scroller.scrollTop += shown.bottom - list.bottom;
-  }
 }
 
 /** Pixels of the row's own left padding, before any nesting. */

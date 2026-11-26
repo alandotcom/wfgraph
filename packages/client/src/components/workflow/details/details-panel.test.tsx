@@ -933,6 +933,27 @@ describe("what a step does", () => {
   });
 });
 
+/**
+ * Lay out the Inspector body as a 400px window at the top of the page, and
+ * the field `fieldId` 20px tall at `top` pixels in page coordinates. Every
+ * other element gets an empty box, as happy-dom gives it.
+ */
+function stubFieldBox(input: { fieldId: string; top: number }): void {
+  const rect = (top: number, height: number): DOMRect =>
+    DOMRect.fromRect({ x: 0, y: top, width: 340, height });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this.id === input.fieldId) {
+        return rect(input.top, 20);
+      }
+      if (this.matches('[data-slot="details-panel"] > .overflow-y-auto')) {
+        return rect(0, 400);
+      }
+      return rect(0, 0);
+    }
+  );
+}
+
 describe("details panel subjects and focus return", () => {
   it("hands focus to the selected node on Escape when it has none to step back to", async () => {
     const { view, store, escape } = await renderReveal();
@@ -984,17 +1005,14 @@ describe("details panel subjects and focus return", () => {
         },
       ]);
     });
-    const scrollIntoView = vi.fn(function (this: HTMLElement) {
-      const body = this.closest<HTMLElement>(".overflow-y-auto");
-      if (body) {
-        body.scrollTop = 320;
-      }
-    });
+    // The body shows 400px, and the To field sits 300px below its bottom.
+    stubFieldBox({ fieldId: "to", top: 700 });
+    const scrollIntoView = vi.fn();
     vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
       scrollIntoView
     );
 
-    // What an issue's Edit in the issues list asks of the column.
+    // What an issue's Edit in the issues list asks of the Inspector.
     await act(async () => {
       store.set(revealFieldRequestAtom, { nodeId: "send", targetId: "to" });
     });
@@ -1006,14 +1024,17 @@ describe("details panel subjects and focus return", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
+    // The body scrolls itself just far enough to show the field's bottom
+    // edge, and asks no ancestor to scroll.
     const body = aside()?.querySelector<HTMLElement>(".overflow-y-auto");
-    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
     expect(body?.scrollTop).toBe(320);
     vi.restoreAllMocks();
   });
-  it("scrolls a requested field only as far as its nearest edge, and focuses it without scrolling", async () => {
-    const { store, select } = await renderReveal();
+  it("leaves a requested field already in view where it is, and focuses it without scrolling", async () => {
+    const { store, select, aside } = await renderReveal();
     await select("send");
+    stubFieldBox({ fieldId: "subject", top: 120 });
     const scrollIntoView = vi.fn();
     vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(
       scrollIntoView
@@ -1028,12 +1049,11 @@ describe("details panel subjects and focus return", () => {
     });
     await waitFor(() => expect(document.activeElement?.id).toBe("subject"));
 
-    // `block: "nearest"` leaves a field that is already in view where it is,
-    // so the panel never re-centres under the pointer.
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
-    expect(scrollIntoView).not.toHaveBeenCalledWith(
-      expect.objectContaining({ block: "center" })
-    );
+    // A field already in view stays under the pointer.
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(
+      aside()?.querySelector<HTMLElement>(".overflow-y-auto")?.scrollTop
+    ).toBe(0);
     const subjectFocus = focus.mock.contexts.findIndex(
       (element) => (element as HTMLElement).id === "subject"
     );
