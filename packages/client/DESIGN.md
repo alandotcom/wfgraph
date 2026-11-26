@@ -257,6 +257,7 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 
 - **Style:** A `--input` tint, hairline border, 8px radius, 28px height, no shadow at rest.
 - **Focus:** Border shifts to ring color plus the 2px halo.
+- **Placeholder:** One line in Graphite Mid, cut with an ellipsis where the field is narrower. It stays while an empty field has focus, so focus changes the border and ring and never the field's size.
 - **Error:** `aria-invalid` drives a Signal Red border and red-tinted ring; error state is attribute-driven, never a bespoke class.
 - **Disabled:** 50% opacity with pointer events off.
 
@@ -470,9 +471,9 @@ setting as its field, each under one label, and after a divider its
 header's title. Disabling,
 duplicating and deleting the step are commands of the Inspector header's ⋯ menu and
 the context menu. Every field's help sits behind an info icon on its label. A
-field that takes inserted values and has no placeholder of its own says "Type @
-to insert a value…" as its placeholder, and one with its own placeholder says
-it in its help. What it does is one field, **Does**, that names the action with its category,
+field that takes inserted values says in its help that typing @ inserts a value
+from the Event or an earlier step, and one with no placeholder of its own says
+"Type @ to insert a value" as its placeholder. What it does is one field, **Does**, that names the action with its category,
 such as "Appointments · Send Patient Message", or the action alone for a
 built-in step such as Wait. Pressing it opens, in place of the form, the same
 searchable list grouped by category that adding a step uses, with focus in its
@@ -485,9 +486,7 @@ get, is listed at the end of the form; there is no Validation list. An empty req
 field waits: it says "is required" beneath itself once it has been focused and
 left empty, or once a Run draft or Publish was refused for it, so a step just
 added shows no red text before anyone types. The issue counts from the start,
-in the header's status, the outline's issue mark and the issues list. A template
-field says that typing @ inserts a value from the Event or an earlier step, in
-its placeholder or, when the field has a placeholder of its own, in its help.
+in the header's status, the outline's issue mark and the issues list.
 Edits write to the draft as they are made, and autosave carries on. Typing in
 one field is one undo step until the field loses focus or the typing pauses for
 a second, the way a text editor groups it. A step with no

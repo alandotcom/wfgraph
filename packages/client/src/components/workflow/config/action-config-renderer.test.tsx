@@ -165,21 +165,27 @@ describe("ActionConfigRenderer", () => {
   });
 
   it("tells a template field with no description how to insert a value", () => {
-    renderFields({
+    const view = renderFields({
       fields: [{ key: "emailBody", label: "Body", type: "template-textarea" }],
     });
 
-    // The field's own placeholder says it, so no help line repeats it.
-    expect(
-      screen.getAllByText(
-        "Type @ to insert a value from the Event or an earlier step."
-      )
-    ).toHaveLength(1);
+    // The placeholder is the short form, which fits one line of the Inspector;
+    // the whole sentence is the field's help, behind the info icon.
+    expect(view.templatePlaceholder()).toBe("Type @ to insert a value");
+    const help = screen.getByText(
+      "Type @ to insert a value from the Event or an earlier step."
+    );
     expect(
       screen
         .getByRole("textbox", { name: "Body" })
         .getAttribute("aria-describedby")
-    ).toBeNull();
+    ).toBe(help.id);
+    fireEvent.click(screen.getByRole("button", { name: "About Body" }));
+    expect(
+      within(screen.getByRole("dialog", { name: "Body" })).getByText(
+        "Type @ to insert a value from the Event or an earlier step."
+      )
+    ).toBeTruthy();
   });
 
   it("draws the Connection's stored value in a template field", () => {
