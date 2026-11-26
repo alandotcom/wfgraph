@@ -39,6 +39,7 @@ import {
   X,
 } from "lucide-react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { motion, type Transition, useReducedMotion } from "motion/react";
 import { type KeyboardEvent, type RefObject, useRef, useState } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -90,8 +91,46 @@ export const AGENT_COMPOSER_PLACEHOLDER =
  */
 export type WorkflowAgentVariant = "canvas" | "phone";
 
-/** The grow and shrink between the pill and the full line, in the 150 to 250ms band. */
-const PROMPT_TRANSITION = "duration-200 ease-out motion-reduce:transition-none";
+/**
+ * The grow and shrink between the pill and the full line, in the 150 to 250ms
+ * band, on Tailwind's `ease-out` curve. Motion runs it as a layout animation:
+ * each box takes its new size at once and a transform carries it from where it
+ * was, so nothing over the canvas animates width, height or padding.
+ */
+const PROMPT_TRANSITION: Transition = { duration: 0.2, ease: [0, 0, 0.2, 1] };
+
+/**
+ * The line's corner radius at rest and grown, `rounded-3xl` and `rounded-xl`,
+ * as numbers in the style prop, where Motion can correct a radius for the
+ * scale a layout animation applies.
+ */
+const PILL_RADIUS_PX = 24;
+const GROWN_RADIUS_PX = 14;
+
+/**
+ * The Motion props of a box that moves when the line changes shape: `size`
+ * for the line itself, which scales between its two shapes, and `position`
+ * for a box that keeps its own size and moves with the line's edges. `key`
+ * changes exactly when the line changes shape. Under reduced motion there are
+ * none, and the line changes at once.
+ */
+function usePromptLayout(
+  kind: "size" | "position",
+  key: string
+): {
+  layout?: true | "position";
+  layoutDependency?: string;
+  transition?: Transition;
+} {
+  if (useReducedMotion() === true) {
+    return {};
+  }
+  return {
+    layout: kind === "size" ? true : "position",
+    layoutDependency: key,
+    transition: PROMPT_TRANSITION,
+  };
+}
 
 /** What the agent is doing that the person has not seen, if anything. */
 type AgentMark = "working" | "replied" | null;
@@ -147,13 +186,9 @@ const VARIANT_LAYOUTS: Record<WorkflowAgentVariant, VariantLayout> = {
       "h-[60%] w-full max-w-[35rem] rounded-xl shadow-lg ring-1 ring-foreground/10",
     // A third of the canvas at rest, held between 352px and 560px, and the
     // full 560px once grown. The box widens about its centre and keeps its
-    // bottom edge.
+    // bottom edge; the line inside it animates the change.
     composerClass: (pill) =>
-      cn(
-        "transition-[width]",
-        PROMPT_TRANSITION,
-        pill ? "w-[min(100%,clamp(22rem,33%,35rem))]" : "w-[min(100%,35rem)]"
-      ),
+      pill ? "w-[min(100%,clamp(22rem,33%,35rem))]" : "w-[min(100%,35rem)]",
   },
   // The line sits at full height below the main view in the page's flow, and
   // the open conversation covers the whole screen under a Back control.
@@ -171,6 +206,20 @@ const VARIANT_LAYOUTS: Record<WorkflowAgentVariant, VariantLayout> = {
     composerClass: () => "w-full p-2",
   },
 };
+
+/**
+ * What the grown line's chip row holds: the selected step offered as a chip
+ * (`offer`) when it is not the one attached already, and whether the row
+ * shows at all, which it does for an attached step or an offer.
+ */
+function chipRow(
+  attached: AttachedStep | null,
+  offered: AttachedStep | null
+): { offer: AttachedStep | null; shows: boolean } {
+  const offer =
+    offered !== null && offered.id !== attached?.id ? offered : null;
+  return { offer, shows: attached !== null || offer !== null };
+}
 
 /**
  * The one step the selection holds, as the chip that offers it: its number in
@@ -255,12 +304,14 @@ function ConversationHeader({
  * one, the text field, and Send, or Stop while the agent works. `mark` draws a
  * quiet dot, named for what it means, while the agent is working or has
  * replied since the conversation was collapsed. `pill` draws the line at rest:
- * fully rounded, one row, with the chip row closed to no height and out of
- * the tab order.
+ * fully rounded, one row, with no chip row. `layoutKey` changes whenever the
+ * line changes shape, which is when Motion measures it and animates the
+ * change.
  */
 function PromptLine({
   input,
   pill,
+  layoutKey,
   attached,
   offered,
   mark,
@@ -272,6 +323,7 @@ function PromptLine({
 }: {
   input: RefObject<HTMLTextAreaElement | null>;
   pill: boolean;
+  layoutKey: string;
   attached: AttachedStep | null;
   offered: AttachedStep | null;
   mark: AgentMark;
@@ -283,65 +335,67 @@ function PromptLine({
   /** Opens the conversation, empty or not. */
   onOpen: () => void;
 }) {
-  const showsOffer = offered !== null && offered.id !== attached?.id;
-  const showsChips = !pill && (attached !== null || showsOffer);
+  const chips = chipRow(attached, offered);
+  const offer = chips.offer;
+  const showsChips = !pill && chips.shows;
+  const box = usePromptLayout("size", layoutKey);
+  // Each part of the line keeps its own size while the line's box scales, and
+  // moves from where it was to where the new shape puts it.
+  const part = usePromptLayout("position", layoutKey);
   return (
-    <div
+    // The line grows upward from a bottom edge that stays put: the box takes
+    // its new size at once, and a scale from its bottom centre carries it there.
+    <motion.div
       className={cn(
-        "flex flex-col border bg-card shadow-sm transition-[border-radius,padding] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring",
-        PROMPT_TRANSITION,
-        pill ? "rounded-3xl px-1.5 py-1" : "rounded-xl px-2 py-1.5"
+        "relative flex flex-col border bg-card shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring",
+        pill ? "px-1.5 py-1" : "px-2 py-1.5"
       )}
       data-slot="agent-prompt-line"
       data-state={pill ? "pill" : "grown"}
+      {...box}
+      style={{ borderRadius: pill ? PILL_RADIUS_PX : GROWN_RADIUS_PX }}
     >
-      {/* The chip row opens from no height to its own, so the line grows
-          upward from a bottom edge that stays put. */}
-      <div
-        className={cn(
-          "grid transition-[grid-template-rows]",
-          PROMPT_TRANSITION,
-          showsChips ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-        )}
-        inert={!showsChips}
-      >
-        {/* The gap to the text row is this row's own bottom padding, inside
-            the box that closes, so the closed row takes no space. */}
-        <div className="min-h-0 overflow-hidden">
-          <div className="flex flex-wrap items-center gap-1 px-1 pb-1">
-            {attached ? (
-              <span
-                className="flex items-center gap-1 rounded-md border bg-muted py-0.5 pr-0.5 pl-1.5 text-xs"
-                data-slot="agent-attached-step"
-              >
-                {attachedStepText(attached)}
-                <Button
-                  aria-label={`Remove ${attachedStepText(attached)}`}
-                  onClick={onDetach}
-                  size="icon-xs"
-                  type="button"
-                  variant="ghost"
-                >
-                  <X />
-                </Button>
-              </span>
-            ) : null}
-            {showsOffer ? (
+      {showsChips ? (
+        // The chip row fades in as it rises with the line's top edge. The gap
+        // to the text row is this row's own bottom padding.
+        <motion.div
+          {...part}
+          animate={{ opacity: 1 }}
+          className="flex flex-wrap items-center gap-1 px-1 pb-1"
+          initial={part.layout === undefined ? false : { opacity: 0 }}
+        >
+          {attached ? (
+            <span
+              className="flex items-center gap-1 rounded-md border bg-muted py-0.5 pr-0.5 pl-1.5 text-xs"
+              data-slot="agent-attached-step"
+            >
+              {attachedStepText(attached)}
               <Button
-                aria-label={`Attach ${attachedStepText(offered)}`}
-                className="text-muted-foreground"
-                onClick={() => onAttach(offered)}
-                size="xs"
+                aria-label={`Remove ${attachedStepText(attached)}`}
+                onClick={onDetach}
+                size="icon-xs"
                 type="button"
                 variant="ghost"
               >
-                <Plus />
-                {attachedStepText(offered)}
+                <X />
               </Button>
-            ) : null}
-          </div>
-        </div>
-      </div>
+            </span>
+          ) : null}
+          {offer ? (
+            <Button
+              aria-label={`Attach ${attachedStepText(offer)}`}
+              className="text-muted-foreground"
+              onClick={() => onAttach(offer)}
+              size="xs"
+              type="button"
+              variant="ghost"
+            >
+              <Plus />
+              {attachedStepText(offer)}
+            </Button>
+          ) : null}
+        </motion.div>
+      ) : null}
       <ComposerPrimitive.Root
         className="flex items-end gap-2"
         onSubmit={(event) => {
@@ -352,7 +406,8 @@ function PromptLine({
         {mark ? (
           // The dot is the one visible sign of a reply, so it is also the
           // control that shows it. The hit area reaches past the 8px dot.
-          <button
+          <motion.button
+            {...part}
             aria-label={
               mark === "working"
                 ? "The agent is working. Show the conversation"
@@ -364,71 +419,65 @@ function PromptLine({
             type="button"
           >
             <span className="size-2 rounded-full bg-primary" />
-          </button>
+          </motion.button>
         ) : null}
-        <ComposerPrimitive.Input
-          aria-label="Message the agent"
-          cancelOnEscape={false}
-          className={cn(
-            "min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm",
-            // The pill holds one row: a placeholder longer than the pill is
-            // cut at its end where it would otherwise wrap to a second row,
-            // which happens only on a canvas too narrow for the 352px pill.
-            pill ? "max-h-8 overflow-hidden whitespace-nowrap" : "max-h-32"
-          )}
-          // Focus and a click may open the conversation (`onActivate` decides),
-          // and Enter or Down in an empty line always opens it.
-          onClick={onActivate}
-          onFocus={onActivate}
-          onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
-            const empty = isBlank(event.currentTarget.value);
-            if (event.key === "ArrowDown" && empty) {
-              event.preventDefault();
-              onOpen();
-              return;
-            }
-            if (
-              event.key === "Enter" &&
-              !event.shiftKey &&
-              !event.nativeEvent.isComposing
-            ) {
-              event.preventDefault();
-              if (empty) {
+        <motion.div {...part} className="flex min-w-0 flex-1">
+          <ComposerPrimitive.Input
+            aria-label="Message the agent"
+            cancelOnEscape={false}
+            className={cn(
+              "min-h-8 w-full resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm",
+              // The pill holds one row: a placeholder longer than the pill is
+              // cut at its end where it would otherwise wrap to a second row,
+              // which happens only on a canvas too narrow for the 352px pill.
+              pill ? "max-h-8 overflow-hidden whitespace-nowrap" : "max-h-32"
+            )}
+            // Focus and a click may open the conversation (`onActivate` decides),
+            // and Enter or Down in an empty line always opens it.
+            onClick={onActivate}
+            onFocus={onActivate}
+            onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+              const empty = isBlank(event.currentTarget.value);
+              if (event.key === "ArrowDown" && empty) {
+                event.preventDefault();
                 onOpen();
                 return;
               }
-              onSend();
-            }
-          }}
-          placeholder={AGENT_COMPOSER_PLACEHOLDER}
-          ref={input}
-          rows={1}
-          submitMode="none"
-        />
-        <AuiIf condition={(state) => !state.thread.isRunning}>
-          <Button
-            aria-label="Send"
-            className="mb-1"
-            size="icon-sm"
-            type="submit"
-          >
-            <ArrowUpIcon />
-          </Button>
-        </AuiIf>
-        <AuiIf condition={(state) => state.thread.isRunning}>
-          <ComposerPrimitive.Cancel asChild>
-            <Button
-              aria-label="Stop"
-              className="mb-1"
-              size="icon-sm"
-              variant="outline"
-            >
-              <SquareIcon />
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                if (empty) {
+                  onOpen();
+                  return;
+                }
+                onSend();
+              }
+            }}
+            placeholder={AGENT_COMPOSER_PLACEHOLDER}
+            ref={input}
+            rows={1}
+            submitMode="none"
+          />
+        </motion.div>
+        <motion.div {...part} className="mb-1 flex shrink-0">
+          <AuiIf condition={(state) => !state.thread.isRunning}>
+            <Button aria-label="Send" size="icon-sm" type="submit">
+              <ArrowUpIcon />
             </Button>
-          </ComposerPrimitive.Cancel>
-        </AuiIf>
+          </AuiIf>
+          <AuiIf condition={(state) => state.thread.isRunning}>
+            <ComposerPrimitive.Cancel asChild>
+              <Button aria-label="Stop" size="icon-sm" variant="outline">
+                <SquareIcon />
+              </Button>
+            </ComposerPrimitive.Cancel>
+          </AuiIf>
+        </motion.div>
       </ComposerPrimitive.Root>
-    </div>
+    </motion.div>
   );
 }
 
@@ -449,23 +498,35 @@ function agentChord(): { label: string; aria: string } {
  * where the message field and Send begin, so its target overlaps neither; the
  * circle sits at its foot and straddles the edge.
  */
-function HideAgentControl({ onHide }: { onHide: () => void }) {
+function HideAgentControl({
+  onHide,
+  layoutKey,
+}: {
+  onHide: () => void;
+  /** Changes with the line's shape, so the control rides its top edge. */
+  layoutKey: string;
+}) {
   const chord = agentChord();
   return (
-    <ControlTooltip label="Hide agent" shortcut={chord.label} side="top">
-      <button
-        aria-keyshortcuts={chord.aria}
-        aria-label="Hide agent"
-        className="group/hide pointer-events-none absolute -top-[19px] right-3 flex size-6 items-end justify-center text-muted-foreground opacity-0 outline-none transition-opacity duration-150 ease-out hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-focus-within/composer:pointer-events-auto group-focus-within/composer:opacity-100 group-hover/composer:pointer-events-auto group-hover/composer:opacity-100 motion-reduce:transition-none"
-        data-slot="agent-hide"
-        onClick={onHide}
-        type="button"
-      >
-        <span className="flex size-5 items-center justify-center rounded-full border bg-card shadow-sm group-focus-visible/hide:ring-2 group-focus-visible/hide:ring-ring">
-          <ChevronDown className="size-3" />
-        </span>
-      </button>
-    </ControlTooltip>
+    <motion.div
+      className="pointer-events-none absolute -top-[19px] right-3 size-6"
+      {...usePromptLayout("position", layoutKey)}
+    >
+      <ControlTooltip label="Hide agent" shortcut={chord.label} side="top">
+        <button
+          aria-keyshortcuts={chord.aria}
+          aria-label="Hide agent"
+          className="group/hide pointer-events-none flex size-6 items-end justify-center text-muted-foreground opacity-0 outline-none transition-opacity duration-150 ease-out hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-focus-within/composer:pointer-events-auto group-focus-within/composer:opacity-100 group-hover/composer:pointer-events-auto group-hover/composer:opacity-100 motion-reduce:transition-none"
+          data-slot="agent-hide"
+          onClick={onHide}
+          type="button"
+        >
+          <span className="flex size-5 items-center justify-center rounded-full border bg-card shadow-sm group-focus-visible/hide:ring-2 group-focus-visible/hide:ring-ring">
+            <ChevronDown className="size-3" />
+          </span>
+        </button>
+      </ControlTooltip>
+    </motion.div>
   );
 }
 
@@ -706,11 +767,16 @@ function AgentSurface({
   };
 
   const mark: AgentMark = running ? "working" : unseen ? "replied" : null;
+  // Changes exactly when the line changes shape, which is when Motion
+  // measures the line and the boxes around it and animates the change.
+  const layoutKey = `${pill}:${!pill && chipRow(attached, offered).shows}`;
+  const conversationLayout = usePromptLayout("position", layoutKey);
 
   const line = (
     <PromptLine
       attached={attached}
       input={input}
+      layoutKey={layoutKey}
       mark={open ? null : mark}
       offered={offered}
       // The pressed chip leaves the page with its row, so focus goes back to
@@ -738,13 +804,16 @@ function AgentSurface({
   );
   const conversation =
     open && !hidden ? (
-      <section
+      // The conversation stands on the line, so it rides the line's top edge
+      // when a chip row opens or closes under it.
+      <motion.section
         aria-label="Agent conversation"
         className={cn(
           "pointer-events-auto flex min-h-0 flex-col overflow-hidden bg-popover text-popover-foreground",
           layout.conversationClass
         )}
         data-slot="agent-conversation"
+        {...conversationLayout}
       >
         <ConversationHeader
           closeControl={layout.closeControl}
@@ -752,7 +821,7 @@ function AgentSurface({
           onNewConversation={newConversation}
         />
         <AgentThread />
-      </section>
+      </motion.section>
     ) : null;
 
   return (
@@ -794,7 +863,9 @@ function AgentSurface({
             data-slot="agent-composer"
           >
             {line}
-            {layout.hideable ? <HideAgentControl onHide={toggleBox} /> : null}
+            {layout.hideable ? (
+              <HideAgentControl layoutKey={layoutKey} onHide={toggleBox} />
+            ) : null}
           </div>
         </>
       )}
