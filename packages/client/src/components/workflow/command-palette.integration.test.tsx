@@ -55,6 +55,22 @@ const ONE_ACTION_CATALOG: ExtensionCatalog = {
   ],
 };
 
+/** Step types in two categories, so the Add step page lists two groups. */
+const TWO_CATEGORY_CATALOG: ExtensionCatalog = {
+  ...ONE_ACTION_CATALOG,
+  actions: [
+    ...ONE_ACTION_CATALOG.actions,
+    {
+      id: "Send SMS",
+      label: "Send SMS",
+      description: "Text a person",
+      category: "Messaging",
+      configFields: [],
+      outputFields: [],
+    },
+  ],
+};
+
 const SEARCH_GRAPH: WorkflowNode[] = [
   {
     id: "lifecycle_1",
@@ -786,19 +802,33 @@ describe("the command palette", () => {
   });
 
   /**
-   * Disabled rows used to set pointer-events: none. Hover then missed the row
-   * and looked like leaving the list, so autoHighlight="always" painted the
-   * first item. happy-dom does not deliver the pointer path Base UI's list
-   * navigation listens for, so the class is what this locks.
+   * The pointer moving from a row onto a group heading, the gap between rows
+   * or the list's padding leaves that row. The highlight stays on it until the
+   * pointer reaches another row or an arrow key moves it.
    */
-  it("lets a disabled row receive the pointer instead of jumping the highlight to the first row", async () => {
-    const rendered = renderChrome(ToolbarActions);
+  it("keeps the highlight on the row the pointer left for a group heading", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      catalog: TWO_CATEGORY_CATALOG,
+    });
     await openedPalette(rendered);
+    fireEvent.click(await rendered.findByRole("option", { name: /^Add step/ }));
+    const rows = await rendered.findAllByRole("option");
+    const first = rows[0];
+    const hovered = await rendered.findByRole("option", { name: /^Send SMS/ });
+    expect(first).not.toBe(hovered);
+    expect(first?.hasAttribute("data-highlighted")).toBe(true);
 
-    const undo = rendered.getByRole("option", { name: /^Undo/ });
-    expect(undo.getAttribute("data-disabled")).not.toBeNull();
-    expect(undo.className).not.toContain("pointer-events-none");
-    expect(undo.className).toContain("not-data-disabled");
+    fireEvent.mouseMove(hovered, { movementX: 1, movementY: 1 });
+    expect(hovered.hasAttribute("data-highlighted")).toBe(true);
+
+    const heading = rendered.getByText("Messaging");
+    fireEvent.pointerLeave(hovered, {
+      pointerType: "mouse",
+      relatedTarget: heading,
+    });
+
+    expect(hovered.hasAttribute("data-highlighted")).toBe(true);
+    expect(first?.hasAttribute("data-highlighted")).toBe(false);
   });
 
   it("does not run a disabled command that is clicked", async () => {
