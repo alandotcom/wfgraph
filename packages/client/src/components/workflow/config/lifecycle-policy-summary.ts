@@ -10,6 +10,7 @@ import {
   findEntity,
   findEvent,
 } from "@wfgraph/shared/extensions/catalog";
+import { FILTER_RULE_NAMES } from "@wfgraph/shared/lifecycle/filter-helpers";
 import type {
   Concurrency,
   LifecycleRules,
@@ -25,7 +26,7 @@ import type {
  */
 export const START_RULE_NAMES = {
   starts: "Starts when",
-  startFilter: "Only start when",
+  startFilter: FILTER_RULE_NAMES.start,
   overlapping: "If a run is already in progress",
   schedule: "On a schedule",
   stop: "Stop a run when",
