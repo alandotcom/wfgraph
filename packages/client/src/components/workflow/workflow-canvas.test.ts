@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { canvasNodeWithInitialDimensions } from "#src/components/workflow/workflow-canvas-accessibility";
 import {
+  awaitsRunGraph,
   canvasFitViewKey,
   canvasSynchronizationKey,
   canvasViewportCorrectionKey,
@@ -567,5 +568,28 @@ describe("useFitAgentGraph", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("awaitsRunGraph", () => {
+  const run = { workspace: "runs" as const, executionId: "exec_1" };
+
+  it("holds the canvas hidden while a named run's graph is loading", () => {
+    expect(awaitsRunGraph({ workspaceKey: run, runGraph: null })).toBe(true);
+    expect(awaitsRunGraph({ workspaceKey: run, runGraph: { nodes: [] } })).toBe(
+      false
+    );
+  });
+
+  it("shows the Draft canvas at once for Draft and the run list", () => {
+    expect(
+      awaitsRunGraph({ workspaceKey: { workspace: "draft" }, runGraph: null })
+    ).toBe(false);
+    expect(
+      awaitsRunGraph({
+        workspaceKey: { workspace: "runs", executionId: null },
+        runGraph: null,
+      })
+    ).toBe(false);
   });
 });
