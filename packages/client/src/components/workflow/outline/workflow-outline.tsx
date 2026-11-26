@@ -44,12 +44,11 @@ import {
 import { Input } from "#src/components/ui/input";
 import { outlineFilterFocusRequestAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
-import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import { editOfNode, workflowEdits } from "#src/lib/workflow-edits";
 import {
@@ -352,26 +351,15 @@ export function WorkflowOutline({
     }
   });
 
-  // Cmd+F and "Find a step" show the filter field in place at the top of the
-  // list, and the cursor goes into it once it has rendered.
+  // Cmd+F and "Find a step" (`useOutlineControls`) show the filter field in
+  // place at the top of the list, and the cursor goes into it once it has
+  // rendered.
   useAfterCommit(filterRequested, () => {
     if (!filterRequested) return;
     setFilterRequested(false);
     setFilterOpen(true);
     filterRef.current?.focus({ preventScroll: true });
     filterRef.current?.select();
-  });
-  useDomEvent(document, "keydown", (event) => {
-    if (
-      event.key.toLowerCase() === "f" &&
-      (event.metaKey || event.ctrlKey) &&
-      !event.altKey &&
-      !event.shiftKey &&
-      editorChordAllowed(event, { inTextFields: true })
-    ) {
-      event.preventDefault();
-      setFilterRequested(true);
-    }
   });
 
   const focusRow = (key: string) => {

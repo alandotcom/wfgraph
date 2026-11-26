@@ -26,15 +26,25 @@ import {
  * canvas, with no box, capped at the canvas height less the zoom controls'
  * room and scrolling inside itself. A soft shadow in the canvas colour behind
  * its text keeps it legible over cards and connections. It takes the pointer
- * only where its rows are, so the canvas around them stays usable.
+ * only where its rows are, so the canvas around them stays usable. Hidden, it
+ * stays mounted, out of sight and inert, so its folds, filter text and the
+ * J and K keys of an open run carry on.
  */
-function FloatingOutline({ children }: { children: ReactNode }) {
+function FloatingOutline({
+  hidden,
+  children,
+}: {
+  hidden: boolean;
+  children: ReactNode;
+}) {
   return (
     <section
       aria-label="Outline"
       className="pointer-events-none absolute top-3 left-3 z-10 flex w-72 flex-col [text-shadow:0_0_2px_var(--background),0_0_6px_var(--background)]"
       data-column="outline"
       data-slot="floating-outline"
+      hidden={hidden}
+      inert={hidden}
       style={{
         maxHeight: `calc(100% - 12px - ${DESKTOP_CONTROLS_CLEARANCE_PX.height}px)`,
       }}
@@ -249,7 +259,7 @@ export function EditorLayout({
         className="relative min-h-[min(20rem,40dvh)] min-w-0 flex-1 overflow-clip"
         data-slot="canvas-box"
       >
-        {controls.shown ? <FloatingOutline>{outline}</FloatingOutline> : null}
+        <FloatingOutline hidden={!controls.shown}>{outline}</FloatingOutline>
         {canvas}
         {composer ? <ComposerBox>{composer}</ComposerBox> : null}
         <InspectorCard open={inspectorOpen}>{details}</InspectorCard>

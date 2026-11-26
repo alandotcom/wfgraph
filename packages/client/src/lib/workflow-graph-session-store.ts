@@ -12,6 +12,7 @@ import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import { getClientLogger } from "#src/lib/logger";
 import { repairCanvasGroups } from "#src/lib/node-group";
 import { repairLegacyGroupLayout } from "#src/components/workflow/workflow-layout";
+import { outlineHiddenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { getExtensionCatalog } from "#src/lib/extensions";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
@@ -139,9 +140,13 @@ export const remoteDraftChangeAtom = atom((get) => {
     : null;
 });
 
-/** End transient pointer state when the workflow editor leaves the page. */
+/**
+ * End transient pointer state when the workflow editor leaves the page, and
+ * show the outline again for the next time the editor opens.
+ */
 export const endWorkflowEditorLifetimeAtom = atom(null, (_get, set) => {
   set(workflowDragOriginAtom, null);
+  set(outlineHiddenAtom, false);
 });
 
 /**

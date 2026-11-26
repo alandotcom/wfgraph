@@ -338,10 +338,13 @@ names the count and offers only what applies to every selected step: **Group 2
 steps**, **Duplicate 2 steps**, **Copy**, **Disable 2 steps** or **Enable 2
 steps** when all are steps, and **Delete 2 steps**, the last three absent when
 the selection holds the Lifecycle node.
-`[` hides and shows it from anywhere outside a text field, and the command
-palette offers the same command. In Runs with no run open it is the run list,
-which always shows, because it is the only way to open a run. Hiding it is not
-remembered across reloads or workflows.
+`[` hides and shows the outline from anywhere outside a text field, and the
+command palette offers the same command. In Runs with no run open the outline
+is the run list, which always shows, because it is the only way to open a run.
+Hiding the outline holds in the workflow and view it was hidden in: another
+workflow, or Runs after Draft, shows the outline again, and the choice is not
+remembered across reloads. A hidden outline keeps its folds, its filter text
+and an open run's J and K keys.
 
 The Inspector is one card floating 8px inside the canvas's top, right and
 bottom edges, 340px wide, on the card surface with a hairline border, a 14px

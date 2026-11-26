@@ -3,6 +3,7 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearSelectionAtom,
+  endWorkflowEditorLifetimeAtom,
   loadWorkflowGraphAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
@@ -85,6 +86,12 @@ function inspector(): HTMLElement | null {
 
 function floatingOutline(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[data-slot="floating-outline"]');
+}
+
+/** Whether the floating outline is on screen; hidden, it stays mounted. */
+function outlineShown(): boolean {
+  const outline = floatingOutline();
+  return outline !== null && !outline.hidden && !outline.inert;
 }
 
 function canvasBox(): HTMLElement {
@@ -233,33 +240,86 @@ describe("EditorLayout", () => {
   it("hides and shows the outline with [ outside text fields", () => {
     setViewportWidth(1440);
     const store = renderLayout();
-    expect(floatingOutline()).not.toBeNull();
+    expect(outlineShown()).toBe(true);
 
     pressKey("[");
-    expect(floatingOutline()).toBeNull();
+    expect(outlineShown()).toBe(false);
     expect(store.get(outlineHiddenAtom)).toBe(true);
     pressKey("]");
-    expect(floatingOutline()).toBeNull();
+    expect(outlineShown()).toBe(false);
     pressKey("[");
-    expect(floatingOutline()).not.toBeNull();
+    expect(outlineShown()).toBe(true);
 
     // A text field keeps its keys.
     const field = screen.getByRole("searchbox", { name: "Filter steps" });
     pressKey("[", field);
-    expect(floatingOutline()).not.toBeNull();
+    expect(outlineShown()).toBe(true);
+  });
+
+  it("keeps the hidden outline mounted, out of sight and inert", () => {
+    setViewportWidth(1440);
+    renderLayout();
+    const field = screen.getByRole("searchbox", { name: "Filter steps" });
+    fireEvent.change(field, { target: { value: "Send" } });
+
+    pressKey("[");
+
+    expect(floatingOutline()?.hidden).toBe(true);
+    expect(floatingOutline()?.inert).toBe(true);
+    // The same field, with its text, is still there to come back to.
+    expect(floatingOutline()?.contains(field)).toBe(true);
+    pressKey("[");
+    expect(
+      screen.getByRole<HTMLInputElement>("searchbox", { name: "Filter steps" })
+        .value
+    ).toBe("Send");
+  });
+
+  it("shows the outline in another workflow after [ hid it in one", () => {
+    setViewportWidth(1440);
+    const store = renderLayout();
+    pressKey("[");
+    expect(outlineShown()).toBe(false);
+
+    act(() => store.set(currentWorkflowIdAtom, "wf_2"));
+    expect(outlineShown()).toBe(true);
+    // Back in the first workflow it is as it was left.
+    act(() => store.set(currentWorkflowIdAtom, "wf_1"));
+    expect(outlineShown()).toBe(false);
+  });
+
+  it("shows the outline in Runs after [ hid it in Draft", () => {
+    setViewportWidth(1440);
+    const store = renderLayout();
+    pressKey("[");
+
+    act(() => showWorkspaceRoute(store, { view: "runs", executionId: "run_1" }));
+
+    expect(store.get(outlineHiddenAtom)).toBe(false);
+    expect(outlineShown()).toBe(true);
+  });
+
+  it("shows the outline again once the editor leaves the page", () => {
+    setViewportWidth(1440);
+    const store = renderLayout();
+    pressKey("[");
+
+    act(() => store.set(endWorkflowEditorLifetimeAtom));
+
+    expect(store.get(outlineHiddenAtom)).toBe(false);
   });
 
   it("always shows the run list and opens no Inspector for it", () => {
     setViewportWidth(1440);
     const store = renderLayout();
     act(() => store.set(outlineHiddenAtom, true));
-    expect(floatingOutline()).toBeNull();
+    expect(outlineShown()).toBe(false);
 
     act(() => showWorkspaceRoute(store, { view: "runs" }));
 
-    expect(floatingOutline()).not.toBeNull();
+    expect(outlineShown()).toBe(true);
     pressKey("[");
-    expect(floatingOutline()).not.toBeNull();
+    expect(outlineShown()).toBe(true);
     expect(inspector()?.dataset.open).toBe("false");
   });
 
@@ -309,11 +369,11 @@ describe("EditorLayout", () => {
       setViewportWidth(1440);
       const store = renderLayout();
       pressKey("[");
-      expect(floatingOutline()).toBeNull();
+      expect(outlineShown()).toBe(false);
 
       pressFind();
 
-      expect(floatingOutline()).not.toBeNull();
+      expect(outlineShown()).toBe(true);
       expect(store.get(outlineHiddenAtom)).toBe(false);
       expect(store.get(outlineFilterFocusRequestAtom)).toBe(true);
     });
@@ -351,9 +411,10 @@ describe("EditorLayout", () => {
       expect(store.get(outlineFilterFocusRequestAtom)).toBe(false);
     });
 
-    it("leaves Cmd+F to the outline while it is on screen", () => {
+    it("leaves Cmd+F to the browser on the run list", () => {
       setViewportWidth(1440);
-      renderLayout();
+      const store = renderLayout();
+      act(() => showWorkspaceRoute(store, { view: "runs" }));
       const event = new KeyboardEvent("keydown", {
         key: "f",
         metaKey: true,
@@ -366,6 +427,7 @@ describe("EditorLayout", () => {
       });
 
       expect(event.defaultPrevented).toBe(false);
+      expect(store.get(outlineFilterFocusRequestAtom)).toBe(false);
     });
   });
 });

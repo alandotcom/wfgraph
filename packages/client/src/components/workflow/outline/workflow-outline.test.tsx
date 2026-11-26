@@ -52,6 +52,7 @@ import {
 } from "#src/lib/workflow-save-test-support";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { contextMenuAtom } from "#src/components/workflow/workflow-context-menu";
+import { outlineFilterFocusRequestAtom } from "#src/components/workflow/columns/editor-columns-store";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -443,14 +444,17 @@ describe("WorkflowOutline", () => {
     expect(document.activeElement).toBe(otherwise);
   });
 
-  it("shows the filter only on Cmd+F, filters rows by text, and hides it again on Escape", async () => {
-    renderOutline();
+  it("shows the filter only on a find request, filters rows by text, and hides it again on Escape", async () => {
+    const { store } = renderOutline();
     await tree();
+    // What Cmd+F and "Find a step" ask for, through `useOutlineControls`.
+    const requestFind = () =>
+      act(() => store.set(outlineFilterFocusRequestAtom, true));
     expect(
       screen.queryByRole("searchbox", { name: "Filter steps" })
     ).toBeNull();
 
-    fireEvent.keyDown(document, { key: "f", metaKey: true });
+    requestFind();
     const filter = await screen.findByRole("searchbox", {
       name: "Filter steps",
     });
@@ -478,7 +482,7 @@ describe("WorkflowOutline", () => {
     );
 
     // Leaving the field empty hides it too.
-    fireEvent.keyDown(document, { key: "f", metaKey: true });
+    requestFind();
     const again = await screen.findByRole("searchbox", {
       name: "Filter steps",
     });

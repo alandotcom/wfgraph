@@ -28,7 +28,7 @@ import { runTitle } from "#src/components/workflow/workflow-run-summary-row";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { RunsSkeleton } from "#src/components/workflow/workflow-runs";
-import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
+import { shownOutlineRow } from "#src/components/workflow/step-focus-landing";
 import { useAfterCommit } from "#src/hooks/effects";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupLabel } from "#src/lib/workflow-graph-types";
@@ -354,8 +354,7 @@ export function RunsBody({ subject, level, mobile }: RevealBodyProps) {
         `.react-flow__node[data-id="${CSS.escape(returnFocusNodeId)}"]`
       );
     (returnsToRow
-      ? (document.getElementById(outlineRowElementId(returnFocusNodeId)) ??
-        card())
+      ? (shownOutlineRow(returnFocusNodeId) ?? card())
       : card()
     )?.focus({ preventScroll: true });
   });
