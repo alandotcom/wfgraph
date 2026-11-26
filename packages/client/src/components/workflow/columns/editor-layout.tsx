@@ -9,6 +9,7 @@ import { placementNodeIds } from "#src/components/workflow/canvas-reveal/reveal-
 import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   detailsFloatOpenAtom,
   phoneShowsMapAtom,
@@ -32,13 +33,20 @@ const INSPECTOR_INSET_PX = 8;
 const OUTLINE_BOTTOM_CLEARANCE_PX = 184;
 
 /**
- * Whether the Inspector has something to show on desktop: any Draft subject,
- * or in Runs an open run. The run list is the floating outline's, so its
- * address is no subject here.
+ * Whether the Inspector has something to show on desktop: a Draft subject
+ * other than several steps, or in Runs an open run. The run list is the
+ * floating outline's, so its address is no subject here. Several selected
+ * steps have no editor of their own; their commands are the context menu's.
  */
-function inspectorHasSubject(reveal: CanvasRevealState): boolean {
+function inspectorHasSubject(
+  reveal: CanvasRevealState,
+  selectedNodeCount: number
+): boolean {
   const { key } = reveal.address;
   if (key.workspace === "runs" && key.executionId === null) {
+    return false;
+  }
+  if (key.workspace === "draft" && selectedNodeCount > 1) {
     return false;
   }
   return reveal.subject !== null;
@@ -154,7 +162,8 @@ function useInspectorFollowsSubject(input: { enabled: boolean }): boolean {
   const [open, setOpen] = useAtom(detailsFloatOpenAtom);
   const requestPlacement = useSetAtom(requestRevealPlacementAtom);
   const reveal = useAtomValue(canvasRevealAtom);
-  const hasSubject = inspectorHasSubject(reveal);
+  const selectedNodeCount = useAtomValue(activeSelectionAtom).nodeIds.length;
+  const hasSubject = inspectorHasSubject(reveal, selectedNodeCount);
   const subjectKey = hasSubject
     ? `${reveal.addressId}|${reveal.subject?.key ?? ""}`
     : null;

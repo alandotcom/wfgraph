@@ -8,6 +8,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { revealPlacementRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { EditorLayout } from "./editor-layout";
 import {
@@ -39,6 +40,12 @@ function renderLayout() {
         type: "action",
         position: { x: 0, y: 0 },
         data: { label: "Send", type: "action", config: {} },
+      },
+      {
+        id: "wait",
+        type: "action",
+        position: { x: 0, y: 200 },
+        data: { label: "Wait", type: "action", config: {} },
       },
     ],
     edges: [],
@@ -134,6 +141,21 @@ describe("EditorLayout", () => {
     expect(composerBox?.style.right).toBe("360px");
 
     act(() => store.set(clearSelectionAtom));
+    expect(inspector()?.dataset.open).toBe("false");
+  });
+
+  it("closes the Inspector while several steps are selected", () => {
+    setViewportWidth(1440);
+    const store = renderLayout();
+    act(() => store.set(selectOnlyNodeAtom, "send"));
+    expect(inspector()?.dataset.open).toBe("true");
+
+    act(() =>
+      store.set(activeSelectionAtom, {
+        nodeIds: ["send", "wait"],
+        edgeIds: [],
+      })
+    );
     expect(inspector()?.dataset.open).toBe("false");
   });
 

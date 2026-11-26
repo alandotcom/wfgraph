@@ -199,4 +199,68 @@ describe("WorkflowContextMenu", () => {
       type: "group",
     });
   });
+
+  describe("with two steps selected", () => {
+    /** Two steps outside any Group, both selected when the menu opened. */
+    function twoSteps(enabled?: boolean): WorkflowNode[] {
+      return ["one", "two"].map((id, index) => ({
+        id,
+        type: "action",
+        position: { x: 0, y: index * 200 },
+        data: {
+          label: `Step ${id}`,
+          type: "action",
+          config: { actionType: "email/send" },
+          enabled,
+        },
+      }));
+    }
+    function renderBulkMenu(enabled?: boolean) {
+      return renderMenu(
+        {
+          type: "node",
+          nodeId: "one",
+          position: { x: 0, y: 0 },
+          selectedIds: new Set(["one", "two"]),
+        },
+        { nodes: twoSteps(enabled), edges: [] }
+      );
+    }
+
+    it("names the count and offers only what applies to both", () => {
+      const { getAllByRole } = renderBulkMenu();
+
+      expect(
+        getAllByRole("button").map((row) =>
+          row.textContent?.replace(/⌘.|Ctrl\+./u, "")
+        )
+      ).toEqual([
+        "Group 2 steps",
+        "Duplicate 2 steps",
+        "Copy",
+        "Disable 2 steps",
+        "Delete 2 steps",
+      ]);
+    });
+
+    it("disables both steps in one go, and enables them again", () => {
+      const { getByRole, store } = renderBulkMenu();
+      fireEvent.click(getByRole("button", { name: "Disable 2 steps" }));
+      expect(store.get(nodesAtom).map((node) => node.data.enabled)).toEqual([
+        false,
+        false,
+      ]);
+    });
+
+    it("offers Enable when both steps are off", () => {
+      const { getByRole } = renderBulkMenu(false);
+      expect(getByRole("button", { name: "Enable 2 steps" })).toBeTruthy();
+    });
+
+    it("deletes both steps", () => {
+      const { getByRole, store } = renderBulkMenu();
+      fireEvent.click(getByRole("button", { name: "Delete 2 steps" }));
+      expect(store.get(nodesAtom)).toEqual([]);
+    });
+  });
 });

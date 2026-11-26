@@ -103,7 +103,7 @@ import {
 } from "./use-workflow-node-inspection";
 import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import {
-  type ContextMenuState,
+  contextMenuAtom,
   useContextMenuHandlers,
   WorkflowContextMenu,
 } from "./workflow-context-menu";
@@ -315,8 +315,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     isCanvasReady,
     canvas: canvasContainerRef,
   });
-  const [contextMenuState, setContextMenuState] =
-    useState<ContextMenuState>(null);
+  const [contextMenuState, setContextMenuState] = useAtom(contextMenuAtom);
   const rightClickSelectionRef = useRef<ReadonlySet<string>>(new Set());
   const { lifecycleAnchor, fitViewKey } = useSynchronizedCanvas({
     // React Flow applies controlled graph props in a passive effect. Install

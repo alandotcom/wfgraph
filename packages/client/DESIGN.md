@@ -326,6 +326,18 @@ Selection Blue fill when selected, with no edge bar. Cmd+F (Ctrl+F) shows a
 "Filter steps" field at the top of the list and puts the cursor in it; Escape
 clears and hides it, and leaving it empty hides it. On a phone the field stays
 at the top of the outline. The run list's rows float the same way.
+
+A row and its canvas card answer the same gestures in an editable Draft:
+pointing at either puts the pointed tint on the card, a click selects the
+step, Shift-click adds it to the selection, Cmd-click (Ctrl-click) adds or
+removes it, Delete or Backspace deletes the selection, Enter opens the step
+with focus in its first field, and right-click opens the step's context menu.
+A right-click on a row or card outside the selection selects it first; one
+inside a selection of two or more steps keeps the selection, and the menu
+names the count and offers only what applies to every selected step: **Group 2
+steps**, **Duplicate 2 steps**, **Copy**, **Disable 2 steps** or **Enable 2
+steps** when all are steps, and **Delete 2 steps**, the last three absent when
+the selection holds the Lifecycle node.
 `[` hides and shows it from anywhere outside a text field, and the command
 palette offers the same command. In Runs with no run open it is the run list,
 which always shows, because it is the only way to open a run. Hiding it is not
@@ -334,8 +346,9 @@ remembered across reloads or workflows.
 The Inspector is one card floating 8px inside the canvas's top, right and
 bottom edges, 340px wide, on the card surface with a hairline border, a 14px
 radius and shadow-lg. It opens when something is selected: a step, a
-connection, a Group, the Lifecycle node, several objects, or in Runs an open
-run or a run node. It closes when the selection clears, on its **Close**
+connection, a Group, the Lifecycle node, or in Runs an open run or a run node.
+Two or more selected steps close it, since their commands are the context
+menu's. It closes when the selection clears, on its **Close**
 control, and on Escape with nothing left to step back through, which returns
 focus to the selected step's outline row as before. Pressing a step on the
 canvas or its outline row opens it again. Selecting something else while it is
