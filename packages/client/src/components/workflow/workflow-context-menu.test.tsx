@@ -268,4 +268,54 @@ describe("WorkflowContextMenu", () => {
       expect(store.get(nodesAtom)).toEqual([]);
     });
   });
+
+  describe("with a Group and a step selected", () => {
+    /** The Lookups Group, its two members, and one step outside it. */
+    function renderGroupAndStepMenu() {
+      const graph = groupGraph();
+      return renderMenu(
+        {
+          type: "node",
+          nodeId: "outside",
+          position: { x: 0, y: 0 },
+          selectedIds: new Set(["group_1", "outside"]),
+        },
+        {
+          nodes: [
+            ...graph.nodes,
+            { ...actionNode(), id: "outside", position: { x: 600, y: 0 } },
+          ],
+          edges: graph.edges,
+        }
+      );
+    }
+
+    it("counts the Group apart from the steps, and says Delete ungroups it", () => {
+      const { getAllByRole } = renderGroupAndStepMenu();
+
+      expect(
+        getAllByRole("button").map((row) =>
+          row.textContent?.replace(/⌘.|Ctrl\+./u, "")
+        )
+      ).toEqual([
+        expect.stringMatching(/^Group 1 step and 1 Group/u),
+        "Duplicate 1 step and 1 Group",
+        "Copy",
+        "Delete 1 step and ungroup 1 Group",
+      ]);
+    });
+
+    it("deletes the step and ungroups the Group, keeping its members", () => {
+      const { getByRole, store } = renderGroupAndStepMenu();
+
+      fireEvent.click(
+        getByRole("button", { name: "Delete 1 step and ungroup 1 Group" })
+      );
+
+      expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["a", "b"]);
+      expect(
+        store.get(nodesAtom).every((node) => node.parentId === undefined)
+      ).toBe(true);
+    });
+  });
 });

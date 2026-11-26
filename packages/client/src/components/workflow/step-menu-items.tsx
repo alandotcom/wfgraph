@@ -12,6 +12,7 @@ import {
   Trash2,
   Ungroup,
 } from "lucide-react";
+import { compact } from "es-toolkit/array";
 import type { ReactNode } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
@@ -91,6 +92,11 @@ export type StepMenuItem = {
 /** "1 step" or "N steps". */
 function stepsNoun(count: number): string {
   return count === 1 ? "1 step" : `${count} steps`;
+}
+
+/** "1 Group" or "N Groups". */
+function groupsNoun(count: number): string {
+  return count === 1 ? "1 Group" : `${count} Groups`;
 }
 
 /**
@@ -336,9 +342,13 @@ export function useStepMenuItems(input: {
 
 /**
  * The commands that apply to every node of a multiple selection: Group,
- * Duplicate, Copy, Disable or Enable, and Delete, each naming the count. A
- * selection holding the Lifecycle node offers no Duplicate, Copy or Delete,
- * and one holding anything but steps offers no Disable or Enable.
+ * Duplicate, Copy, Disable or Enable, and Delete, each naming the count, with
+ * selected Groups counted apart from steps, as in "Duplicate 2 steps and
+ * 1 Group". Delete removes the selected steps and ungroups each selected
+ * Group, keeping the members not selected themselves, so its row says that:
+ * "Delete 2 steps and ungroup 1 Group", or "Ungroup 2 Groups". A selection
+ * holding the Lifecycle node offers no Duplicate, Copy or Delete, and one
+ * holding anything but steps offers no Disable or Enable.
  */
 function bulkItems(input: {
   selected: readonly WorkflowNode[];
@@ -352,7 +362,12 @@ function bulkItems(input: {
   remove: () => void;
 }): readonly StepMenuItem[] {
   const { selected, grouping } = input;
-  const count = stepsNoun(selected.length);
+  const groupCount = selected.filter(isGroupNode).length;
+  const stepCount = selected.length - groupCount;
+  const count = compact([
+    stepCount > 0 ? stepsNoun(stepCount) : null,
+    groupCount > 0 ? groupsNoun(groupCount) : null,
+  ]).join(" and ");
   const holdsLifecycle = selected.some(
     (item) => item.data.type === "lifecycle"
   );
@@ -403,10 +418,15 @@ function bulkItems(input: {
   if (!holdsLifecycle) {
     items.push({
       id: "delete",
-      label: `Delete ${count}`,
-      icon: <Trash2 />,
+      label:
+        groupCount === 0
+          ? `Delete ${stepsNoun(stepCount)}`
+          : stepCount === 0
+            ? `Ungroup ${groupsNoun(groupCount)}`
+            : `Delete ${stepsNoun(stepCount)} and ungroup ${groupsNoun(groupCount)}`,
+      icon: stepCount === 0 ? <Ungroup /> : <Trash2 />,
       group: "delete",
-      destructive: true,
+      destructive: stepCount > 0,
       run: input.remove,
     });
   }
