@@ -22,6 +22,7 @@ import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import {
   LIFECYCLE_ADD_RULE_ID,
+  lifecycleFilterTargetId,
   lifecycleIssueSection,
   lifecycleRuleTargetId,
 } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
@@ -415,7 +416,7 @@ describe("Lifecycle form", () => {
 
     await waitFor(() =>
       expect(document.activeElement?.id).toBe(
-        lifecycleRuleTargetId("start-filter")
+        lifecycleFilterTargetId("start-events")
       )
     );
     expect(document.activeElement?.textContent).toBe("Filter the arrivals");

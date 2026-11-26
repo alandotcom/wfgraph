@@ -1,6 +1,6 @@
 import { uniq } from "es-toolkit/array";
 import { ChevronDown, Plus } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Button } from "#src/components/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +12,6 @@ import {
   LIFECYCLE_ADD_RULE_ID,
   type LifecycleRuleChoice,
   type LifecycleSectionId,
-  lifecycleRuleTargetId,
   lifecycleSectionShown,
   offeredLifecycleRules,
   type RemovableLifecycleSection,
@@ -34,7 +33,7 @@ import { LifecycleEventGroup } from "./lifecycle-event-group";
 import { LifecycleScheduleGroup } from "./lifecycle-schedule-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import {
-  type LifecycleRulesEditor,
+  type LifecycleRuleGroupProps,
   useLifecycleRulesEditor,
 } from "./use-lifecycle-rules-editor";
 
@@ -83,73 +82,57 @@ export function LifecyclePanel({
         };
   const addRule = (choice: LifecycleRuleChoice) => {
     setAdded(uniq([...added, choice.section]));
-    focusTarget?.(
-      lifecycleRuleTargetId(
-        choice.id === "start-filter" ? "start-filter" : choice.section
-      )
-    );
+    focusTarget?.(choice.targetId);
   };
 
   return (
     <div className="space-y-5">
-      <LifecycleRoleEventGroup
-        disabled={disabled}
-        editor={editor}
-        firstFilterButtonId={lifecycleRuleTargetId("start-filter")}
-        inputId={lifecycleRuleTargetId("start-events")}
-        role="start"
-      />
+      <div className="space-y-3">
+        <LifecycleEventGroup
+          disabled={disabled}
+          editor={editor}
+          section="start-events"
+        />
+        <LifecycleManualStartGroup disabled={disabled} editor={editor} />
+      </div>
       {shown("entity-eligibility") ? (
         <LifecycleEntityEligibilityGroup
-          catalog={catalog}
           disabled={disabled}
-          onChange={editor.setRules}
+          editor={editor}
           onRemove={removeRule("entity-eligibility")}
-          rules={rules}
-          selectId={lifecycleRuleTargetId("entity-eligibility")}
+          section="entity-eligibility"
         />
       ) : null}
       {shown("overlapping-runs") ? (
         <LifecycleConcurrencyGroup
           disabled={disabled}
-          onConcurrencyChange={editor.setConcurrency}
+          editor={editor}
           onRemove={removeRule("overlapping-runs")}
-          rules={rules}
-          triggerId={lifecycleRuleTargetId("overlapping-runs")}
+          section="overlapping-runs"
         />
       ) : null}
       {shown("schedule") ? (
         <LifecycleScheduleGroup
-          addButtonId={lifecycleRuleTargetId("schedule")}
           disabled={disabled}
+          editor={editor}
           onRemove={removeRule("schedule")}
-          schedules={editor.schedules}
+          section="schedule"
         />
       ) : null}
       {shown("cancel-events") ? (
-        <LifecycleRoleEventGroup
+        <LifecycleEventGroup
           disabled={disabled}
           editor={editor}
-          inputId={lifecycleRuleTargetId("cancel-events")}
           onRemove={removeRule("cancel-events")}
-          role="cancel"
+          section="cancel-events"
         />
       ) : null}
       {shown("connections") ? (
-        <ConfigGroup
-          help={
-            <p>
-              An Event from an integration reaches no run until its Connection
-              is chosen.
-            </p>
-          }
-          label="Event Connections"
-          prominent
-        >
-          <div className="space-y-3">
-            <LifecycleEventConnections disabled={disabled} editor={editor} />
-          </div>
-        </ConfigGroup>
+        <LifecycleConnectionsGroup
+          disabled={disabled}
+          editor={editor}
+          section="connections"
+        />
       ) : null}
       {disabled ? null : (
         <AddRuleMenu
@@ -215,86 +198,47 @@ function AddRuleMenu({
 }
 
 /**
- * The Start or Cancel Events group, writing through one Lifecycle Rules
- * editor. The start role also holds whether a person may run it by hand,
- * since both answer what starts a run. `inputId` names the Event picker, and
- * `onRemove`, when given, offers Remove on the label row.
+ * Event Connections: one Connection picker per integration a Start or Cancel
+ * Event arrives through, since such an Event reaches no run until its
+ * Connection is chosen.
  */
-function LifecycleRoleEventGroup({
-  role,
+function LifecycleConnectionsGroup({
   editor,
   disabled,
-  inputId,
-  onRemove,
-  firstFilterButtonId,
-}: {
-  role: "start" | "cancel";
-  editor: LifecycleRulesEditor;
-  disabled: boolean;
-  inputId?: string | undefined;
-  onRemove?: (() => void) | undefined;
-  firstFilterButtonId?: string | undefined;
-}) {
-  const generatedId = useId();
-  const events = (
-    <LifecycleEventGroup
-      catalog={editor.catalog}
-      disabled={disabled}
-      firstFilterButtonId={firstFilterButtonId}
-      inputId={inputId ?? generatedId}
-      onCorrelationPathChange={editor.setCorrelationPath}
-      onEventNamesChange={
-        role === "start" ? editor.setStartEvents : editor.setCancelEvents
-      }
-      onFilterChange={
-        role === "start" ? editor.setStartFilter : editor.setCancelFilter
-      }
-      onFilterChangeForAll={
-        role === "start"
-          ? editor.setStartFilterForAll
-          : editor.setCancelFilterForAll
-      }
-      onRemove={onRemove}
-      role={role}
-      rules={editor.rules}
-    />
-  );
-  return role === "start" ? (
-    <div className="space-y-3">
-      {events}
-      <LifecycleManualStartGroup
-        disabled={disabled}
-        onManualStartChange={editor.setManualStart}
-        rules={editor.rules}
-      />
-    </div>
-  ) : (
-    events
-  );
-}
-
-/** One Connection picker per integration a Lifecycle Event arrives through. */
-function LifecycleEventConnections({
-  editor,
-  disabled,
-}: {
-  editor: LifecycleRulesEditor;
-  disabled: boolean;
-}) {
+}: LifecycleRuleGroupProps<"connections">) {
   const { rules, catalog } = editor;
-  return uniqueIntegrationsOfEvents(catalog, [
-    ...rules.startEvents,
-    ...rules.cancelEvents,
-  ]).map((integration) => (
-    <IntegrationEventConnectionEditor
-      catalog={catalog}
-      connectionId={connectionIdForIntegration(rules, catalog, integration)}
-      disabled={disabled}
-      integrationType={integration}
-      key={integration}
-      onChange={(connectionId) =>
-        editor.setConnectionId(integration, connectionId)
+  return (
+    <ConfigGroup
+      help={
+        <p>
+          An Event from an integration reaches no run until its Connection is
+          chosen.
+        </p>
       }
-    />
-  ));
+      label="Event Connections"
+      prominent
+    >
+      <div className="space-y-3">
+        {uniqueIntegrationsOfEvents(catalog, [
+          ...rules.startEvents,
+          ...rules.cancelEvents,
+        ]).map((integration) => (
+          <IntegrationEventConnectionEditor
+            catalog={catalog}
+            connectionId={connectionIdForIntegration(
+              rules,
+              catalog,
+              integration
+            )}
+            disabled={disabled}
+            integrationType={integration}
+            key={integration}
+            onChange={(connectionId) =>
+              editor.setConnectionId(integration, connectionId)
+            }
+          />
+        ))}
+      </div>
+    </ConfigGroup>
+  );
 }

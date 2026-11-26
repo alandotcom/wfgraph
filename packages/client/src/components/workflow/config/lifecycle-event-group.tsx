@@ -33,7 +33,6 @@ import { catalogEventChoices } from "./event-choices";
 import {
   type CorrelationPathRequest,
   correlationPathRequestFor,
-  type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   readCancelFilter,
@@ -47,6 +46,11 @@ import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigGroup, RemoveGroupButton } from "./config-section";
 import { EventMultiCombobox } from "./event-combobox";
 import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
+import type { LifecycleRuleGroupProps } from "./use-lifecycle-rules-editor";
+import {
+  lifecycleFilterTargetId,
+  lifecycleRuleTargetId,
+} from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
 import {
   START_RULE_NAMES,
   trackedEntityLabel,
@@ -89,42 +93,26 @@ const FILTER_COPY = {
 } as const;
 
 /**
- * Both Event roles can filter an arrival before it changes a run.
+ * "Starts when" or "Stop a run when": the Start or Cancel Events, as `section`
+ * names, each with the payload filter that admits an arrival and, where the
+ * run tracks no Entity, the Correlation Path that relates runs. The Event
+ * picker's element id comes from `section`, and so does the first "Filter the
+ * arrivals" control's.
  */
-type LifecycleEventGroupProps = {
-  role: "start" | "cancel";
-  rules: LifecycleRules;
-  catalog: ExtensionCatalog;
-  disabled: boolean;
-  inputId: string;
-  onEventNamesChange: (eventNames: string[]) => void;
-  onCorrelationPathChange: (eventName: string, path: string) => void;
-  /** Writes one Event's filter for this role. */
-  onFilterChange: (eventName: string, model: string | undefined) => void;
-  /** Writes the same filter to every Event with this role. */
-  onFilterChangeForAll: (model: string | undefined) => void;
-  /** Clears every Event of this role, offered on the label row when given. */
-  onRemove?: (() => void) | undefined;
-  /**
-   * The element id of the first "Filter the arrivals" control, which focus
-   * moves to when a person adds a filter from "Add a rule".
-   */
-  firstFilterButtonId?: string | undefined;
-};
-
-export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
-  const {
-    role,
-    rules,
-    catalog,
-    disabled,
-    inputId,
-    onEventNamesChange,
-    onCorrelationPathChange,
-  } = props;
+export function LifecycleEventGroup({
+  editor,
+  section,
+  disabled,
+  onRemove,
+}: LifecycleRuleGroupProps<"start-events" | "cancel-events">) {
+  const role = section === "start-events" ? "start" : "cancel";
+  const { rules, catalog } = editor;
+  const { eventNames, setEvents, setFilter, setFilterForAll } =
+    editor.forRole(role);
+  const inputId = lifecycleRuleTargetId(section);
+  const firstFilterButtonId = lifecycleFilterTargetId(section);
   const copy = ROLE_COPY[role];
   const filterCopy = FILTER_COPY[role];
-  const eventNames = role === "start" ? rules.startEvents : rules.cancelEvents;
   const entityLabel = trackedEntityLabel(rules, catalog);
   const entityIdentityCopy = entityLabel
     ? copy.entityIdentity(entityLabel)
@@ -149,8 +137,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
   /**
    * The filter storage for this Event role, read once.
    */
-  const readFilter =
-    props.role === "start" ? readStartFilter : readCancelFilter;
+  const readFilter = role === "start" ? readStartFilter : readCancelFilter;
 
   /**
    * Whether the Events agree on one rule.
@@ -171,10 +158,10 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
    */
   const collapsed =
     eventNames.length > 1 && layout.collapsed && !splitRequested
-      ? { model: layout.model, write: props.onFilterChangeForAll }
+      ? { model: layout.model, write: setFilterForAll }
       : undefined;
 
-  const perEventFilter = collapsed ? undefined : props.onFilterChange;
+  const perEventFilter = collapsed ? undefined : setFilter;
 
   /** Whether re-collapsing would only change the layout, losing no filter. */
   const canRecollapse =
@@ -188,11 +175,11 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
       label={copy.label}
       prominent
       trailing={
-        props.onRemove ? (
+        onRemove ? (
           <RemoveGroupButton
             disabled={disabled}
             label={copy.label}
-            onRemove={props.onRemove}
+            onRemove={onRemove}
           />
         ) : null
       }
@@ -206,7 +193,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
             choices={catalogEventChoices(catalog)}
             disabled={disabled}
             inputId={inputId}
-            onValueChange={onEventNamesChange}
+            onValueChange={setEvents}
             placeholder={copy.pickerPlaceholder}
             value={eventNames}
           />
@@ -221,17 +208,14 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
                 ? {
                     model: readFilter(rules, eventName),
                     onChange: perEventFilter,
-                    seedButtonId:
-                      index === 0 ? props.firstFilterButtonId : undefined,
+                    seedButtonId: index === 0 ? firstFilterButtonId : undefined,
                   }
                 : undefined
             }
             key={eventName}
-            onCommitPath={onCorrelationPathChange}
+            onCommitPath={editor.setCorrelationPath}
             onRemove={() =>
-              onEventNamesChange(
-                eventNames.filter((entry) => entry !== eventName)
-              )
+              setEvents(eventNames.filter((entry) => entry !== eventName))
             }
             role={role}
             request={correlationPathRequestFor({
@@ -250,7 +234,7 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
               model={collapsed.model}
               onChange={collapsed.write}
               role={role}
-              seedButtonId={props.firstFilterButtonId}
+              seedButtonId={firstFilterButtonId}
             />
             <FilterLayoutLink
               disabled={disabled}

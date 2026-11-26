@@ -35,25 +35,52 @@ import {
   rowOfSchedule,
   type ScheduleRow,
 } from "./lifecycle-schedule";
+import type { LifecycleSectionId } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
 /** The Lifecycle Rules one node holds, and every write the Lifecycle editors make. */
 export type LifecycleRulesEditor = {
   rules: LifecycleRules;
   catalog: ExtensionCatalog;
-  setStartEvents: (eventNames: string[]) => void;
-  setCancelEvents: (eventNames: string[]) => void;
+  /** The Events of one role and the writes to them and their filters. */
+  forRole: (role: LifecycleEventRole) => LifecycleRoleEditor;
   setConcurrency: (value: Concurrency) => void;
   setManualStart: (allowed: boolean) => void;
   setConnectionId: (integration: string, connectionId: string) => void;
-  setStartFilter: (eventName: string, model: string | undefined) => void;
-  setStartFilterForAll: (model: string | undefined) => void;
-  setCancelFilter: (eventName: string, model: string | undefined) => void;
-  setCancelFilterForAll: (model: string | undefined) => void;
   setCorrelationPath: (eventName: string, path: string) => void;
   /** Writes rules an editor built whole, such as the Entity group's. */
   setRules: (next: LifecycleRules) => void;
   schedules: ScheduleEditor;
+};
+
+/** Whether an Event starts a run or stops one in progress. */
+export type LifecycleEventRole = "start" | "cancel";
+
+/**
+ * The Start or Cancel Events and their filters. `setFilter` writes one
+ * Event's filter, and `setFilterForAll` writes the same filter to every Event
+ * of the role.
+ */
+export type LifecycleRoleEditor = {
+  eventNames: readonly string[];
+  setEvents: (eventNames: string[]) => void;
+  setFilter: (eventName: string, model: string | undefined) => void;
+  setFilterForAll: (model: string | undefined) => void;
+};
+
+/**
+ * What every rule group of the Start's form receives: the editor it reads and
+ * writes through, the section it is, which also names its first control's
+ * element id, whether it is read-only, and, for an optional rule, the Remove
+ * its label row offers.
+ */
+export type LifecycleRuleGroupProps<
+  Section extends LifecycleSectionId = LifecycleSectionId,
+> = {
+  editor: LifecycleRulesEditor;
+  section: Section;
+  disabled: boolean;
+  onRemove?: (() => void) | undefined;
 };
 
 /**
@@ -167,29 +194,45 @@ export function useLifecycleRulesEditor(input: {
   };
   const schedules = useScheduleEditor({ rules, write });
 
+  // Adding an Event to a group that already shares one filter carries the
+  // filter onto it. `prune` runs on every write, so it cannot tell an Event
+  // that never had a filter from one the builder cleared on purpose.
+  const roles: Record<LifecycleEventRole, LifecycleRoleEditor> = {
+    start: {
+      eventNames: rules.startEvents,
+      setEvents: (eventNames) =>
+        write(
+          carryStartFilterToAddedEvents({
+            previous: rules,
+            next: prune({ ...rules, startEvents: eventNames }, catalog),
+            catalog,
+          })
+        ),
+      setFilter: (eventName, model) =>
+        write(setStartFilterForEvent({ rules, eventName, model })),
+      setFilterForAll: (model) => write(setStartFilterForAll(rules, model)),
+    },
+    cancel: {
+      eventNames: rules.cancelEvents,
+      setEvents: (eventNames) =>
+        write(
+          carryCancelFilterToAddedEvents({
+            previous: rules,
+            next: prune({ ...rules, cancelEvents: eventNames }, catalog),
+            catalog,
+          })
+        ),
+      setFilter: (eventName, model) =>
+        write(setCancelFilterForEvent({ rules, eventName, model })),
+      setFilterForAll: (model) => write(setCancelFilterForAll(rules, model)),
+    },
+  };
+
   return {
     rules,
     catalog,
     schedules,
-    // Adding an Event to a group that already shares one filter carries the
-    // filter onto it. `prune` runs on every write, so it cannot tell an Event
-    // that never had a filter from one the builder cleared on purpose.
-    setStartEvents: (eventNames) =>
-      write(
-        carryStartFilterToAddedEvents({
-          previous: rules,
-          next: prune({ ...rules, startEvents: eventNames }, catalog),
-          catalog,
-        })
-      ),
-    setCancelEvents: (eventNames) =>
-      write(
-        carryCancelFilterToAddedEvents({
-          previous: rules,
-          next: prune({ ...rules, cancelEvents: eventNames }, catalog),
-          catalog,
-        })
-      ),
+    forRole: (role) => roles[role],
     setConcurrency: (value) =>
       write(prune({ ...rules, concurrency: value }, catalog)),
     setManualStart: (allowed) => write({ ...rules, allowManualStart: allowed }),
@@ -202,13 +245,6 @@ export function useLifecycleRulesEditor(input: {
           connectionId,
         })
       ),
-    setStartFilter: (eventName, model) =>
-      write(setStartFilterForEvent({ rules, eventName, model })),
-    setStartFilterForAll: (model) => write(setStartFilterForAll(rules, model)),
-    setCancelFilter: (eventName, model) =>
-      write(setCancelFilterForEvent({ rules, eventName, model })),
-    setCancelFilterForAll: (model) =>
-      write(setCancelFilterForAll(rules, model)),
     setCorrelationPath: (eventName, path) => {
       const trimmed = path.trim();
       const next = { ...rules.correlationPaths };

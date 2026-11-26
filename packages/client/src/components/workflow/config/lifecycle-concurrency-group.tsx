@@ -1,5 +1,4 @@
 import { useId } from "react";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Checkbox } from "#src/components/ui/checkbox";
 import { Label } from "#src/components/ui/label";
 import {
@@ -11,16 +10,18 @@ import {
 } from "#src/components/ui/select";
 import { whenChosen } from "#src/lib/select-choice";
 import { overlappingRunsSentence } from "@wfgraph/shared/graph/workflow-summary";
-import {
-  type Concurrency,
-  type LifecycleRules,
-} from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { lifecycleRuleTargetId } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
+import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { ConfigGroup, ConfigHelp, RemoveGroupButton } from "./config-section";
 import {
   CONCURRENCY_OPTIONS,
   describeRelatedRuns,
   START_RULE_NAMES,
 } from "./lifecycle-policy-summary";
+import type {
+  LifecycleRuleGroupProps,
+  LifecycleRulesEditor,
+} from "./use-lifecycle-rules-editor";
 
 /**
  * "If a run is already in progress": what a newer start does to related runs
@@ -30,20 +31,12 @@ import {
  * arrival starting its own run.
  */
 export function LifecycleConcurrencyGroup({
-  rules,
+  editor,
+  section,
   disabled,
-  onConcurrencyChange,
   onRemove,
-  triggerId,
-}: {
-  rules: LifecycleRules;
-  disabled: boolean;
-  onConcurrencyChange: (value: Concurrency) => void;
-  onRemove?: (() => void) | undefined;
-  /** The element id of the dropdown, which focus moves to when the rule is added. */
-  triggerId?: string | undefined;
-}) {
-  const catalog = useExtensionCatalog();
+}: LifecycleRuleGroupProps<"overlapping-runs">) {
+  const { rules, catalog } = editor;
   const relatedRunsDescription = describeRelatedRuns(rules, catalog);
   // What the chosen rule does to this workflow's runs, in its own nouns.
   const consequence = overlappingRunsSentence(rules, catalog);
@@ -80,7 +73,7 @@ export function LifecycleConcurrencyGroup({
         onValueChange={whenChosen((value) => {
           const chosen = readConcurrency(value);
           if (chosen) {
-            onConcurrencyChange(chosen);
+            editor.setConcurrency(chosen);
           }
         })}
         value={rules.concurrency}
@@ -88,7 +81,7 @@ export function LifecycleConcurrencyGroup({
         <SelectTrigger
           aria-label={START_RULE_NAMES.overlapping}
           className="w-full"
-          id={triggerId}
+          id={lifecycleRuleTargetId(section)}
         >
           <SelectValue />
         </SelectTrigger>
@@ -109,14 +102,13 @@ export function LifecycleConcurrencyGroup({
  * the API. It sits with the Start Events, since both answer what starts a run.
  */
 export function LifecycleManualStartGroup({
-  rules,
+  editor,
   disabled,
-  onManualStartChange,
 }: {
-  rules: LifecycleRules;
+  editor: LifecycleRulesEditor;
   disabled: boolean;
-  onManualStartChange: (allowed: boolean) => void;
 }) {
+  const { rules } = editor;
   const manualStartId = useId();
   return (
     <div className="flex min-h-6 items-center gap-2">
@@ -124,7 +116,7 @@ export function LifecycleManualStartGroup({
         checked={rules.allowManualStart === true}
         disabled={disabled}
         id={manualStartId}
-        onCheckedChange={onManualStartChange}
+        onCheckedChange={editor.setManualStart}
       />
       <Label className="text-sm" htmlFor={manualStartId}>
         {MANUAL_START_LABEL}

@@ -23,9 +23,11 @@ import { lowerFirst } from "es-toolkit/string";
 import { toast } from "sonner";
 import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
 import { whenChosen } from "#src/lib/select-choice";
+import { lifecycleRuleTargetId } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigGroup, ConfigHelp, RemoveGroupButton } from "./config-section";
 import { FieldIssueMessages, lifecycleCheckFieldKey } from "./field-issues";
+import type { LifecycleRuleGroupProps } from "./use-lifecycle-rules-editor";
 import {
   START_RULE_NAMES,
   trackedEntityLabel,
@@ -273,21 +275,12 @@ function LifecycleEligibilityCheckpoints({
  * tracking and drops the eligibility rule.
  */
 export function LifecycleEntityEligibilityGroup({
-  rules,
-  catalog,
+  editor,
+  section,
   disabled,
-  onChange,
   onRemove,
-  selectId,
-}: {
-  rules: LifecycleRules;
-  catalog: ExtensionCatalog;
-  disabled: boolean;
-  onChange: (rules: LifecycleRules) => void;
-  onRemove?: (() => void) | undefined;
-  /** The element id of the Entity picker, which focus moves to when the rule is added. */
-  selectId?: string | undefined;
-}) {
+}: LifecycleRuleGroupProps<"entity-eligibility">) {
+  const { rules, catalog, setRules: onChange } = editor;
   const tracked = rules.trackedEntity;
   const eligibility = rules.entityEligibility;
   const entity = tracked ? findEntity(catalog, tracked.type) : undefined;
@@ -388,7 +381,7 @@ export function LifecycleEntityEligibilityGroup({
         }
         aria-label={START_RULE_NAMES.entity}
         className="w-full"
-        id={selectId}
+        id={lifecycleRuleTargetId(section)}
       >
         <SelectValue placeholder={tracked ? entityLabel : "Choose an Entity"} />
       </SelectTrigger>
