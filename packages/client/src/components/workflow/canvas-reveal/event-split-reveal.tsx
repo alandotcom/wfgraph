@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import { NodeDetailsFields } from "#src/components/workflow/node-properties-form";
-import { NodeControls } from "#src/components/workflow/step-controls";
 import { can } from "#src/lib/authorization";
 import {
   EVENT_SPLIT_HEADING,
@@ -212,12 +211,12 @@ function OutletsSection({ nodeId }: { nodeId: string }) {
 }
 
 /**
- * Browse for an Event Split: its label and description, where its outlets come
- * from with the action that opens that source, every outlet with its Event
- * identity and destination, its issues, and its node controls. Browse is its
- * only level, because its outlets follow the graph above it.
+ * Browse for an Event Split: where its outlets come from with the action that
+ * opens that source, every outlet with its Event identity and destination,
+ * its issues, then its Label and Notes after a divider. Browse is its only
+ * level, because its outlets follow the graph above it.
  */
-export function EventSplitBrowse({ subject, frame }: RevealBodyProps) {
+export function EventSplitBrowse({ subject }: RevealBodyProps) {
   const { nodeId } = subject;
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
@@ -227,22 +226,22 @@ export function EventSplitBrowse({ subject, frame }: RevealBodyProps) {
   if (!node) {
     return null;
   }
+  const nodeIssues = issues.filter((issue) => issue.nodeId === node.id);
 
   return (
     <div className="pb-4">
-      <Section title="Details">
-        <NodeDetailsFields disabled={isGenerating || !canUpdate} node={node} />
-      </Section>
-
       <OutletsSection nodeId={node.id} />
 
-      <Section title="Validation">
-        <NodeIssueList
-          issues={issues.filter((issue) => issue.nodeId === node.id)}
-        />
-      </Section>
+      {/* An Event Split's issues are about its outlets, so they follow them. */}
+      {nodeIssues.length > 0 ? (
+        <div className="px-4 pb-3">
+          <NodeIssueList issues={nodeIssues} />
+        </div>
+      ) : null}
 
-      <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
+      <div className="space-y-4 border-t px-4 pt-4">
+        <NodeDetailsFields disabled={isGenerating || !canUpdate} node={node} />
+      </div>
     </div>
   );
 }

@@ -274,15 +274,12 @@ export function ConditionSummarySheet({
 
 /**
  * The inspector of a Condition: one sentence saying when it takes True, the
- * rules edited in place beneath it, both branch destinations, every
- * available input, its label and description, its issues, and its node
- * controls. Every edit writes to the graph store.
+ * rules edited in place beneath it with the Condition's issues under them,
+ * both branch destinations, every available input, then its Label and Notes
+ * after a divider. Every edit writes to the graph store. Disabling and
+ * deleting it are commands of the details header's menu and the context menu.
  */
-export function ConditionEditor({
-  subject,
-  frame,
-  focusField,
-}: RevealBodyProps) {
+export function ConditionEditor({ subject }: RevealBodyProps) {
   const { nodeId } = subject;
   const { node, fields, branches, issues, disabled } =
     useConditionContext(nodeId);
@@ -299,7 +296,7 @@ export function ConditionEditor({
 
       <section
         aria-label="Rule builder"
-        className="border-t px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="space-y-2 border-t px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         id={CONDITION_RULES_TARGET_ID}
         tabIndex={-1}
       >
@@ -313,6 +310,9 @@ export function ConditionEditor({
           nodeId={nodeId}
           onUpdateConfig={updateConfig}
         />
+        {/* Every issue of a Condition is about its rules, so each shows
+            beneath the rule builder. */}
+        {issues.length > 0 ? <NodeIssueList issues={issues} /> : null}
       </section>
 
       <Section title="Branches">
@@ -338,15 +338,9 @@ export function ConditionEditor({
         )}
       </Section>
 
-      <Section title="Details">
+      <div className="space-y-4 border-t px-4 pt-4">
         <NodeDetailsFields disabled={disabled} node={node} />
-      </Section>
-
-      <Section title="Validation">
-        <NodeIssueList issues={issues} onSelect={focusIssueField(focusField)} />
-      </Section>
-
-      <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { type ReactNode, useState } from "react";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
+import { Separator } from "#src/components/ui/separator";
 import { can } from "#src/lib/authorization";
 import {
   newlyCreatedNodeIdAtom,
@@ -9,6 +10,7 @@ import {
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
@@ -21,14 +23,14 @@ import {
   ActionChoiceField,
 } from "./config/action-choice-field";
 import { ActionLinks } from "./config/action-links";
-import { FieldIssuesProvider } from "./config/field-issues";
+import { FieldIssuesProvider, issueFieldKey } from "./config/field-issues";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
-import type { NodeConfigFrame } from "./node-config-panel";
-import { NodeControls } from "./step-controls";
+import { NodeIssueList } from "./canvas-reveal/reveal-sections";
 
 /**
- * The Label and Description inputs of one node, with the element ids `label`
- * and `description`. Each keystroke writes to the graph store.
+ * The Label and Notes inputs of one node, with the element ids `label` and
+ * `description`; Notes edits the node's stored description. Each keystroke
+ * writes to the graph store.
  */
 export function NodeDetailsFields({
   node,
@@ -53,7 +55,7 @@ export function NodeDetailsFields({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
+        <Label htmlFor="description">Notes</Label>
         <Input
           disabled={disabled}
           id="description"
@@ -63,7 +65,7 @@ export function NodeDetailsFields({
               data: { description: event.target.value },
             })
           }
-          placeholder="Optional description"
+          placeholder="Optional"
           value={node.data.description || ""}
         />
       </div>
@@ -72,21 +74,32 @@ export function NodeDetailsFields({
 }
 
 /**
- * The complete configuration form of one step or Group: its label and
- * description, its node-specific configuration,
- * and its enable, ungroup, and delete controls. Each validation issue that
- * names a field shows beneath that field. Every value writes straight to
- * the graph store, so the form can unmount and mount again without losing an
- * edit or skipping autosave.
+ * The issues of the node `nodeId` that name no field, which no field can show
+ * beneath itself, or nothing when there are none.
+ */
+export function UnplacedNodeIssues({ nodeId }: { nodeId: string }) {
+  const issues = useAtomValue(workflowIssuesAtom);
+  const unplaced = issues.filter(
+    (issue) => issue.nodeId === nodeId && issueFieldKey(issue) === null
+  );
+  return unplaced.length > 0 ? <NodeIssueList issues={unplaced} /> : null;
+}
+
+/**
+ * The complete form of one step: what it does ("Does"), the settings that
+ * action takes, each with the issues that name it beneath it, the action's
+ * links, then its Label and Notes after a divider, and last any issue that
+ * names no field. It holds settings only: disabling, duplicating and deleting
+ * the step are commands of the details header's menu and the context menu.
+ * Every value writes straight to the graph store, so the form can unmount and
+ * mount again without losing an edit or skipping autosave.
  */
 export function NodePropertiesForm({
   nodeId,
-  frame,
   children,
 }: {
   nodeId: string;
-  frame: NodeConfigFrame;
-  /** Sections a Reveal kind adds, shown after the configuration and before the enable, ungroup, and delete controls. */
+  /** Sections a Reveal kind adds, shown after the settings and before the divider. */
   children?: ReactNode | undefined;
 }) {
   const { updateConfig: handleUpdateConfig } = useNodeConfigWriter(nodeId);
@@ -172,11 +185,6 @@ export function NodePropertiesForm({
   return (
     <FieldIssuesProvider nodeId={selectedNode.id}>
       <div className="space-y-4 p-4">
-        <NodeDetailsFields
-          disabled={isGenerating || !canUpdate}
-          node={selectedNode}
-        />
-
         {isStep ? (
           <ActionChoiceField
             actionId={selectedActionId}
@@ -188,15 +196,6 @@ export function NodePropertiesForm({
             }
             open={false}
           />
-        ) : null}
-
-        {selectedNode.data.type === "group" ? (
-          <p className="text-muted-foreground text-sm">
-            Steps in a Group run the same way they would outside it. A Group is
-            entered from one outlet outside it, and that outlet can lead to
-            several steps. Inside, steps can branch, join, and end. The Group
-            continues outside from at most one outlet.
-          </p>
         ) : null}
 
         {selectedNode.data.type === "action" &&
@@ -216,7 +215,14 @@ export function NodePropertiesForm({
 
         {children}
 
-        <NodeControls className="pt-4" frame={frame} node={selectedNode} />
+        <Separator />
+
+        <NodeDetailsFields
+          disabled={isGenerating || !canUpdate}
+          node={selectedNode}
+        />
+
+        <UnplacedNodeIssues nodeId={selectedNode.id} />
       </div>
     </FieldIssuesProvider>
   );

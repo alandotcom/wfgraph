@@ -144,14 +144,17 @@ describe("ActionConfigRenderer", () => {
       fields: [{ key: "emailBody", label: "Body", type: "template-textarea" }],
     });
 
-    const hint = screen.getByText(
-      "Type @ to insert a value from the Event or an earlier step."
-    );
+    // The field's own placeholder says it, so no help line repeats it.
+    expect(
+      screen.getAllByText(
+        "Type @ to insert a value from the Event or an earlier step."
+      )
+    ).toHaveLength(1);
     expect(
       screen
         .getByRole("textbox", { name: "Body" })
         .getAttribute("aria-describedby")
-    ).toBe(hint.id);
+    ).toBeNull();
   });
 
   it("draws the Connection's stored value in a template field", () => {

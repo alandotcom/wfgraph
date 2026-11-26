@@ -298,6 +298,16 @@ describe("mobile Reveal for an ordinary step", () => {
   it("edits through the inspector and autosaves, and offers no delete", async () => {
     const { view, store, select, update } = await renderMobile();
     await select("wait");
+    // The summary sheet keeps the enable toggle, which states its consequence:
+    // a run stops at a disabled step.
+    expect(
+      view
+        .getByRole("button", { name: "Disable step" })
+        .getAttribute("aria-describedby")
+    ).toBeTruthy();
+    expect(
+      view.getByText("Disabling ends the path at this step.")
+    ).toBeTruthy();
     fireEvent.click(view.getByRole("button", { name: "Edit step" }));
 
     fireEvent.change(view.getByLabelText("Label"), {
@@ -308,16 +318,6 @@ describe("mobile Reveal for an ordinary step", () => {
     ).toBe("Wait a week");
     expect(store.get(hasUnsavedChangesAtom)).toBe(true);
     await waitFor(() => expect(update).toHaveBeenCalled());
-
-    // The control states its consequence: a run stops at a disabled step.
-    expect(
-      view
-        .getByRole("button", { name: "Disable step" })
-        .getAttribute("aria-describedby")
-    ).toBeTruthy();
-    expect(
-      view.getByText("Disabling ends the path at this step.")
-    ).toBeTruthy();
     expect(view.queryByRole("button", { name: "Delete" })).toBeNull();
   });
 });

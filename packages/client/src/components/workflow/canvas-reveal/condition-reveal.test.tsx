@@ -164,16 +164,6 @@ function storedRules(model: ConditionModel): Record<string, unknown> {
   };
 }
 
-/** A Group frame the Condition can sit inside, beside a second member. */
-const GROUP_NODE: WorkflowNode = {
-  id: "group_1",
-  type: "group",
-  position: { x: 0, y: 0 },
-  width: 400,
-  height: 300,
-  data: { label: "Eligibility", type: "group" },
-};
-
 /**
  * Opens the workflow issues overlay through the same hook the toolbar's issues
  * chip uses, so a test can drive an issue's own "Edit" button rather than call
@@ -192,8 +182,6 @@ async function renderCondition(input: {
   config?: Record<string, unknown>;
   edges?: WorkflowEdge[];
   upstream?: boolean;
-  /** Places the Condition inside a Group frame. */
-  grouped?: boolean;
   /**
    * Also renders the phone's summary sheet body, whose `focusField` is this
    * function.
@@ -206,23 +194,7 @@ async function renderCondition(input: {
   store.set(workflowApiAtom, { update } as never);
   const condition = conditionNode(input.config);
   store.set(loadWorkflowGraphAtom, {
-    nodes: input.grouped
-      ? [
-          GROUP_NODE,
-          ...BASE_NODES,
-          {
-            ...createNode({
-              id: "lookup",
-              type: "action",
-              label: "Look up patient",
-              config: { actionType: BUILT_IN_ACTION_IDS.wait },
-            }),
-            parentId: GROUP_NODE.id,
-            extent: "parent",
-          },
-          { ...condition, parentId: GROUP_NODE.id, extent: "parent" },
-        ]
-      : [...BASE_NODES, condition],
+    nodes: [...BASE_NODES, condition],
     edges: [
       ...(input.upstream === false ? [] : [startedEdge("condition")]),
       ...(input.edges ?? []),
@@ -432,8 +404,8 @@ describe("Condition inspector", () => {
     );
   });
 
-  it("marks unreadable rules and puts focus in the rule builder from the issue", async () => {
-    const { view, store, sentence, level } = await renderCondition({
+  it("marks unreadable rules and shows the issue beneath the rule builder", async () => {
+    const { view, store, sentence } = await renderCondition({
       config: { conditionModel: "{not json", condition: "" },
     });
     await act(async () => {
@@ -452,17 +424,13 @@ describe("Condition inspector", () => {
 
     expect(sentence()).toContain("The rules can't be read.");
     expect(view.getByText("1 issue")).toBeTruthy();
-
-    fireEvent.click(
-      view.getByRole("button", { name: "Condition is required." })
-    );
-    expect(level()).toBe("browse");
-    await waitFor(() => expect(document.activeElement?.id).toBe("condition"));
-    expect(view.getByText("Condition model must be valid JSON")).toBeTruthy();
+    const builder = view.getByRole("region", { name: "Rule builder" });
+    expect(builder.textContent).toContain("Condition is required.");
+    expect(builder.textContent).toContain("Condition model must be valid JSON");
   });
 
-  it("puts focus in the rule builder from an issue naming the stored model", async () => {
-    const { view, store, level } = await renderCondition({});
+  it("shows an issue naming the stored model beneath the rule builder", async () => {
+    const { view, store } = await renderCondition({});
     await act(async () => {
       store.set(workflowIssuesAtom, [
         {
@@ -479,16 +447,15 @@ describe("Condition inspector", () => {
       ]);
     });
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Condition references a missing step." })
-    );
-    expect(level()).toBe("browse");
-    await waitFor(() => expect(document.activeElement?.id).toBe("condition"));
+    expect(
+      view.getByRole("region", { name: "Rule builder" }).textContent
+    ).toContain("Condition references a missing step.");
+    expect(view.queryByRole("heading", { name: "Validation" })).toBeNull();
   });
 
-  // The workflow issues overlay's own "Edit" button reaches the rule builder
-  // through the same `revealFocusTarget` mapping Reveal's own issue list uses
-  // above, rather than focusing the raw `conditionModel` key.
+  // The workflow issues overlay's "Edit" button reaches the rule builder
+  // through the `revealFocusTarget` mapping, rather than focusing the raw
+  // `conditionModel` key.
   it("puts focus in the rule builder from a conditionModel issue in the workflow issues overlay", async () => {
     const { view, store, level } = await renderCondition({});
     await act(async () => {
@@ -515,18 +482,6 @@ describe("Condition inspector", () => {
     expect(level()).toBe("browse");
     await waitFor(() => expect(document.activeElement?.id).toBe("condition"));
   });
-
-  it("ungroups a grouped Condition", async () => {
-    const { view, store } = await renderCondition({ grouped: true });
-
-    fireEvent.click(view.getByRole("button", { name: "Ungroup" }));
-
-    const nodes = store.get(nodesAtom);
-    expect(nodes.find((node) => node.id === "group_1")).toBeUndefined();
-    expect(
-      nodes.find((node) => node.id === "condition")?.parentId
-    ).toBeUndefined();
-  });
 });
 
 describe("Condition editor", () => {
@@ -536,7 +491,7 @@ describe("Condition editor", () => {
     groups: [{ id: "g1", logic: "and", conditions: [rule("status", "r1")] }],
   };
 
-  it("holds the rule builder, inputs, branches, issues, and delete", async () => {
+  it("holds the rule builder, inputs and branches, and no Validation or Delete", async () => {
     const { view, section } = await renderCondition({
       config: storedRules(singleRule),
       edges: [TRUE_EDGE],
@@ -562,8 +517,9 @@ describe("Condition editor", () => {
     expect(section("Branches").textContent).toContain(
       "Continues to Send reminder"
     );
-    expect(section("Validation").textContent).toContain("No issues.");
-    expect(view.getByRole("button", { name: /Delete/ })).toBeTruthy();
+    expect(view.queryByRole("heading", { name: "Validation" })).toBeNull();
+    expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
+    expect(view.queryByRole("button", { name: /Disable/ })).toBeNull();
   });
 
   it("keeps each rule on one line with its remove button", async () => {
@@ -590,7 +546,7 @@ describe("Condition editor", () => {
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
 
     fireEvent.click(view.getByRole("button", { name: "Add condition" }));
-    fireEvent.change(view.getByLabelText("Description"), {
+    fireEvent.change(view.getByLabelText("Notes"), {
       target: { value: "Only active patients" },
     });
     const scroller = () =>

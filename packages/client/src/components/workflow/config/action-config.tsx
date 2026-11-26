@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { ChevronRight, HelpCircle } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import {
   Collapsible,
@@ -21,12 +21,6 @@ import {
 import { whenChosen } from "#src/lib/select-choice";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import { TimezoneSelect } from "#src/components/ui/timezone-select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "#src/components/ui/tooltip";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   EVENT_SPLIT_HEADING,
@@ -421,15 +415,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   };
 
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <div className="flex items-center gap-1">
-        <p className="font-medium text-sm">Time-based wait</p>
-        <ConfigHelp label="Time-based waits">
-          Choose how this step gets its scheduled time. Changing the Time source
-          clears settings used only by the previous source.
-        </ConfigHelp>
-      </div>
-
+    <div className="space-y-4">
       {delayTimingMode === "duration" ? (
         <WaitDurationField
           disabled={disabled}
@@ -482,8 +468,14 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             htmlFor="waitDelayTimingMode"
             label={WAIT_FIELD_LABELS.waitDelayTimingMode}
           >
-            Choose a duration from when the run reaches this step, or a specific
-            date and time.
+            <p>
+              Choose a duration from when the run reaches this step, or a
+              specific date and time.
+            </p>
+            <p>
+              Changing the Time source clears settings used only by the previous
+              source.
+            </p>
           </WaitFieldLabel>
           <Select
             disabled={disabled}
@@ -645,21 +637,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
     readConfigStringOr(config, "waitTimeoutBehavior", "continue") !==
       "continue";
   return (
-    <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-      <div className="flex items-center gap-1">
-        <p className="font-medium text-sm">Wait for Event</p>
-        <ConfigHelp label="Waiting for Events">
-          <p>
-            The run resumes when a selected Event arrives. With no match, any
-            arrival of that Event resumes the run. Add a match to limit which
-            Event data qualifies.
-          </p>
-          <p>
-            A timeout is required so the run cannot wait forever. When time runs
-            out, continue to the next step or end this branch.
-          </p>
-        </ConfigHelp>
-      </div>
+    <div className="space-y-4">
       <WaitEventSelect
         config={config}
         disabled={disabled}
@@ -752,7 +730,22 @@ function WaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="waitMode">{WAIT_FIELD_LABELS.waitMode}</Label>
+        <div className="flex min-h-6 items-center gap-1">
+          <Label htmlFor="waitMode">{WAIT_FIELD_LABELS.waitMode}</Label>
+          {waitMode === "event" ? (
+            <ConfigHelp label={WAIT_FIELD_LABELS.waitMode}>
+              <p>
+                The run resumes when a selected Event arrives. With no match,
+                any arrival of that Event resumes the run.
+              </p>
+              <p>Add a match to limit which Event data qualifies.</p>
+              <p>
+                A timeout is required so the run cannot wait forever. When time
+                runs out, continue to the next step or end this branch.
+              </p>
+            </ConfigHelp>
+          ) : null}
+        </div>
         <Select
           disabled={disabled}
           items={WAIT_MODE_OPTIONS}
@@ -858,26 +851,11 @@ export function ActionConfig({
     <>
       {integrationType && canUpdate && (
         <div className="space-y-2">
-          <div className="ml-1 flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              <Label>Connection</Label>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span className="inline-flex">
-                        <HelpCircle className="size-3.5 text-muted-foreground" />
-                      </span>
-                    }
-                  >
-                    <span className="sr-only">Connection help</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>API key or OAuth credentials for this service</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+          <div className="ml-1 flex min-h-6 items-center gap-1">
+            <Label>Connection</Label>
+            <ConfigHelp label="Connection">
+              <p>API key or OAuth credentials for this service.</p>
+            </ConfigHelp>
           </div>
           <IntegrationSelector
             disabled={disabled}

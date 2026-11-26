@@ -477,8 +477,8 @@ describe("details panel presentation states", () => {
       ]);
     });
     expect(region.textContent).toContain("1 issue");
-    // The Validation list names the issue at once. The field waits until it
-    // has been focused and left empty before it says so beneath itself.
+    // The header counts the issue at once. The field waits until it has been
+    // focused and left empty before it says so beneath itself.
     const to = view.getByRole("textbox", { name: "To" });
     const field = to.closest("div.flex-col");
     expect(field?.querySelector('[data-slot="field-issues"]')).toBeNull();
@@ -487,7 +487,7 @@ describe("details panel presentation states", () => {
     expect(
       field?.querySelector('[data-slot="field-issues"]')?.textContent
     ).toBe("To is required.");
-    expect(view.getByRole("button", { name: "To is required." })).toBeTruthy();
+    expect(view.queryByRole("heading", { name: "Validation" })).toBeNull();
   });
 
   it("names a reference by its source step's current name in the Settings summary", async () => {
@@ -553,7 +553,7 @@ describe("details panel editing", () => {
     fireEvent.change(view.getByLabelText("Label"), {
       target: { value: "Send confirmation" },
     });
-    fireEvent.change(view.getByLabelText("Description"), {
+    fireEvent.change(view.getByLabelText("Notes"), {
       target: { value: "The day before" },
     });
     expect((view.getByLabelText("Label") as HTMLInputElement).value).toBe(
@@ -605,28 +605,6 @@ describe("details panel editing", () => {
     act(() => store.set(undoAtom));
     expect(labelOf()).toBe("Send reminder");
     expect(store.get(historyAtom)).toEqual([]);
-  });
-
-  it("puts focus in the field an issue names", async () => {
-    const { view, store, select, level } = await renderReveal();
-    await select("send");
-    await act(async () => {
-      store.set(workflowIssuesAtom, [
-        {
-          kind: "missing_required_field",
-          severity: "blocking",
-          nodeId: "send",
-          nodeLabel: "Send reminder",
-          fieldKey: "to",
-          fieldLabel: "To",
-          message: "To is required.",
-        },
-      ]);
-    });
-
-    fireEvent.click(view.getByRole("button", { name: "To is required." }));
-    expect(level()).toBe("browse");
-    await waitFor(() => expect(document.activeElement?.id).toBe("to"));
   });
 
   it("never lays out, moves, dirties, or records history while revealing", async () => {
@@ -997,7 +975,7 @@ describe("details panel subjects and focus return", () => {
   });
 
   it("keeps the scroll of a field an issue focused over the stored scroll", async () => {
-    const { view, store, select, aside, level } = await renderReveal();
+    const { store, select, aside, level } = await renderReveal();
     await select("send");
     await act(async () => {
       store.set(workflowIssuesAtom, [
@@ -1022,7 +1000,10 @@ describe("details panel subjects and focus return", () => {
       scrollIntoView
     );
 
-    fireEvent.click(view.getByRole("button", { name: "To is required." }));
+    // What an issue's Edit in the issues list asks of the column.
+    await act(async () => {
+      store.set(revealFieldRequestAtom, { nodeId: "send", targetId: "to" });
+    });
     expect(level()).toBe("browse");
     await waitFor(() => expect(document.activeElement?.id).toBe("to"));
     // Two macrotasks: the scroll restore after paint, then anything later.

@@ -407,22 +407,26 @@ the Inspector at once. A press on a step selects it only when it ends as a
 click. Dragging a step never selects it or moves the camera, and dragging a
 step that is not selected clears the selection. The header offers **Back** only
 where a jump reached the object, such as the Lifecycle node opened from an
-Event Split. No header control changes a level. A step's editor holds an
-editable label and
-description, what it does and its Connection, and every setting as its field.
-What it does is one field, **Does**, that names the action with its category,
+Event Split. No header control changes a level. A step's editor is one form
+that holds settings only: first what it does, then its Connection and every
+setting as its field, each under one label, and after a divider its editable
+**Label** and **Notes**, which is the step's description. Disabling,
+duplicating and deleting the step are commands of the details header's menu and
+the context menu. A field's help sits behind an info icon on its label when it
+runs longer than one short line. What it does is one field, **Does**, that names the action with its category,
 such as "Appointments · Send Patient Message", or the action alone for a
 built-in step such as Wait. Pressing it opens, in place of the form, the same
 searchable list grouped by category that adding a step uses, with focus in its
 search; choosing an action closes it, and Escape closes it with focus back on
 the field.
-Each issue shows beneath the field it names, and the Validation list repeats
-every issue, where choosing one puts focus in its field. An empty required
+Each issue shows beneath the field it names, and an issue that names no field
+is listed at the end of the form; there is no Validation list. An empty required
 field waits: it says "is required" beneath itself once it has been focused and
 left empty, or once a Run draft or Publish was refused for it, so a step just
 added shows no red text before anyone types. The issue counts from the start,
-in the Validation list, the outline's issue mark and the issues list. A template field's
-help line says that typing @ inserts a value from the Event or an earlier step.
+in the header's status, the outline's issue mark and the issues list. A template
+field says that typing @ inserts a value from the Event or an earlier step, in
+its placeholder or, when the field has a placeholder of its own, in its help.
 Edits write to the draft as they are made, and autosave carries on. Typing in
 one field is one undo step until the field loses focus or the typing pauses for
 a second, the way a text editor groups it. A step with no
@@ -447,11 +451,12 @@ narrower Inspector the field shares the first line with remove, and the
 operator and value share the second. The operator is always as wide as its
 chosen label, so "is greater than or equal" never reads as "is greater than";
 the field and the value take the width it leaves. Selecting a
-Group, by its header or its card, opens its editor: its label and description,
-the step count, each step in stored position order, the outside steps that
-enter it, the step it continues from with the Condition branch when it leaves
-by one, the steps it continues to, its issues, **Ungroup**, and **Delete Group
-and steps**. Each step is listed with its issue count and selects that step on
+Group, by its header or its card, opens its editor: the step count, each step
+in stored position order, the outside steps that enter it, the step it
+continues from with the Condition branch when it leaves by one, the steps it
+continues to, its issues, and after a divider its label and notes. **Ungroup**
+and **Delete Group and steps** are commands of the header's menu and the
+context menu. Each step is listed with its issue count and selects that step on
 the canvas. The Group's issue badge and the status in the Group's header count
 the steps' issues with the Group's own. A connection and a multiple selection show
 their panel under a header holding the panel's title. **Runs** has a Browse of
@@ -519,9 +524,9 @@ groups. The rule builder sits beneath it, open for editing, with each rule on
 one line: the field and the value share the free width, the operator takes
 less, and the remove button keeps its own slot at the end. Then come the steps
 its True and False outlets continue to, or a line saying a disconnected branch
-ends the run, every value its rules can compare, the label and description, the
-issues, and the enable, Ungroup, and delete controls. Each issue puts focus in
-the rule builder.
+ends the run, every value its rules can compare, and after a divider the label
+and notes. Every issue of a Condition is about its rules, so each shows beneath
+the rule builder, and the workflow's issue list puts focus in the rule builder.
 Placing a Condition sets the zoom from its card and both outlet handles, and
 keeps each True and False label on its outgoing edges inside the usable canvas
 too when the label fits at that zoom. A label on an edge to a distant step stays

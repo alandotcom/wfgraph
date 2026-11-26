@@ -24,6 +24,7 @@ import {
 } from "@wfgraph/shared/plugins/key-value-rows";
 import { matchesShowWhen } from "@wfgraph/shared/types/show-when";
 import type { UpdateNodeConfig } from "./node-config-patch";
+import { ConfigHelp } from "./config-section";
 import { FieldIssueMessages } from "./field-issues";
 import { ProviderFieldsField } from "./provider-fields-field";
 import { ProviderSelectField } from "./provider-select-field";
@@ -313,7 +314,17 @@ const TEMPLATE_INSERT_HINT =
   "Type @ to insert a value from the Event or an earlier step.";
 
 /**
- * Renders a single base field
+ * The longest help a field shows as a line under its label. Longer help moves
+ * behind the info icon beside the label, so each setting reads as its label
+ * and its control.
+ */
+const INLINE_HELP_MAX_LENGTH = 48;
+
+/**
+ * Renders a single base field: its label, its control, and the issues that
+ * name it. A template field with no placeholder of its own says in its
+ * placeholder that typing @ inserts a value, and one with a placeholder says
+ * it in its help.
  */
 function renderField(
   field: ActionConfigFieldBase,
@@ -330,47 +341,69 @@ function renderField(
 
   const rawValue = config[field.key];
   const value = rawValue ?? field.defaultValue ?? "";
+  const isTemplate = TEMPLATE_FIELD_TYPES.has(field.type);
   // A field that falls back to a Connection value shows that value while it is
   // empty, so a builder reads what the run would actually send rather than a
   // generic example. Nothing is stored: this is the hint alone.
-  const placeholder = field.connectionDefaultKey
+  const ownPlaceholder = field.connectionDefaultKey
     ? connectionDefaults[field.connectionDefaultKey] || field.placeholder
     : field.placeholder;
+  const placeholder =
+    ownPlaceholder ?? (isTemplate ? TEMPLATE_INSERT_HINT : undefined);
   const FieldRenderer = FIELD_RENDERERS[field.type];
-  // A template field's help line also says how to insert a value, since the
-  // `@` that opens the value picker is otherwise nowhere on screen.
-  const help = compact([
-    field.description,
-    TEMPLATE_FIELD_TYPES.has(field.type) ? TEMPLATE_INSERT_HINT : undefined,
-  ]).join(" ");
+  // A template field whose placeholder is taken says in its help how to insert
+  // a value, since the `@` that opens the value picker is otherwise nowhere on
+  // screen.
+  const insertHint =
+    isTemplate && ownPlaceholder !== undefined
+      ? TEMPLATE_INSERT_HINT
+      : undefined;
+  const help = compact([field.description, insertHint]).join(" ");
+  const helpBehindIcon = help.length > INLINE_HELP_MAX_LENGTH;
+  const label = field.label ?? field.key;
 
   const descriptionId = help ? `${field.key}-description` : undefined;
 
   return (
     <div
       aria-describedby={descriptionId}
-      aria-label={
-        descriptionId ? `${field.label ?? field.key} field details` : undefined
-      }
+      aria-label={descriptionId ? `${label} field details` : undefined}
       className="flex flex-col gap-2"
       key={field.key}
       role={descriptionId ? "group" : undefined}
     >
       {field.label ? (
-        // The id is what names the template fields, whose editor is a
-        // contenteditable div that `htmlFor` cannot reach. The asterisk is
-        // decorative once `required` reaches the control as `aria-required`.
-        <Label className="ml-1" htmlFor={field.key} id={`${field.key}-label`}>
-          {field.label}
-          {field.required ? (
-            <span aria-hidden="true" className="text-destructive">
-              *
-            </span>
+        <div className="ml-1 flex min-h-6 items-center gap-1">
+          {/* The id is what names the template fields, whose editor is a
+              contenteditable div that `htmlFor` cannot reach. The asterisk is
+              decorative once `required` reaches the control as
+              `aria-required`. */}
+          <Label htmlFor={field.key} id={`${field.key}-label`}>
+            {field.label}
+            {field.required ? (
+              <span aria-hidden="true" className="text-destructive">
+                *
+              </span>
+            ) : null}
+          </Label>
+          {helpBehindIcon ? (
+            <ConfigHelp label={label}>
+              {compact([field.description, insertHint]).map((sentence) => (
+                <p key={sentence}>{sentence}</p>
+              ))}
+            </ConfigHelp>
           ) : null}
-        </Label>
+        </div>
       ) : null}
       {help ? (
-        <p className="ml-1 text-muted-foreground text-xs" id={descriptionId}>
+        // Behind the icon, the help stays in the document for the control's
+        // `aria-describedby`.
+        <p
+          className={
+            helpBehindIcon ? "sr-only" : "ml-1 text-muted-foreground text-xs"
+          }
+          id={descriptionId}
+        >
           {help}
         </p>
       ) : null}

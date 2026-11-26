@@ -271,7 +271,7 @@ describe("NodeConfigPanel with nothing selected", () => {
 });
 
 describe("NodeConfigPanel config scoping", () => {
-  it("puts the node name fields before the node configuration", async () => {
+  it("puts what the step does before its Label and Notes", async () => {
     installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
     const { view } = renderPanel({
       nodes: [lifecycleNode(), waitNode({ waitMode: "delay" })],
@@ -279,17 +279,20 @@ describe("NodeConfigPanel config scoping", () => {
     });
 
     const label = await view.findByLabelText("Label");
-    const description = view.getByLabelText("Description");
+    const notes = view.getByLabelText("Notes");
     const does = view.getByLabelText("Does");
 
     expect(view.queryByText("Node Metadata")).toBeNull();
     expect(
-      label.compareDocumentPosition(does) & Node.DOCUMENT_POSITION_FOLLOWING
+      does.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      description.compareDocumentPosition(does) &
-        Node.DOCUMENT_POSITION_FOLLOWING
+      label.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+    // Disabling and deleting the step are the menus' commands.
+    expect(view.queryByRole("button", { name: /Disable step/ })).toBeNull();
+    expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
+    expect(view.queryByText("Validation")).toBeNull();
   });
 
   it("shows an Event's description and raw name in Event Split config", async () => {
@@ -405,52 +408,6 @@ describe("NodeConfigPanel multiple selection", () => {
   });
 });
 
-describe("NodeConfigPanel on a Group frame", () => {
-  it("asks for the destructive Delete Group and steps confirmation", async () => {
-    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
-    const member = (id: string): WorkflowNode => ({
-      id,
-      type: "action",
-      parentId: "group_1",
-      extent: "parent",
-      position: { x: 0, y: 0 },
-      data: {
-        label: id,
-        type: "action",
-        config: { actionType: "fountain/get-user" },
-      },
-    });
-    const { view, confirmed } = renderPanel({
-      nodes: [groupNode(), member("a"), member("b")],
-      selected: "group_1",
-    });
-
-    fireEvent.click(
-      await view.findByRole("button", { name: "Delete Group and steps" })
-    );
-
-    expect(confirmed).toMatchObject([
-      {
-        title: "Delete Group and steps",
-        confirmLabel: "Delete Group and steps",
-        confirmVariant: "destructive",
-      },
-    ]);
-  });
-});
-
-describe("NodeConfigPanel on the Lifecycle Node", () => {
-  // The Lifecycle Node is the workflow's entry and the graph refuses to delete
-  // it, so its form offers no Delete that would do nothing.
-  it("offers no Delete to a person who may update the workflow", async () => {
-    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
-    const { view } = renderPanel({ selected: "lifecycle_1" });
-
-    await view.findByLabelText("Label");
-    expect(view.queryByRole("button", { name: /Delete/ })).toBeNull();
-  });
-});
-
 describe("NodeConfigPanel workspace inspector", () => {
   it("contains no workspace mode tabs", async () => {
     const { view } = renderPanel({ hasPublishedVersion: true });
@@ -515,13 +472,8 @@ describe("NodeConfigPanel Wait mode", () => {
     ).toBeNull();
 
     fireEvent.click(
-      await view.findByRole("button", { name: "About Time-based waits" })
+      await view.findByRole("button", { name: "About Duration" })
     );
-    expect(
-      await view.findByText(/Changing the Time source clears settings/)
-    ).toBeTruthy();
-
-    fireEvent.click(view.getByRole("button", { name: "About Duration" }));
     expect(
       await view.findByText(/Counting starts when the run reaches this step/i)
     ).toBeTruthy();
@@ -548,6 +500,11 @@ describe("NodeConfigPanel Wait mode", () => {
     );
     expect(
       await view.findByText(/Sets the clock for Allowed hours/i)
+    ).toBeTruthy();
+
+    fireEvent.click(view.getByRole("button", { name: "About Time source" }));
+    expect(
+      await view.findByText(/Changing the Time source clears settings/)
     ).toBeTruthy();
   });
 
@@ -702,7 +659,7 @@ describe("NodeConfigPanel Wait mode", () => {
     });
 
     const helpButton = await view.findByRole("button", {
-      name: "About Waiting for Events",
+      name: "About How should this step wait?",
     });
     expect(view.queryByText(/With no match, any arrival/)).toBeNull();
 
