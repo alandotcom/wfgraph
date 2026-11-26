@@ -272,32 +272,26 @@ describe("NodeConfigPanel with nothing selected", () => {
 
 describe("NodeConfigPanel config scoping", () => {
   it("puts the node name fields before the node configuration", async () => {
-    const { view } = renderPanel({ selected: "lifecycle_1" });
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const { view } = renderPanel({
+      nodes: [lifecycleNode(), waitNode({ waitMode: "delay" })],
+      selected: "wait_1",
+    });
 
     const label = await view.findByLabelText("Label");
     const description = view.getByLabelText("Description");
-    // The policy summary and the Start Events editor both carry the heading.
-    const startEvents = view.getAllByRole("heading", {
-      name: "Starts when",
-    })[0];
+    const does = view.getByLabelText("Does");
 
     expect(view.queryByText("Node Metadata")).toBeNull();
-    expect(view.queryByText("Lifecycle Rules")).toBeNull();
     expect(
-      label.compareDocumentPosition(startEvents) &
-        Node.DOCUMENT_POSITION_FOLLOWING
+      label.compareDocumentPosition(does) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      description.compareDocumentPosition(startEvents) &
+      description.compareDocumentPosition(does) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
 
-  // The panel is keyed to the node, and the pickers inside it are what that
-  // buys. Selecting anything of another type unmounts the panel whatever its
-  // key, so the case the key answers for is one entry node replaced by another
-  // in the same slot, which is what opening a second workflow does. Two of them
-  // in one graph is the fixture for that; a real workflow has one.
   it("shows an Event's description and raw name in Event Split config", async () => {
     const split = eventSplitNode();
     const { view } = renderPanel({
@@ -318,27 +312,6 @@ describe("NodeConfigPanel config scoping", () => {
       view.getByText("Raised when an appointment is created.")
     ).toBeTruthy();
     expect(view.getByText("app/appointment.created")).toBeTruthy();
-  });
-
-  it("starts another entry node's pickers clean", async () => {
-    const { view, store } = renderPanel({
-      nodes: [lifecycleNode(), lifecycleNode("lifecycle_2")],
-      selected: "lifecycle_1",
-    });
-
-    const picker = await view.findByLabelText("Starts when");
-    fireEvent.change(picker, { target: { value: "appoint" } });
-    expect((picker as HTMLInputElement).value).toBe("appoint");
-
-    await act(async () => {
-      store.set(selectOnlyNodeAtom, "lifecycle_2");
-    });
-
-    // Unkeyed, the same component instance carries the search term over and the
-    // second node opens on a list filtered by something nobody typed into it.
-    expect((view.getByLabelText("Starts when") as HTMLInputElement).value).toBe(
-      ""
-    );
   });
 });
 
@@ -504,9 +477,12 @@ describe("NodeConfigPanel workspace inspector", () => {
 describe("NodeConfigPanel authorization", () => {
   it("does not add a read-only access badge when workflow updates are denied", async () => {
     resetAuthorizationGrantsForTests();
-    const { view } = renderPanel({ selected: "lifecycle_1" });
+    const { view } = renderPanel({
+      nodes: [lifecycleNode(), waitNode({ waitMode: "delay" })],
+      selected: "wait_1",
+    });
 
-    await view.findByLabelText("Starts when");
+    await view.findByLabelText("Label");
     expect(
       view.queryByText(
         "You are viewing a public workflow. Duplicate it to make changes."

@@ -26,11 +26,6 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import type { DesktopPresentation } from "#src/lib/workflow-navigation-state";
 import {
-  activeRevealPresentationAtom,
-  activeWorkspaceAddressAtom,
-  recordInspectorSectionAtom,
-} from "#src/lib/workflow-workspace-navigation";
-import {
   ACTION_TYPE_CONFIG_KEY,
   readConfigString,
 } from "@wfgraph/shared/graph/node-config";
@@ -45,10 +40,6 @@ import { EventSplitBrowse } from "./event-split-reveal";
 import { GroupEditor, GroupSummarySheet } from "./group-browse";
 import { LifecycleSummarySheet } from "./lifecycle-browse";
 import { LifecycleEditor, LifecycleFocus } from "./lifecycle-focus";
-import {
-  lifecycleEditButtonId,
-  lifecycleOpenSection,
-} from "./lifecycle-reveal-model";
 import type { MobileRevealState } from "./canvas-reveal-state";
 import type { MobileSheetControls } from "./mobile-sheet-header";
 import {
@@ -72,7 +63,6 @@ import {
   inspectedOriginNodeId,
   unwindToInspectedOrigin,
 } from "./reveal-origin";
-import { revealFieldRequestAtom } from "./reveal-requests";
 import {
   RunsBody,
   RunsHeader,
@@ -368,36 +358,6 @@ function PanelHeader({ controls }: RevealKindHeaderProps) {
 }
 
 /**
- * One step back for the Lifecycle Node. Escape returns a section open for
- * editing to its summary, with focus on that section's Edit button. Otherwise,
- * and for Back, it returns to where a jump began, or hands focus back to the
- * canvas.
- */
-const unwindLifecycle: RevealUnwind = (input) => {
-  const { subject, store } = input;
-  const section =
-    subject.nodeId === null || input.trigger === "back"
-      ? null
-      : lifecycleOpenSection(
-          store.get(activeRevealPresentationAtom),
-          subject.nodeId
-        );
-  if (section === null || subject.nodeId === null) {
-    unwindToInspectedOrigin(input);
-    return;
-  }
-  store.set(recordInspectorSectionAtom, {
-    address: store.get(activeWorkspaceAddressAtom),
-    inspectedId: subject.nodeId,
-    section: null,
-  });
-  store.set(revealFieldRequestAtom, {
-    nodeId: subject.nodeId,
-    targetId: lifecycleEditButtonId(section),
-  });
-};
-
-/**
  * A Draft ordinary step: its complete form. A phone shows a summary sheet and
  * the form in the full-screen editor.
  */
@@ -461,9 +421,9 @@ const GROUP_KIND: RevealKind = {
 };
 
 /**
- * The Draft Lifecycle Node: its policy summary, each section opening its editor
- * in place. A phone shows the summary on a summary sheet, and each section's
- * Edit opens the sectioned full-screen editor at that section.
+ * The Draft Lifecycle Node: its rules as one always-editable form. A phone
+ * shows a summary on a summary sheet, and each section's Edit opens the
+ * sectioned full-screen editor at that section.
  */
 const LIFECYCLE_KIND: RevealKind = {
   id: "lifecycle",
@@ -472,7 +432,7 @@ const LIFECYCLE_KIND: RevealKind = {
   header: { owner: "shell", model: lifecycleHeaderModel },
   Browse: LifecycleEditor,
   Focus: null,
-  unwind: unwindLifecycle,
+  unwind: unwindToInspectedOrigin,
   mobile: {
     Summary: LifecycleSummarySheet,
     Inspector: LifecycleFocus,

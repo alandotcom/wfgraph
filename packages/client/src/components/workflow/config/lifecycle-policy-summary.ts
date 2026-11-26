@@ -18,9 +18,11 @@ import type {
 
 /**
  * The one name each start rule goes by, in the words of what it does: its
- * "Add a rule" item (with an ellipsis), its section title and its form's
- * heading. CONTEXT.md keeps the domain nouns: Start Event, Start Filter,
- * Concurrency, Schedule, Cancel Event, tracked Entity, Entity Eligibility.
+ * "Add a rule" item (with an ellipsis) and its label in the Start's form. The
+ * form names the eligibility rule for the tracked Entity, such as "Only while
+ * the patient matches". CONTEXT.md keeps the domain nouns: Start Event, Start
+ * Filter, Concurrency, Schedule, Cancel Event, tracked Entity, Entity
+ * Eligibility.
  */
 export const START_RULE_NAMES = {
   starts: "Starts when",
@@ -28,8 +30,8 @@ export const START_RULE_NAMES = {
   overlapping: "If a run is already in progress",
   schedule: "On a schedule",
   stop: "Stop a run when",
-  entity: "Tie each run to a record",
-  eligibility: "Only run while the record matches",
+  entity: "One run per",
+  eligibility: "Only while the record matches",
 } as const;
 
 export const CONCURRENCY_OPTIONS: ReadonlyArray<{

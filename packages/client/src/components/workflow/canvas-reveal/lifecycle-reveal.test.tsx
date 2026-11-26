@@ -20,7 +20,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { DetailsPanel } from "#src/components/workflow/details/details-panel";
-import { lifecycleIssueSection } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
+import {
+  LIFECYCLE_ADD_RULE_ID,
+  lifecycleIssueSection,
+  lifecycleRuleTargetId,
+} from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
+import { revealFieldRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -29,7 +34,6 @@ import { browserTimeZone } from "#src/components/workflow/config/lifecycle-sched
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import {
-  clearSelectionAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   selectOnlyNodeAtom,
@@ -46,7 +50,7 @@ import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import {
   activeRevealPresentationAtom,
   activeWorkspaceAddressAtom,
-  openInspectorSectionAtom,
+  openNodeRevealFromOriginAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
@@ -212,7 +216,7 @@ async function renderLifecycle(
   });
   const aside = () =>
     view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
-  // A Browse section is the section element around its heading.
+  // A rule is the section element around its label.
   const region = (name: string) => {
     const section = within(
       view.getByRole("complementary", { name: "Start details" })
@@ -220,7 +224,7 @@ async function renderLifecycle(
       .getByRole("heading", { name })
       .closest("section");
     if (!section) {
-      throw new Error(`no Browse section is headed ${name}`);
+      throw new Error(`no rule is labelled ${name}`);
     }
     return section;
   };
@@ -231,6 +235,12 @@ async function renderLifecycle(
       store.get(nodesAtom).find((node) => node.id === "lifecycle")?.data.config
     );
   return { view, store, update, aside, region, scroller, rulesNow };
+}
+
+/** The help behind the info icon beside the label `name`, opened. */
+function openHelp(view: ReturnType<typeof render>, name: string): HTMLElement {
+  fireEvent.click(view.getByRole("button", { name: `About ${name}` }));
+  return view.getByRole("dialog", { name });
 }
 
 /** Chooses `label` from the start's "Add a rule" menu. */
@@ -271,201 +281,92 @@ afterEach(() => {
   resetAuthorizationGrantsForTests();
 });
 
-describe("Lifecycle Browse", () => {
-  it("summarizes a configured policy with Event filters apart from run matching", async () => {
-    const { view, aside, region } = await renderLifecycle(CONFIGURED);
+describe("Lifecycle form", () => {
+  it("shows each set rule as its controls under one label, with no Edit or Done", async () => {
+    const { view, aside } = await renderLifecycle(CONFIGURED);
 
     expect(aside()?.dataset.level).toBe("browse");
     expect(
       view.getByRole("heading", { name: "Appointment lifecycle" })
     ).toBeTruthy();
     expect(aside()?.textContent).toContain("Ready");
-
-    const starts = region("Starts when");
-    expect(starts.textContent).toContain("Appointment created");
-    expect(starts.textContent).toContain("t_1");
-    expect(starts.textContent).not.toContain("by hand");
-    expect(starts.textContent).not.toContain("current state");
-
-    const overlapping = region("If a run is already in progress");
-    expect(overlapping.textContent).toContain("Start the newest run");
-    expect(overlapping.textContent).toContain(
-      "A newer Appointment created for the same Patient ends the run in progress."
-    );
-    const cancels = region("Stop a run when");
-    expect(cancels.textContent).toContain("Appointment canceled");
-    expect(cancels.textContent).toContain(
-      "No Cancel Filter. Every arrival cancels active runs for the Patient ID it provides."
-    );
-
-    const eligibility = region("Tie each run to a record");
-    expect(eligibility.textContent).toContain("Each run tracksPatient ID");
-    expect(eligibility.textContent).toContain("Before starting and each step");
-    expect(eligibility.textContent).toContain(
-      "How each Event provides the Patient ID"
-    );
-    expect(eligibility.textContent).toContain(
-      "Appointment createdpatient binding"
-    );
-    expect(eligibility.textContent).toContain(
-      "Appointment canceledpatient binding"
-    );
-    expect(eligibility.textContent).toContain(
-      "Reads the Patient's current state from your app"
-    );
-    expect(eligibility.textContent).toContain("active");
-    expect(eligibility.textContent).not.toContain("Start Filter");
-
-    // A start with no issue shows no Validation section.
-    expect(view.queryByRole("heading", { name: "Validation" })).toBeNull();
-  });
-
-  it("summarizes a partially configured policy", async () => {
-    const { view, region } = await renderLifecycle({
-      startEvents: ["app/appointment.created"],
-      cancelEvents: [],
-      concurrency: "unlimited",
-      trackedEntity: {
-        type: "patient",
-        bindings: { "app/appointment.created": "patient" },
-      },
-    });
-
-    const starts = region("Starts when").textContent;
-    expect(starts).toContain("Appointment created");
-    expect(starts).not.toContain("Start Filter");
-    expect(view.queryByRole("heading", { name: "Stop a run when" })).toBeNull();
-    const eligibility = region("Tie each run to a record");
-    expect(eligibility.textContent).toContain("No eligibility rule.");
-    expect(eligibility.textContent).toContain("None (optional)");
-  });
-
-  it("shows a filter shared by every Start Event once", async () => {
-    const shared = condition("appointment.id", "a_1");
-    const { region } = await renderLifecycle({
-      startEvents: ["app/appointment.created", "app/appointment.canceled"],
-      cancelEvents: [],
-      concurrency: "unlimited",
-      startFilters: {
-        "app/appointment.created": shared,
-        "app/appointment.canceled": shared,
-      },
-    });
-
-    const starts = region("Starts when").textContent ?? "";
-    expect(starts).toContain("Only start when, for every Event");
-    expect(starts.split("a_1")).toHaveLength(2);
-  });
-
-  it("shows a node with no rules as what starts it and nothing else", async () => {
-    const { view, region } = await renderLifecycle();
-
-    expect(region("Starts when").textContent).toContain(
-      "Starts when someone runs it by hand."
-    );
     expect(
       within(view.getByRole("complementary", { name: "Start details" }))
-        .getAllByRole("heading", { level: 3 })
+        .getAllByRole("heading", { level: 4 })
         .map((heading) => heading.textContent)
-    ).toEqual(["Label", "Starts when"]);
+    ).toEqual([
+      "Starts when",
+      "One run per",
+      "If a run is already in progress",
+      "Stop a run when",
+    ]);
     expect(
-      view.getByRole("button", { name: "Choose what starts it" })
+      view.getByRole("heading", { name: "Only while the patient matches" })
+    ).toBeTruthy();
+    expect(view.getByLabelText("Starts when")).toBeTruthy();
+    expect(
+      (
+        view.getByRole("checkbox", {
+          name: "Can be run by hand",
+        }) as HTMLButtonElement
+      ).getAttribute("aria-checked")
+    ).toBe("false");
+    expect(
+      view.getByRole("combobox", { name: "If a run is already in progress" })
+        .textContent
+    ).toContain("Start the newest run");
+    expect(view.getByLabelText("Label")).toBeTruthy();
+    expect(view.queryByRole("button", { name: /^Edit/ })).toBeNull();
+    expect(view.queryByRole("button", { name: /^Done/ })).toBeNull();
+    expect(
+      view.queryByRole("button", { name: "Choose what starts it" })
+    ).toBeNull();
+  });
+
+  it("moves explanations behind the info icon on each label", async () => {
+    const { view, region } = await renderLifecycle(CONFIGURED);
+
+    const identity =
+      "Each Event's Patient binding provides the Patient ID tracked by the run. Correlation Paths are not used.";
+    expect(region("Starts when").textContent).not.toContain(identity);
+    expect(openHelp(view, "Starts when").textContent).toContain(identity);
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+
+    expect(
+      openHelp(view, "If a run is already in progress").textContent
+    ).toContain(
+      "A newer Appointment created for the same Patient ends the run in progress."
+    );
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+
+    expect(openHelp(view, "One run per").textContent).toContain(
+      "Appointment created uses the patient binding to get the Patient ID."
+    );
+  });
+
+  it("shows a node with no rules as what starts it and Add a rule", async () => {
+    const { view } = await renderLifecycle();
+
+    expect(
+      within(view.getByRole("complementary", { name: "Start details" }))
+        .getAllByRole("heading", { level: 4 })
+        .map((heading) => heading.textContent)
+    ).toEqual(["Starts when"]);
+    expect(
+      view.getByRole("checkbox", { name: "Can be run by hand" })
     ).toBeTruthy();
     // "Only start when…" waits for a Start Event to filter.
     expect(offeredRules(view)).toEqual([
       "Stop a run when…",
       "If a run is already in progress…",
       "On a schedule…",
-      "Tie each run to a record…",
-      "Only run while the record matches…",
+      "One run per…",
+      "Only while the record matches…",
     ]);
-  });
-
-  it("explains Correlation Path matching when an untracked workflow needs it", async () => {
-    const { region } = await renderLifecycle({
-      startEvents: ["app/appointment.created"],
-      cancelEvents: ["app/appointment.canceled"],
-      concurrency: "unlimited",
-      correlationPaths: {
-        "app/appointment.created": "appointment.id",
-        "app/appointment.canceled": "appointment.id",
-      },
-    });
-
-    expect(region("Stop a run when").textContent).toContain(
-      "No Cancel Filter. Every arrival cancels active runs for the Correlation Path value it provides."
-    );
-  });
-
-  it("reports invalid rules in the header and Validation", async () => {
-    const { aside, region } = await renderLifecycle({
-      startEvents: ["app/appointment.created"],
-      cancelEvents: ["app/appointment.created"],
-      concurrency: "unlimited",
-      startFilters: { "app/appointment.created": "not a model" },
-    });
-
-    // The rules check refuses the Event holding both roles, and the Start
-    // Filter check refuses the model it cannot read.
-    expect(aside()?.querySelector("header")?.textContent).toContain("2 issues");
-    expect(region("Validation").textContent).toContain(
-      "cannot both start and cancel runs"
-    );
-    expect(region("Starts when").textContent).toContain(
-      "This rule is invalid."
-    );
-  });
-
-  // ADR-0016: such a filter reads false on every arrival, and Publish refuses
-  // it, so the editor shows the same refusal before Publish is tried.
-  it("reports a Start Filter reading an undeclared path as blocking, and opens its section", async () => {
-    const { view, aside, region } = await renderLifecycle({
-      startEvents: ["app/appointment.created"],
-      cancelEvents: [],
-      concurrency: "unlimited",
-      startFilters: {
-        "app/appointment.created": condition("clinicId", "c_1"),
-      },
-    });
-
-    const status = within(
-      aside()?.querySelector("header") ?? document.body
-    ).getByText("1 issue");
-    expect(status.className).toContain("text-destructive");
-    const issue = within(region("Validation")).getByRole("button", {
-      name: /clinicId/,
-    });
-    expect(issue.className).toContain("text-destructive");
-
-    fireEvent.click(issue);
-
-    expect(aside()?.dataset.level).toBe("browse");
-    expect(
-      view.getByRole("button", { name: "Done editing what starts it" })
-    ).toBeTruthy();
-    await waitFor(() =>
-      expect(document.activeElement?.id).toBe("lifecycle-section-start-events")
-    );
-  });
-
-  it("summarizes each schedule with its next run", async () => {
-    // Friday Nov 6, 2026, 7:00 AM in New York.
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
-    try {
-      const { region } = await renderLifecycle({
-        startEvents: ["app/appointment.created"],
-        cancelEvents: [],
-        concurrency: "unlimited",
-        schedules: [{ cron: "0 9 * * 1-5", timeZone: "America/New_York" }],
-      });
-
-      expect(region("On a schedule").textContent).toContain(
-        "Every weekday at 9:00 AM (America/New_York)Next run: Fri Nov 6, 9:00 AM"
-      );
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("hides the rules a workflow has not set, and offers them under Add a rule", async () => {
@@ -474,62 +375,53 @@ describe("Lifecycle Browse", () => {
     expect(offeredRules(view)).toEqual(["On a schedule…"]);
   });
 
-  it("marks Events and an Entity the catalog no longer declares", async () => {
-    const { region } = await renderLifecycle({
-      startEvents: ["app/retired.event"],
+  it("adds a rule's controls in place and moves focus into them without writing", async () => {
+    const { view, store, scroller } = await renderLifecycle({
+      startEvents: ["app/appointment.created"],
       cancelEvents: [],
       concurrency: "unlimited",
-      trackedEntity: {
-        type: "retired-entity",
-        bindings: { "app/retired.event": "gone" },
-      },
+    });
+    // No Event arrives through an integration, so no Connection is asked for.
+    expect(
+      view.queryByRole("heading", { name: "Event Connections" })
+    ).toBeNull();
+
+    addRule(view, "If a run is already in progress…");
+
+    expect(
+      view.getByRole("combobox", { name: "If a run is already in progress" })
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe(
+        lifecycleRuleTargetId("overlapping-runs")
+      )
+    );
+    expect(scroller()?.scrollTop ?? 0).toBe(0);
+    expect(store.get(historyAtom)).toEqual([]);
+    // The rule's controls already show, so the menu stops offering it.
+    expect(offeredRules(view)).not.toContain(
+      "If a run is already in progress…"
+    );
+  });
+
+  it("adds a filter from Add a rule by moving focus to the first Filter the arrivals", async () => {
+    const { view } = await renderLifecycle({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: [],
+      concurrency: "unlimited",
     });
 
-    expect(region("Starts when").textContent).toContain(
-      "app/retired.event · Not declared by this app"
-    );
-    expect(region("Tie each run to a record").textContent).toContain(
-      "retired-entity is no longer available in this app."
-    );
-    expect(region("Validation").textContent).toContain("app/retired.event");
-  });
-});
+    addRule(view, "Only start when…");
 
-describe("Lifecycle section editors", () => {
-  it("opens a section's editor in place, in the policy's order", async () => {
-    const { view } = await renderLifecycle(CONFIGURED);
-    const headings = () =>
-      within(view.getByRole("complementary", { name: "Start details" }))
-        .getAllByRole("heading", { level: 3 })
-        .map((heading) => heading.textContent);
-    const order = [
-      "Label",
-      "Starts when",
-      "If a run is already in progress",
-      "Stop a run when",
-      "Tie each run to a record",
-    ];
-    expect(headings()).toEqual(order);
-    expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
-
-    fireEvent.click(
-      view.getByRole("button", { name: "Choose what starts it" })
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe(
+        lifecycleRuleTargetId("start-filter")
+      )
     );
-
-    // The open editor adds headings of its own inside its section.
-    expect(headings().filter((text) => order.includes(text ?? ""))).toEqual(
-      order
-    );
-    expect(view.getByRole("region", { name: "Starts when" })).toBeTruthy();
-    expect(
-      view.getByRole("button", { name: "Done editing what starts it" })
-    ).toBeTruthy();
-    expect(
-      view.queryByRole("button", { name: "Choose what starts it" })
-    ).toBeNull();
+    expect(document.activeElement?.textContent).toBe("Filter the arrivals");
   });
 
-  it("removes a set rule, which hides its section, as one undoable edit", async () => {
+  it("removes a set rule from its label row as one undoable edit", async () => {
     const { view, store, rulesNow } = await renderLifecycle(CONFIGURED);
 
     fireEvent.click(
@@ -543,55 +435,72 @@ describe("Lifecycle section editors", () => {
       view.queryByRole("heading", { name: "If a run is already in progress" })
     ).toBeNull();
     expect(store.get(historyAtom)).toHaveLength(1);
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe(LIFECYCLE_ADD_RULE_ID)
+    );
     expect(offeredRules(view)).toContain("If a run is already in progress…");
   });
 
-  it("keeps Event bindings and eligibility timing in the Entity section", async () => {
-    const { view } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(
-      view.getByRole("button", { name: "Edit Tie each run to a record" })
-    );
-
-    const entity = view.getByRole("region", {
-      name: "Tie each run to a record",
+  it("shows a refusal beneath the rule its check reads", async () => {
+    const { aside, region, view } = await renderLifecycle({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: ["app/appointment.created"],
+      concurrency: "unlimited",
+      startFilters: { "app/appointment.created": "not a model" },
     });
-    expect(entity.textContent).toContain("Patient ID in each Event");
-    expect(entity.textContent).toContain("Appointment created");
-    expect(entity.textContent).toContain(
-      "Uses the patient binding to get the Patient ID."
+
+    // The rules check refuses the Event holding both roles, and the Start
+    // Filter check refuses the model it cannot read.
+    expect(aside()?.querySelector("header")?.textContent).toContain("2 issues");
+    expect(region("Starts when").textContent).toContain(
+      "cannot both start and cancel runs"
     );
-    expect(within(entity).getByText("When to check")).toBeTruthy();
-    expect(
-      within(entity).getByRole("checkbox", { name: "Before each step" })
-    ).toBeTruthy();
-    expect(
-      within(entity)
-        .getByRole("button", { name: "Remove this rule" })
-        .className.includes("border-border")
-    ).toBe(true);
-    expect(
-      view.queryByRole("button", { name: "Eligibility checks" })
-    ).toBeNull();
+    expect(view.queryByRole("heading", { name: "Validation" })).toBeNull();
   });
 
-  it("explains why tracked Entity Events have no Correlation Path", async () => {
-    const { view } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(view.getByRole("button", { name: "Edit Stop a run when" }));
+  // ADR-0016: such a filter reads false on every arrival, and Publish refuses
+  // it, so the editor shows the same refusal before Publish is tried.
+  it("reports a Start Filter reading an undeclared path as blocking, beneath Starts when", async () => {
+    const { aside, region } = await renderLifecycle({
+      startEvents: ["app/appointment.created"],
+      cancelEvents: [],
+      concurrency: "unlimited",
+      startFilters: {
+        "app/appointment.created": condition("clinicId", "c_1"),
+      },
+    });
 
-    const cancelEvents = view.getByRole("region", { name: "Stop a run when" });
-    expect(cancelEvents.textContent).toContain(
-      "Each Event's Patient binding provides its Patient ID. A Cancel Event only affects active runs with the same ID. Correlation Paths are not used."
-    );
-    expect(within(cancelEvents).queryByText("Correlation Path")).toBeNull();
+    const status = within(
+      aside()?.querySelector("header") ?? document.body
+    ).getByText("1 issue");
+    expect(status.className).toContain("text-destructive");
+    const issue = within(region("Starts when")).getByText(/clinicId/, {
+      selector: "li",
+    });
+    expect(issue.className).toContain("text-destructive");
+  });
+
+  it("names an Event and an Entity the catalog no longer declares", async () => {
+    const { region } = await renderLifecycle({
+      startEvents: ["app/retired.event"],
+      cancelEvents: [],
+      concurrency: "unlimited",
+      trackedEntity: {
+        type: "retired-entity",
+        bindings: { "app/retired.event": "gone" },
+      },
+    });
+
+    expect(region("Starts when").textContent).toContain("app/retired.event");
+    expect(
+      within(region("One run per")).getByRole("alert").textContent
+    ).toContain("retired-entity is no longer available");
   });
 
   it("writes an edit through the graph store and autosaves it", async () => {
     const { view, update, rulesNow } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(
-      view.getByRole("button", { name: "Choose what starts it" })
-    );
 
-    fireEvent.click(view.getByRole("checkbox", { name: "Allow manual runs" }));
+    fireEvent.click(view.getByRole("checkbox", { name: "Can be run by hand" }));
 
     expect(rulesNow()?.allowManualStart).toBe(true);
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
@@ -599,9 +508,6 @@ describe("Lifecycle section editors", () => {
 
   it("keeps removing a Start Event undoable and prunes its filter", async () => {
     const { view, store, rulesNow } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(
-      view.getByRole("button", { name: "Choose what starts it" })
-    );
 
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
@@ -612,42 +518,7 @@ describe("Lifecycle section editors", () => {
     expect(store.get(historyAtom)).toHaveLength(1);
   });
 
-  it("opens a later section after another step in one navigation write", async () => {
-    const step: WorkflowNode = {
-      id: "step",
-      type: "action",
-      position: { x: 0, y: 200 },
-      data: { label: "Step", type: "action", config: {} },
-    };
-    const { view, store, aside } = await renderLifecycle(CONFIGURED, {
-      extraNodes: [step],
-    });
-    await act(async () => {
-      store.set(selectOnlyNodeAtom, "step");
-    });
-    await act(async () => {
-      store.set(clearSelectionAtom);
-    });
-    expect(
-      view.queryByRole("complementary", { name: "Start details" })
-    ).toBeNull();
-
-    await act(async () => {
-      store.set(openInspectorSectionAtom, {
-        address: store.get(activeWorkspaceAddressAtom),
-        nodeId: "lifecycle",
-        section: "cancel-events",
-      });
-    });
-
-    expect(aside()?.dataset.level).toBe("browse");
-    expect(
-      view.getByRole("button", { name: "Done editing Stop a run when" })
-    ).toBeTruthy();
-    expect(view.getByRole("region", { name: "Stop a run when" })).toBeTruthy();
-  });
-
-  it("returns to the Event Split that opened it on Back", async () => {
+  it("opens at a section from an Event Split with focus on its control, and Back returns there", async () => {
     const split: WorkflowNode = {
       id: "split",
       type: "action",
@@ -661,16 +532,27 @@ describe("Lifecycle section editors", () => {
     const { view, store, aside } = await renderLifecycle(CONFIGURED, {
       extraNodes: [split],
     });
-
     await act(async () => {
-      store.set(openInspectorSectionAtom, {
+      store.set(selectOnlyNodeAtom, "split");
+    });
+
+    // What the Event Split's "Open Cancel Events" writes on desktop.
+    await act(async () => {
+      store.set(openNodeRevealFromOriginAtom, {
         address: store.get(activeWorkspaceAddressAtom),
         nodeId: "lifecycle",
-        section: "start-events",
         origin: { nodeId: "split" },
       });
+      store.set(revealFieldRequestAtom, {
+        nodeId: "lifecycle",
+        targetId: lifecycleRuleTargetId("cancel-events"),
+      });
     });
-    expect(aside()?.dataset.level).toBe("browse");
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe(
+        lifecycleRuleTargetId("cancel-events")
+      )
+    );
 
     fireEvent.click(view.getByRole("button", { name: "Back" }));
 
@@ -683,39 +565,44 @@ describe("Lifecycle section editors", () => {
     expect(aside()?.dataset.level).toBe("browse");
   });
 
-  it("offers no Back without an origin, and Escape closes the open section first", async () => {
-    const { view, aside } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(
-      view.getByRole("button", { name: "Edit Tie each run to a record" })
-    );
+  it("offers no Back without an origin, and Escape keeps the Lifecycle Node shown", async () => {
+    const { view } = await renderLifecycle(CONFIGURED);
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
 
-    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
-    expect(
-      view.queryByRole("button", {
-        name: "Done editing Tie each run to a record",
-      })
-    ).toBeNull();
-    expect(aside()?.dataset.level).toBe("browse");
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Edit Tie each run to a record" })
-      )
-    );
-
-    // With no section open and no way back, Escape keeps the Lifecycle Node
-    // shown.
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
     expect(
       view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();
   });
 
-  it("restores the section and scroll after another step and back", async () => {
-    const { view, store, scroller } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(
-      view.getByRole("button", { name: "Edit Tie each run to a record" })
+  // The editor is keyed to the node, and the pickers inside it are what that
+  // buys: one entry node replaced by another in the same slot, which is what
+  // opening a second workflow does, starts with an empty search. Two of them in
+  // one graph is the fixture for that; a real workflow has one.
+  it("starts another Lifecycle Node's pickers clean", async () => {
+    const second: WorkflowNode = {
+      ...lifecycleNode(CONFIGURED),
+      id: "lifecycle_2",
+    };
+    const { view, store } = await renderLifecycle(CONFIGURED, {
+      extraNodes: [second],
+    });
+
+    const picker = view.getByLabelText("Starts when");
+    fireEvent.change(picker, { target: { value: "appoint" } });
+    expect((picker as HTMLInputElement).value).toBe("appoint");
+
+    await act(async () => {
+      store.set(selectOnlyNodeAtom, "lifecycle_2");
+    });
+
+    expect((view.getByLabelText("Starts when") as HTMLInputElement).value).toBe(
+      ""
     );
+  });
+
+  it("restores the scroll after another workspace and back, writing nothing", async () => {
+    const { view, store, scroller } = await renderLifecycle(CONFIGURED);
 
     const body = scroller();
     if (!body) {
@@ -734,7 +621,7 @@ describe("Lifecycle section editors", () => {
       showWorkspaceRoute(store, {});
     });
     expect(
-      view.getByRole("region", { name: "Tie each run to a record" })
+      view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();
     await waitFor(() => expect(scroller()?.scrollTop).toBe(180));
 
@@ -745,128 +632,94 @@ describe("Lifecycle section editors", () => {
     expect(store.get(historyAtom)).toEqual([]);
   });
 
-  it("moves focus to an opened section's heading, and to its Edit button on Done", async () => {
-    const { view, store } = await renderLifecycle(CONFIGURED);
-    const positions = store.get(nodesAtom).map((node) => node.position);
+  it("keeps Event bindings and eligibility timing under One run per", async () => {
+    const { region } = await renderLifecycle(CONFIGURED);
 
-    fireEvent.click(view.getByRole("button", { name: "Edit Stop a run when" }));
-    await waitFor(() =>
-      expect(document.activeElement?.id).toBe("lifecycle-section-cancel-events")
-    );
-
-    fireEvent.click(
-      view.getByRole("button", { name: "Done editing Stop a run when" })
-    );
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Edit Stop a run when" })
-      )
-    );
-    expect(store.get(nodesAtom).map((node) => node.position)).toEqual(
-      positions
-    );
-    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
-    expect(store.get(historyAtom)).toEqual([]);
+    const entity = region("One run per");
+    expect(
+      within(entity).getByRole("combobox", { name: "One run per" }).textContent
+    ).toContain("Patient");
+    expect(within(entity).getByText("When to check")).toBeTruthy();
+    expect(
+      within(entity).getByRole("checkbox", { name: "Before each step" })
+    ).toBeTruthy();
+    expect(
+      within(entity).queryByRole("button", { name: "Remove this rule" })
+    ).toBeNull();
+    expect(
+      within(entity).getByRole("button", { name: "Remove One run per" })
+    ).toBeTruthy();
   });
 
-  it("shows a rule being added until Done, and hides it again when it was left unset", async () => {
-    const { view, store } = await renderLifecycle({
-      startEvents: ["app/appointment.created"],
-      cancelEvents: [],
-      concurrency: "unlimited",
-    });
-    // No Event arrives through an integration, so no Connection is asked for.
-    expect(
-      view.queryByRole("heading", { name: "Event Connections" })
-    ).toBeNull();
-    expect(
-      view.queryByRole("heading", { name: "Tie each run to a record" })
-    ).toBeNull();
-
-    addRule(view, "Tie each run to a record…");
-    const entity = view.getByRole("region", {
-      name: "Tie each run to a record",
-    });
-    expect(entity.textContent).toContain(
-      "Optional. Track an Entity to match related runs by Entity ID."
-    );
-    expect(within(entity).queryByText("When to check")).toBeNull();
-
-    fireEvent.click(
-      view.getByRole("button", {
-        name: "Done editing Tie each run to a record",
-      })
-    );
-    expect(
-      view.queryByRole("heading", { name: "Tie each run to a record" })
-    ).toBeNull();
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Choose what starts it" })
-      )
-    );
-    expect(store.get(historyAtom)).toEqual([]);
-  });
-
-  it("shows timing controls beside an empty eligibility checkpoint error", async () => {
-    const { view } = await renderLifecycle({
+  it("shows an empty eligibility checkpoint refusal beside the timing controls", async () => {
+    const { region } = await renderLifecycle({
       ...CONFIGURED,
       entityEligibility: {
         condition: condition("status", "active"),
         checkpoints: [],
       },
     });
-    fireEvent.click(
-      view.getByRole("button", { name: "Edit Tie each run to a record" })
-    );
 
-    const eligibility = view.getByRole("region", {
-      name: "Tie each run to a record",
-    });
-    expect(within(eligibility).getByRole("alert").textContent).toContain(
-      "has no checkpoint"
-    );
-    expect(within(eligibility).getByText("When to check")).toBeTruthy();
+    const entity = region("One run per");
+    expect(entity.textContent).toContain("has no checkpoint");
+    expect(within(entity).getByText("When to check")).toBeTruthy();
     expect(
-      within(eligibility).getByRole("checkbox", {
-        name: "Before starting a run",
-      })
+      within(entity).getByRole("checkbox", { name: "Before starting a run" })
     ).toBeTruthy();
   });
 
-  it("adds a schedule from the Schedule section as one undoable edit", async () => {
-    const { view, store, rulesNow } = await renderLifecycle({
+  it("adds a schedule as one undoable edit", async () => {
+    const { view, store, rulesNow, region } = await renderLifecycle({
       ...CONFIGURED,
       trackedEntity: undefined,
       entityEligibility: undefined,
     });
     addRule(view, "On a schedule…");
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe(lifecycleRuleTargetId("schedule"))
+    );
 
-    const section = view.getByRole("region", { name: "On a schedule" });
     fireEvent.click(
-      within(section).getByRole("button", { name: "Add schedule" })
+      within(region("On a schedule")).getByRole("button", {
+        name: "Add schedule",
+      })
     );
 
     expect(rulesNow()?.schedules).toEqual([
       { cron: "0 9 * * *", timeZone: browserTimeZone() },
     ]);
     expect(store.get(historyAtom)).toHaveLength(1);
-    fireEvent.click(
-      view.getByRole("button", { name: "Done editing On a schedule" })
-    );
-    expect(view.queryByText("No schedules.")).toBeNull();
   });
 
-  it("shows an unsaved schedule's refusal inside the Schedule section", async () => {
-    const { view, rulesNow } = await renderLifecycle({
+  it("reads back each schedule with its next run", async () => {
+    // Friday Nov 6, 2026, 7:00 AM in New York.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
+    try {
+      const { region } = await renderLifecycle({
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        schedules: [{ cron: "0 9 * * 1-5", timeZone: "America/New_York" }],
+      });
+
+      const schedule = region("On a schedule").textContent;
+      expect(schedule).toContain("Every weekday at 9:00 AM (America/New_York)");
+      expect(schedule).toContain("Next: Fri Nov 6, 9:00 AM");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows an unsaved schedule's refusal beneath the schedules", async () => {
+    const { rulesNow, region } = await renderLifecycle({
       ...CONFIGURED,
       trackedEntity: undefined,
       entityEligibility: undefined,
       schedules: [{ cron: "0 9 * * *", timeZone: browserTimeZone() }],
     });
-    fireEvent.click(view.getByRole("button", { name: "Edit On a schedule" }));
 
-    const section = view.getByRole("region", { name: "On a schedule" });
+    const section = region("On a schedule");
     fireEvent.click(
       within(section).getByRole("button", { name: "Add schedule" })
     );
@@ -875,27 +728,6 @@ describe("Lifecycle section editors", () => {
       "Two schedules have the same cron expression and time zone."
     );
     expect(rulesNow()?.schedules).toHaveLength(1);
-  });
-
-  it("shows the unavailable Entity warning from the reused editor", async () => {
-    const { view } = await renderLifecycle({
-      startEvents: ["app/appointment.created"],
-      cancelEvents: [],
-      concurrency: "unlimited",
-      trackedEntity: {
-        type: "retired-entity",
-        bindings: { "app/appointment.created": "patient" },
-      },
-    });
-    fireEvent.click(
-      view.getByRole("button", { name: "Edit Tie each run to a record" })
-    );
-
-    expect(
-      within(
-        view.getByRole("region", { name: "Tie each run to a record" })
-      ).getByRole("alert").textContent
-    ).toContain("retired-entity is no longer available");
   });
 });
 

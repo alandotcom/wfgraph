@@ -397,9 +397,13 @@ describe("Event Split Browse", () => {
     fireEvent.click(view.getByRole("button", { name: "Open Cancel Events" }));
 
     expect(aside()?.dataset.level).toBe("browse");
-    expect(
-      view.getByRole("button", { name: "Done editing Stop a run when" })
-    ).toBeTruthy();
+    // The Start's one form shows every rule, so the jump moves focus to the
+    // Cancel Event picker.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByLabelText("Stop a run when")
+      )
+    );
   });
 
   it("opens the event-mode Wait above a split and returns on Back", async () => {
@@ -442,9 +446,9 @@ describe("Event Split Browse", () => {
 
     expect(aside()?.dataset.level).toBe("browse");
     expect(view.getByRole("heading", { name: "Lifecycle" })).toBeTruthy();
-    expect(
-      view.getByRole("button", { name: "Done editing what starts it" })
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(view.getByLabelText("Starts when"))
+    );
 
     fireEvent.click(view.getByRole("button", { name: "Back" }));
 
@@ -455,26 +459,13 @@ describe("Event Split Browse", () => {
     ).toBeTruthy();
   });
 
-  it("closes the open section on Escape, then returns to the split", async () => {
+  it("returns to the split on Escape", async () => {
     const { view, aside } = await renderEventSplit({
       nodes: [lifecycleNode, splitNode, sendNode],
       edges: BASE_EDGES,
     });
 
     fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
-    expect(
-      view.getByRole("button", { name: "Done editing what starts it" })
-    ).toBeTruthy();
-
-    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
-    expect(
-      view.queryByRole("button", { name: "Done editing what starts it" })
-    ).toBeNull();
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Choose what starts it" })
-      )
-    );
     expect(
       view.getByRole("complementary", { name: "Start details" })
     ).toBeTruthy();

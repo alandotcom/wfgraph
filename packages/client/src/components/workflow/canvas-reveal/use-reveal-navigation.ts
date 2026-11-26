@@ -1,4 +1,4 @@
-import { atom, useStore, type Atom } from "jotai";
+import { useStore } from "jotai";
 import { useMemo } from "react";
 import { useConfigurationSheet } from "#src/hooks/use-configuration-sheet";
 import { useIsMobile } from "#src/hooks/use-mobile";
@@ -14,25 +14,17 @@ import {
   openMobileAddressSheetAtom,
   openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
-  recordMobileSheetSectionAtom,
 } from "#src/lib/mobile-sheet-store";
 import {
-  activeMobileSheetsAtom,
-  activeRevealPresentationAtom,
   inspectRunNodeAtom,
-  openInspectorSectionAtom,
   openNodeRevealFromOriginAtom,
-  recordInspectorSectionAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
-import { requestRevealPlacementAtom } from "./reveal-requests";
-
-/** The object an inspector shows and the section it shows for that object. */
-export type ShownInspectorSection = {
-  inspected: InspectedObject;
-  section: string | null;
-} | null;
+import {
+  requestRevealPlacementAtom,
+  revealFieldRequestAtom,
+} from "./reveal-requests";
 
 /** Which run node a run address shows, as `inspectRunNodeAtom` records it. */
 type RunNodeInspection = {
@@ -63,21 +55,19 @@ export type RevealNavigation = {
     level?: RevealLevel | undefined;
     origin?: InspectedOrigin | undefined;
   }) => void;
-  /** Open the sectioned inspector of `nodeId` at `section`. */
+  /**
+   * Open the inspector of `nodeId` at `section`. On desktop, where one form
+   * shows every section, the node opens as `openNode` opens it and focus moves
+   * to the element `targetId` names. On a phone the full-screen inspector
+   * opens at `section`.
+   */
   openSection: (input: {
     address: WorkspaceAddress;
     nodeId: string;
     section: string;
+    targetId: string;
     origin?: InspectedOrigin | undefined;
   }) => void;
-  /** Record the section the inspector of `nodeId` shows. */
-  recordSection: (input: {
-    address: WorkspaceAddress;
-    nodeId: string;
-    section: string;
-  }) => void;
-  /** The object the active inspector shows and its section. */
-  shownSectionAtom: Atom<ShownInspectorSection>;
   /**
    * Show the inspector of `address`: its sheet below `md`. The details column
    * is always present, so on desktop this does nothing.
@@ -128,18 +118,6 @@ export type RevealNavigation = {
   }) => void;
 };
 
-const desktopShownSectionAtom = atom((get): ShownInspectorSection => {
-  const { inspected, inspectorSection } = get(activeRevealPresentationAtom);
-  return inspected ? { inspected, section: inspectorSection } : null;
-});
-
-const mobileShownSectionAtom = atom((get): ShownInspectorSection => {
-  const top = get(activeMobileSheetsAtom).at(-1);
-  return top?.inspected
-    ? { inspected: top.inspected, section: top.section }
-    : null;
-});
-
 /**
  * The Reveal actions for the current form factor, chosen once here so no
  * surface that opens an inspector tests the viewport width itself.
@@ -186,13 +164,6 @@ export function useRevealNavigation(): RevealNavigation {
             inspected: node(nodeId),
             section,
           }),
-        recordSection: ({ address, nodeId, section }) =>
-          store.set(recordMobileSheetSectionAtom, {
-            address,
-            inspected: node(nodeId),
-            section,
-          }),
-        shownSectionAtom: mobileShownSectionAtom,
         openInspector: openSheet,
         showSwitchedWorkspace: ({ address }) => openSheet(address),
         followSelection: openSheet,
@@ -215,33 +186,31 @@ export function useRevealNavigation(): RevealNavigation {
       ...input
     }) =>
       store.set(inspectRunNodeAtom, { ...input, opensFocus: opensEvidence });
+    const openNode: RevealNavigation["openNode"] = ({
+      address,
+      nodeId,
+      origin,
+    }) => {
+      store.set(detailsFloatOpenAtom, true);
+      if (origin !== undefined) {
+        store.set(openNodeRevealFromOriginAtom, { address, nodeId, origin });
+        return;
+      }
+      store.set(setWorkspaceSelectionAtom, {
+        address,
+        selection: { nodeIds: [nodeId], edgeIds: [] },
+      });
+      store.set(requestRevealPlacementAtom, {
+        addressId: workspaceAddressId(address),
+        nodeIds: [nodeId],
+      });
+    };
     return {
-      openNode: ({ address, nodeId, origin }) => {
-        store.set(detailsFloatOpenAtom, true);
-        if (origin !== undefined) {
-          store.set(openNodeRevealFromOriginAtom, { address, nodeId, origin });
-          return;
-        }
-        store.set(setWorkspaceSelectionAtom, {
-          address,
-          selection: { nodeIds: [nodeId], edgeIds: [] },
-        });
-        store.set(requestRevealPlacementAtom, {
-          addressId: workspaceAddressId(address),
-          nodeIds: [nodeId],
-        });
+      openNode,
+      openSection: ({ address, nodeId, targetId, origin }) => {
+        openNode({ address, nodeId, origin });
+        store.set(revealFieldRequestAtom, { nodeId, targetId });
       },
-      openSection: (input) => {
-        store.set(detailsFloatOpenAtom, true);
-        store.set(openInspectorSectionAtom, input);
-      },
-      recordSection: ({ address, nodeId, section }) =>
-        store.set(recordInspectorSectionAtom, {
-          address,
-          inspectedId: nodeId,
-          section,
-        }),
-      shownSectionAtom: desktopShownSectionAtom,
       openInspector: () => {},
       showSwitchedWorkspace: () => {},
       followSelection: () => {},

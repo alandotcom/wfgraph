@@ -95,9 +95,7 @@ export type FormFactorPresentation = { camera: WorldCamera | null };
 /**
  * The desktop presentation adds the details column. A null `revealLevel`
  * belongs to an address that has never set one, which shows Browse. `inspected`
- * is the object `inspectorScroll` (pixels from the top, per level) and
- * `inspectorSection` belong to. `inspectorSection` is the id of the section a
- * sectioned inspector has open for editing, and null when none is open.
+ * is the object `inspectorScroll` (pixels from the top, per level) belongs to.
  * `inspectedOrigin` is where a jump to `inspected` started. It lasts while the
  * selection holds `inspected` alone.
  */
@@ -105,7 +103,6 @@ export type DesktopPresentation = FormFactorPresentation & {
   revealLevel: RevealLevel | null;
   inspected: InspectedObject | null;
   inspectorScroll: Readonly<Record<RevealLevel, number>>;
-  inspectorSection: string | null;
   inspectedOrigin: InspectedOrigin | null;
 };
 
@@ -166,7 +163,6 @@ export const EMPTY_WORKSPACE_NAVIGATION: WorkspaceNavigation = {
     revealLevel: null,
     inspected: null,
     inspectorScroll: { browse: 0, focus: 0 },
-    inspectorSection: null,
     inspectedOrigin: null,
   },
   mobile: { camera: null, sheets: [] },
@@ -441,7 +437,6 @@ export function withInspectedSelection(
       ...withNext.desktop,
       inspected: selected,
       inspectorScroll: EMPTY_WORKSPACE_NAVIGATION.desktop.inspectorScroll,
-      inspectorSection: null,
       inspectedOrigin: null,
     },
   };
@@ -474,26 +469,6 @@ export function withShowSuperseded(
     : { ...workspace, showSuperseded };
 }
 
-/**
- * Record the section a sectioned inspector has open for editing, or null for
- * none. Another section starts its Focus scroll at the top.
- */
-export function withInspectorSection(
-  workspace: WorkspaceNavigation,
-  section: string | null
-): WorkspaceNavigation {
-  return workspace.desktop.inspectorSection === section
-    ? workspace
-    : {
-        ...workspace,
-        desktop: {
-          ...workspace.desktop,
-          inspectorSection: section,
-          inspectorScroll: { ...workspace.desktop.inspectorScroll, focus: 0 },
-        },
-      };
-}
-
 /** Record where a jump to the inspected object started. */
 export function withInspectedOrigin(
   workspace: WorkspaceNavigation,
@@ -523,7 +498,6 @@ export function inspectionInGraph(
       ...withSheets.desktop,
       inspected: null,
       inspectorScroll: EMPTY_WORKSPACE_NAVIGATION.desktop.inspectorScroll,
-      inspectorSection: null,
       inspectedOrigin: null,
     },
   };

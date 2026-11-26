@@ -1,4 +1,4 @@
-import { CircleQuestionMark } from "lucide-react";
+import { Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "#src/components/ui/button";
 import {
@@ -53,13 +53,16 @@ export function ConfigHeading({
  * One labelled block inside a configuration section.
  *
  * A group carries a subordinate heading and its own help because each group
- * answers a separate configuration question.
+ * answers a separate configuration question. `trailing` holds a small control
+ * that acts on the whole group, such as the Remove of an optional rule, at the
+ * end of the label row.
  */
 export function ConfigGroup({
   label,
   help,
   className,
   prominent = false,
+  trailing,
   children,
 }: {
   label: string;
@@ -69,22 +72,29 @@ export function ConfigGroup({
   className?: string;
   /** Gives the primary group in a section full foreground emphasis. */
   prominent?: boolean | undefined;
+  /** A control acting on the whole group, at the end of the label row. */
+  trailing?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className={cn("space-y-1.5", className)}>
-      <div className="flex min-w-0 items-center gap-1">
-        <h4
-          className={cn(
-            "truncate font-medium",
-            prominent
-              ? "text-foreground text-sm"
-              : "text-muted-foreground text-xs/relaxed"
-          )}
-        >
-          {label}
-        </h4>
-        {help ? <ConfigHelp label={label}>{help}</ConfigHelp> : null}
+      <div className="flex min-h-6 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1">
+          <h4
+            className={cn(
+              "truncate font-medium",
+              prominent
+                ? "text-foreground text-sm"
+                : "text-muted-foreground text-xs/relaxed"
+            )}
+          >
+            {label}
+          </h4>
+          {help ? <ConfigHelp label={label}>{help}</ConfigHelp> : null}
+        </div>
+        {trailing ? (
+          <div className="flex shrink-0 items-center gap-1">{trailing}</div>
+        ) : null}
       </div>
       {children}
     </section>
@@ -117,7 +127,7 @@ export function ConfigHelp({
           />
         }
       >
-        <CircleQuestionMark />
+        <Info />
       </PopoverTrigger>
       {/* Anchored to the left of the panel rather than below the icon, so the
           three Concurrency descriptions do not cover the radios they describe.
@@ -138,5 +148,34 @@ export function ConfigHelp({
         <div className="space-y-2 text-muted-foreground">{children}</div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * The Remove of an optional group, such as one of the Start's rules, for the
+ * end of its label row. It reads "Remove" and names the group it removes for
+ * assistive technology.
+ */
+export function RemoveGroupButton({
+  label,
+  disabled,
+  onRemove,
+}: {
+  label: string;
+  disabled?: boolean | undefined;
+  onRemove: () => void;
+}) {
+  return (
+    <Button
+      aria-label={`Remove ${label}`}
+      className="text-muted-foreground"
+      disabled={disabled}
+      onClick={onRemove}
+      size="xs"
+      type="button"
+      variant="ghost"
+    >
+      Remove
+    </Button>
   );
 }

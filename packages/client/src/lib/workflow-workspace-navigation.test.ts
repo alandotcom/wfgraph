@@ -44,7 +44,7 @@ import {
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
   recordInspectorScrollAtom,
-  openInspectorSectionAtom,
+  openNodeRevealFromOriginAtom,
   setWorkspaceRevealLevelAtom,
   activeWorkspaceCamerasAtom,
   forgetWorkflowNavigationAtom,
@@ -296,58 +296,24 @@ describe("desktop details level", () => {
     });
   });
 
-  it("opens another object with a section open in one write", () => {
+  it("records an origin for Back to return to, and clears it for another object", () => {
     const store = draftStore();
-    store.set(selectOnlyNodeAtom, "draft_step");
     const draft = store.get(activeWorkspaceAddressAtom);
 
-    store.set(openInspectorSectionAtom, {
+    store.set(openNodeRevealFromOriginAtom, {
       address: draft,
       nodeId: "child_step",
-      section: "connections",
+      origin: { nodeId: "draft_step" },
     });
-
     expect(store.get(activeSelectionAtom)).toEqual({
       nodeIds: ["child_step"],
       edgeIds: [],
     });
-    expect(store.get(activeRevealPresentationAtom)).toMatchObject({
-      inspected: { kind: "node", id: "child_step" },
-      inspectorSection: "connections",
-    });
-  });
-
-  it("records an origin for Back to return to, and keeps it across that object's own section changes", () => {
-    const store = draftStore();
-    const draft = store.get(activeWorkspaceAddressAtom);
-
-    store.set(openInspectorSectionAtom, {
-      address: draft,
-      nodeId: "child_step",
-      section: "connections",
-      origin: { nodeId: "draft_step" },
-    });
     expect(store.get(activeRevealPresentationAtom).inspectedOrigin).toEqual({
       nodeId: "draft_step",
     });
 
-    // A later call for the same inspected node, with no origin named, leaves
-    // the recorded origin alone.
-    store.set(openInspectorSectionAtom, {
-      address: draft,
-      nodeId: "child_step",
-      section: "validation",
-    });
-    expect(store.get(activeRevealPresentationAtom).inspectedOrigin).toEqual({
-      nodeId: "draft_step",
-    });
-
-    // Moving to a different object clears it, origin or not.
-    store.set(openInspectorSectionAtom, {
-      address: draft,
-      nodeId: "other_child_step",
-      section: "connections",
-    });
+    store.set(selectOnlyNodeAtom, "other_child_step");
     expect(store.get(activeRevealPresentationAtom).inspectedOrigin).toBeNull();
   });
 

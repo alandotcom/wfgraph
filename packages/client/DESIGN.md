@@ -438,7 +438,7 @@ Wait's timeout left blank. The Condition's rules and the Event Split's
 outlets are each the step's one choice, so neither has such a disclosure. A Condition's rules are live the
 same way: the sentence saying when it takes True sits above them and changes as
 they do, and there is no Edit or Done. Every rule builder, the Wait's match and
-the filters and eligibility rule inside a Lifecycle section included, edits in
+the filters and eligibility rule in the Start's form included, edits in
 place; a person who may not edit reads the rules as sentences. A rule names
 its field with the step it comes from, "Status · Patient State", when another
 input shares the field's name. A Condition's rule keeps field,
@@ -472,53 +472,46 @@ empty canvas, a duplicate or a paste, the camera then moves once, the least it
 must, to show the new steps clear of the agent's prompt line and the canvas
 controls, and does not move when they are already in view.
 
-Selecting the start opens its details, which show only what is set. Beneath
-an editable label, **Starts when** always shows: each Start Event with its
-payload Start Filter, or with none the sentence saying a schedule, a person or
-nothing starts a run, and a line when someone can also run it by hand. Under
-it sit **Choose what starts it**, which edits the Start Events and whether
-manual runs are allowed, and **Add a rule**, whose items name each rule not yet
-set by what it does: "Only start when…" (a Start Filter, offered once a Start
-Event is chosen), "Stop a run when…" (Cancel Events), "If a run is already in
-progress…" (Overlapping runs), "On a schedule…", "Tie each run to a record…"
-(the tracked Entity) and "Only run while the record matches…" (its eligibility
-rule). A rule goes by that one name everywhere a person reads it: its menu
-item, its section's title and its form's heading, so "Stop a run when…" opens
-a section titled "Stop a run when", and a filter on a Start Event is headed
-"Only start when". CONTEXT.md keeps the domain nouns for the same rules. Each
-set rule shows as its own section in this order: "If a run is already in
-progress" with what a newer start does to the run in progress, "On a
-schedule" with each schedule in words and its next run, "Stop a run when"
-with its Cancel Events, and "Tie each run to a record" with the Entity's
-binding in each Event, "Only run while the record matches" and when it is
-checked. Two sections show without
-being added, because the workflow is wrong without them: Event Connections,
+Selecting the start opens its one form, which is always editable and shows
+only what is set, with no summary and no Edit or Done. **Starts when** always
+shows: the Start Event picker and each chosen Event with its payload Start
+Filter, or **Filter the arrivals** to add one, then **Can be run by hand**.
+Each other rule shows once it is set, as its controls under one label, in this
+order: **One run per**, the tracked Entity, with each Event's binding where the
+Event offers more than one, its eligibility rule named for the Entity, such as
+"Only while the patient matches", and **When to check**; "If a run is already
+in progress"; "On a schedule", each schedule with its next runs; and "Stop a
+run when" with its Cancel Events. Event Connections show without being added
 while a Start or Cancel Event arrives through an integration, since such an
-Event reaches no run until its Connection is chosen, and Validation, while the
-start has an issue. A set rule's **Remove** puts it back to its default, every
-arrival starting its own run, no schedule, no Cancel Event, or no Entity, and
-its section hides again; focus moves to **Choose what starts it**. Start
-Filters and eligibility sit in separate sections, and each says what it reads:
-the arriving Event's payload, or the Entity's current state from the host. A
-section's **Edit**, **Choose what starts it** and an **Add a rule** item show
-that section's editor in place of its summary, in the same panel, and move
-focus to the section's heading; a rule being added shows its section while
-its editor is open. **Done** or Escape returns the section to its summary and
-puts focus on its **Edit**, or on **Choose what starts it** when the rule was
-left unset and its section hides. One section is open at a time. Each issue
-opens the section that edits what it names. Every Lifecycle Rules problem Publish refuses, including a Start or
-Cancel Filter reading a path its Event does not declare, is a blocking issue.
-Entity tracking, its eligibility rule, and the
-rule's check timing stay together in the Entity section. A schedule is a preset
-(Every hour, Every day at, Every weekday at, Every week on) or a Custom cron
-expression, with its own time zone, starting from the browser's. Each one reads
-back as a sentence and its next three runs. Each schedule saves as it is
-edited. One that cannot be saved, such as an invalid expression or a duplicate,
-stays in the section unsaved, keeps the version it last saved, and is named in
-the Lifecycle warning, and it stays there when the section returns to its
-summary. While the workflow tracks an Entity, its
-Start and Cancel Events say that their Entity bindings supply run identity and
-show no Correlation Path controls. The Lifecycle node shows no Delete.
+Event reaches no run until its Connection is chosen. **Add a rule** sits at the
+end, and its items name each rule not yet set by what it does: "Only start
+when…" (a Start Filter, offered once a Start Event is chosen), "Stop a run
+when…" (Cancel Events), "If a run is already in progress…" (Overlapping runs),
+"On a schedule…", "One run per…" (the tracked Entity) and "Only while the
+record matches…" (its eligibility rule). Choosing one shows that rule's
+controls in place and moves focus into them, scrolling only as far as bringing
+them into view needs; a rule added and left empty stays until it is removed. A
+rule goes by that one name in its menu item and its label. CONTEXT.md keeps the
+domain nouns for the same rules. A set rule's **Remove**, a small control on
+its label row, puts it back to its default, every arrival starting its own run,
+no schedule, no Cancel Event, or no Entity, and focus moves to **Add a rule**.
+What a choice does, which runs count as related, and the binding an Event with
+one binding uses sit behind the info icon on the rule's label. Start Filters and
+eligibility are separate rules, and each one's help says what it reads: the
+arriving Event's payload, or the Entity's current state from the host. A
+refusal Publish would give shows beneath the rule its check reads, and an issue
+no rule holds is listed at the end of the form, after the label, which follows a
+divider. Every Lifecycle Rules problem Publish refuses, including a Start or
+Cancel Filter reading a path its Event does not declare, is a blocking issue. A
+schedule is a preset (Every hour, Every day at, Every weekday at, Every week on)
+or a Custom cron expression, with its own time zone, starting from the
+browser's. Each one reads back as a sentence and its next three runs. Each
+schedule saves as it is edited. One that cannot be saved, such as an invalid
+expression or a duplicate, stays in the form unsaved, keeps the version it last
+saved, and is named beneath the schedules. While the workflow tracks an Entity,
+the help of its Start and Cancel Events says that their Entity bindings supply
+run identity, and they show no Correlation Path controls. The Lifecycle node
+shows no Delete.
 
 A selected Condition opens the same header. Its editor starts with one sentence
 stating when the Condition takes True and which AND or OR joins its rules or
@@ -541,8 +534,8 @@ or the Wait Subscriptions of the nearest event-mode Wait above it. It lists each
 outlet with the Event's label, optional description, raw Event name, and the step
 its stored connection leads to, or a line saying a disconnected outlet ends the
 run there. The primary action opens the source: **Open start Events**
-or **Open Cancel Events** selects the start with that
-section's editor open, and **Open** followed by the Wait's name selects the Wait
+or **Open Cancel Events** selects the start and puts focus in that rule's Event
+picker, and **Open** followed by the Wait's name selects the Wait
 and opens its editor. **Back** from either returns to the Event Split. The list also says when no Event source reaches the Event
 Split, when an outlet's Event is no longer declared by the app, when a stored
 connection names an Event that no longer reaches it, and when a connection
@@ -637,16 +630,16 @@ its heading takes focus.
 
 Escape and **Back** take one step back as the shown object's kind defines it.
 In Draft, Escape inside the Inspector belongs to an open select,
-combobox, menu, autocomplete, or dialog first, then to a Lifecycle section open
-for editing, and then hands focus back to the selected step's outline row, or
-to the selected object on the canvas when the outline does not show it.
+combobox, menu, autocomplete, or dialog first, and then hands focus back to the
+selected step's outline row, or to the selected object on the canvas when the
+outline does not show it.
 For the Lifecycle node or a Wait opened from an Event Split, Back and that last
 Escape select the Event Split again. The way back lasts while the source stays
 selected alone; selecting anything else ends it, and Back is then no longer
 offered. For a run node's evidence the step back is the run, and for a run it
 is the run list. In Runs, opening Focus moves focus to the title. The inspected
-step, the inspector's scroll position, and the open Lifecycle section are
-remembered separately for Draft, each Group view, the run list, and each run.
+step and the inspector's scroll position are remembered separately for Draft,
+each Group view, the run list, and each run.
 Levels add no browser history.
 
 Selecting an object moves the camera only when the Inspector would cover it. The camera

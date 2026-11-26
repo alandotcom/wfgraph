@@ -2,13 +2,7 @@ import {
   overlappingRunsSentence,
   startSentences,
 } from "@wfgraph/shared/graph/workflow-summary";
-import { ChevronDown } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "#src/components/ui/dropdown-menu";
+import { AddRuleMenu } from "#src/components/workflow/config/lifecycle-panel";
 import { useLifecycleRulesEditor } from "#src/components/workflow/config/use-lifecycle-rules-editor";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
 import { useAtomValue, useSetAtom } from "jotai";
@@ -65,12 +59,9 @@ import {
 import {
   isRemovableLifecycleSection,
   type LifecycleSectionId,
-  lifecycleEditButtonId,
   lifecycleIssueSection,
-  lifecycleSectionHeadingId,
   lifecycleSectionShown,
   lifecycleSectionTitle,
-  offeredLifecycleRules,
   type RemovableLifecycleSection,
   useOpenLifecycleSection,
   withoutLifecycleRule,
@@ -373,54 +364,15 @@ function EventConnectionsSummary({
 }
 
 /**
- * How the sections of `LifecyclePolicySections` edit. `onEdit` opens a
- * section's editor, from its Edit button, from "Choose what starts it" or from
- * "Add a rule". `open` names the one section shown as its editor, `editors`
- * holds each section's editor, and `onDone` is that section's Done button.
- * `onRemove`, when given, puts a set rule back to its default, which hides
- * its section.
+ * How the phone's summary of the start edits. `onEdit` opens a section's
+ * editor, from its Edit button, from "Choose what starts it" or from "Add a
+ * rule". `onRemove`, when given, puts a set rule back to its default, which
+ * hides its section.
  */
-export type LifecycleSectionEditing = {
+type LifecycleSectionEditing = {
   onEdit: (section: LifecycleSectionId) => void;
-  open?: LifecycleSectionId | null | undefined;
-  editors?: Readonly<Record<LifecycleSectionId, ReactNode>> | undefined;
-  onDone?: (() => void) | undefined;
   onRemove?: ((section: RemovableLifecycleSection) => void) | undefined;
 };
-
-/** "Add a rule": each rule not set yet, named for what it does. */
-function AddRuleMenu({
-  rules,
-  onEdit,
-}: {
-  rules: LifecycleRules;
-  onEdit: (section: LifecycleSectionId) => void;
-}) {
-  const offered = offeredLifecycleRules(rules);
-  if (offered.length === 0) {
-    return null;
-  }
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button size="sm" type="button" variant="outline" />}
-      >
-        Add a rule
-        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {offered.map((choice) => (
-          <DropdownMenuItem
-            key={choice.id}
-            onClick={() => onEdit(choice.section)}
-          >
-            {choice.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 /**
  * What starts a run: each Start Event with the filter it holds, or, with none,
@@ -465,50 +417,31 @@ function StartSummary({
 }
 
 /**
- * The start's rules as a summary. What starts a run always shows, and each
- * other rule shows once it is set (`lifecycleSectionShown`). Start and Cancel
- * Events show the payload filters that admit an arrival, kept apart from
- * Entity eligibility, which reads current Entity State. With `editing`, the
- * start offers "Choose what starts it" and "Add a rule", each set rule has an
- * Edit button and, with `editing.onRemove`, a Remove button, and the section
- * `editing.open` names shows its editor in place of its summary, with Done.
+ * The start's rules as a summary, for the phone's summary sheet. What starts a
+ * run always shows, and each other rule shows once it is set
+ * (`lifecycleSectionShown`). Start and Cancel Events show the payload filters
+ * that admit an arrival, kept apart from Entity eligibility, which reads
+ * current Entity State. The start offers "Choose what starts it" and "Add a
+ * rule", and each set rule has an Edit button and, with `editing.onRemove`, a
+ * Remove button.
  */
-export function LifecyclePolicySections({
+function LifecyclePolicySections({
   rules,
   editing,
-  issueCount = 0,
+  issueCount,
 }: {
   rules: LifecycleRules;
-  editing?: LifecycleSectionEditing | undefined;
+  editing: LifecycleSectionEditing;
   /** The start's issues, which decide whether Validation shows. */
-  issueCount?: number | undefined;
+  issueCount: number;
 }) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const concurrency = concurrencySummary(rules);
   const overlap = overlappingRunsSentence(rules, catalog);
-  const isOpen = (section: LifecycleSectionId) =>
-    editing?.open === section && editing.editors !== undefined;
   const shown = (section: LifecycleSectionId) =>
-    isOpen(section) ||
     lifecycleSectionShown({ section, rules, catalog, issueCount });
   const editAction = (title: string, section: LifecycleSectionId) => {
-    if (!editing) {
-      return undefined;
-    }
-    if (isOpen(section)) {
-      return (
-        <Button
-          aria-label={`Done editing ${title}`}
-          onClick={editing.onDone}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          Done
-        </Button>
-      );
-    }
     const onRemove = editing.onRemove;
     return (
       <div className="flex items-center gap-1">
@@ -525,7 +458,6 @@ export function LifecyclePolicySections({
         ) : null}
         <Button
           aria-label={`Edit ${title}`}
-          id={lifecycleEditButtonId(section)}
           onClick={() => editing.onEdit(section)}
           size="sm"
           type="button"
@@ -536,43 +468,25 @@ export function LifecyclePolicySections({
       </div>
     );
   };
-  /** The section's editor while it is open, and otherwise its summary. */
-  const body = (section: LifecycleSectionId, summary: ReactNode) =>
-    isOpen(section) ? editing?.editors?.[section] : summary;
-  const headingId = (section: LifecycleSectionId) =>
-    isOpen(section) ? lifecycleSectionHeadingId(section) : undefined;
 
   return (
     <>
-      <Section
-        action={
-          isOpen("start-events")
-            ? editAction("what starts it", "start-events")
-            : undefined
-        }
-        headingId={headingId("start-events")}
-        title={lifecycleSectionTitle("start-events")}
-      >
-        {body(
-          "start-events",
-          <>
-            <StartSummary catalog={catalog} nodes={nodes} rules={rules} />
-            {editing ? (
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button
-                  id={lifecycleEditButtonId("start-events")}
-                  onClick={() => editing.onEdit("start-events")}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Choose what starts it
-                </Button>
-                <AddRuleMenu onEdit={editing.onEdit} rules={rules} />
-              </div>
-            ) : null}
-          </>
-        )}
+      <Section title={lifecycleSectionTitle("start-events")}>
+        <StartSummary catalog={catalog} nodes={nodes} rules={rules} />
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button
+            onClick={() => editing.onEdit("start-events")}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Choose what starts it
+          </Button>
+          <AddRuleMenu
+            onChoose={(choice) => editing.onEdit(choice.section)}
+            rules={rules}
+          />
+        </div>
       </Section>
 
       {shown("overlapping-runs") ? (
@@ -581,17 +495,11 @@ export function LifecyclePolicySections({
             lifecycleSectionTitle("overlapping-runs"),
             "overlapping-runs"
           )}
-          headingId={headingId("overlapping-runs")}
           title={lifecycleSectionTitle("overlapping-runs")}
         >
-          {body(
-            "overlapping-runs",
-            <>
-              <p className="text-sm">{concurrency.label}</p>
-              {overlap === null ? null : (
-                <p className="text-muted-foreground text-xs">{overlap}</p>
-              )}
-            </>
+          <p className="text-sm">{concurrency.label}</p>
+          {overlap === null ? null : (
+            <p className="text-muted-foreground text-xs">{overlap}</p>
           )}
         </Section>
       ) : null}
@@ -599,10 +507,9 @@ export function LifecyclePolicySections({
       {shown("schedule") ? (
         <Section
           action={editAction(lifecycleSectionTitle("schedule"), "schedule")}
-          headingId={headingId("schedule")}
           title={lifecycleSectionTitle("schedule")}
         >
-          {body("schedule", <ScheduleSummary rules={rules} />)}
+          <ScheduleSummary rules={rules} />
         </Section>
       ) : null}
 
@@ -612,18 +519,14 @@ export function LifecyclePolicySections({
             lifecycleSectionTitle("cancel-events"),
             "cancel-events"
           )}
-          headingId={headingId("cancel-events")}
           title={lifecycleSectionTitle("cancel-events")}
         >
-          {body(
-            "cancel-events",
-            <RoleEvents
-              catalog={catalog}
-              nodes={nodes}
-              role="cancel"
-              rules={rules}
-            />
-          )}
+          <RoleEvents
+            catalog={catalog}
+            nodes={nodes}
+            role="cancel"
+            rules={rules}
+          />
         </Section>
       ) : null}
 
@@ -633,26 +536,18 @@ export function LifecyclePolicySections({
             lifecycleSectionTitle("entity-eligibility"),
             "entity-eligibility"
           )}
-          headingId={headingId("entity-eligibility")}
           title={lifecycleSectionTitle("entity-eligibility")}
         >
-          {body(
-            "entity-eligibility",
-            <EntityEligibilitySummary catalog={catalog} rules={rules} />
-          )}
+          <EntityEligibilitySummary catalog={catalog} rules={rules} />
         </Section>
       ) : null}
 
       {shown("connections") ? (
         <Section
           action={editAction("Event Connections", "connections")}
-          headingId={headingId("connections")}
           title="Event Connections"
         >
-          {body(
-            "connections",
-            <EventConnectionsSummary catalog={catalog} rules={rules} />
-          )}
+          <EventConnectionsSummary catalog={catalog} rules={rules} />
         </Section>
       ) : null}
     </>
@@ -660,15 +555,13 @@ export function LifecyclePolicySections({
 }
 
 /** The Lifecycle Node's label, which writes to the graph store as it is typed. */
-export function LifecycleLabelSection({ node }: { node: WorkflowNode }) {
+export function LifecycleLabelField({ node }: { node: WorkflowNode }) {
   const isGenerating = useAtomValue(isGeneratingAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   return (
-    <Section title="Label">
-      <Label className="sr-only" htmlFor="label">
-        Label
-      </Label>
+    <div className="space-y-2">
+      <Label htmlFor="label">Label</Label>
       <Input
         disabled={isGenerating || !canUpdate}
         id="label"
@@ -677,7 +570,7 @@ export function LifecycleLabelSection({ node }: { node: WorkflowNode }) {
         }
         value={node.data.label}
       />
-    </Section>
+    </div>
   );
 }
 
@@ -704,7 +597,9 @@ function LifecycleSummarySheetBody({ node }: { node: WorkflowNode }) {
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   return (
     <div className="pb-4">
-      <LifecycleLabelSection node={node} />
+      <div className="px-4 py-3">
+        <LifecycleLabelField node={node} />
+      </div>
       <LifecyclePolicySections
         editing={{
           onEdit: openSection,

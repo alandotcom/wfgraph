@@ -436,7 +436,6 @@ describe("mobile Reveal for complex nodes", () => {
     expect(store.get(activeMobileSheetsAtom).at(-1)?.section).toBe(
       "start-events"
     );
-    expect(store.get(activeRevealPresentationAtom).inspectorSection).toBeNull();
   });
 
   it("jumps from an Event Split to Lifecycle Start Events and Back restores the split", async () => {

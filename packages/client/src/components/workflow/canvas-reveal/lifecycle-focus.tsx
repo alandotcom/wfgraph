@@ -8,11 +8,15 @@ import { LifecycleConcurrencyGroup } from "#src/components/workflow/config/lifec
 import { LifecycleEntityEligibilityGroup } from "#src/components/workflow/config/lifecycle-entity-eligibility-group";
 import { LifecycleScheduleGroup } from "#src/components/workflow/config/lifecycle-schedule-group";
 import {
+  FieldIssuesProvider,
+  issueFieldKey,
+} from "#src/components/workflow/config/field-issues";
+import {
   LifecycleEventConnections,
-  LifecycleIssuesCallout,
+  LifecyclePanel,
   LifecycleRoleEventGroup,
 } from "#src/components/workflow/config/lifecycle-panel";
-import { unsavedScheduleMessage } from "#src/components/workflow/config/lifecycle-schedule";
+import { Separator } from "#src/components/ui/separator";
 import { useLifecycleRulesEditor } from "#src/components/workflow/config/use-lifecycle-rules-editor";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
 import { can } from "#src/lib/authorization";
@@ -26,38 +30,29 @@ import { cn } from "@wfgraph/shared/utils";
 import {
   LIFECYCLE_SECTIONS,
   type LifecycleSectionId,
-  lifecycleEditButtonId,
   lifecycleIssueSection,
-  lifecycleSectionHeadingId,
   lifecycleSectionShown,
-  type RemovableLifecycleSection,
-  useLifecycleOpenSection,
-  withoutLifecycleRule,
   useLifecycleSection,
 } from "./lifecycle-reveal-model";
 import type { RevealBodyProps } from "./reveal-kinds";
-import { NodeIssueList, Section } from "./reveal-sections";
-import {
-  LifecycleLabelSection,
-  LifecyclePolicySections,
-} from "./lifecycle-browse";
+import { NodeIssueList } from "./reveal-sections";
+import { LifecycleLabelField } from "./lifecycle-browse";
 
 /**
- * The editor of each Lifecycle section of `node`, keyed by section id, all
- * writing through one Lifecycle Rules editor, with the rules they edit and the
- * node's issues. `showSection` answers a control inside one section that shows
- * another, such as an issue in Validation. The caller keeps this mounted while
- * the node shows, so a schedule that cannot be saved yet stays in its section.
+ * The phone's editor of each Lifecycle section of `node`, keyed by section id,
+ * all writing through one Lifecycle Rules editor, with the rules they edit and
+ * the node's issues. `showSection` answers a control inside one section that
+ * shows another, such as an issue in Validation. The caller keeps this mounted
+ * while the node shows, so a schedule that cannot be saved yet stays in its
+ * section.
  */
-export function useLifecycleSectionEditors(input: {
+function useLifecycleSectionEditors(input: {
   node: WorkflowNode;
   showSection: (section: LifecycleSectionId) => void;
 }): {
   rules: LifecycleRules;
   nodeIssues: WorkflowIssue[];
   bodies: Record<LifecycleSectionId, ReactNode>;
-  /** Puts a set rule back to its default, or undefined when edits are off. */
-  remove: ((section: RemovableLifecycleSection) => void) | undefined;
 } {
   const { node, showSection } = input;
   const catalog = useExtensionCatalog();
@@ -88,15 +83,10 @@ export function useLifecycleSectionEditors(input: {
       />
     ),
     schedule: (
-      <div className="space-y-4">
-        <LifecycleScheduleGroup
-          disabled={disabled}
-          schedules={editor.schedules}
-        />
-        <LifecycleIssuesCallout
-          issues={editor.schedules.unsaved.map(unsavedScheduleMessage)}
-        />
-      </div>
+      <LifecycleScheduleGroup
+        disabled={disabled}
+        schedules={editor.schedules}
+      />
     ),
     "cancel-events": (
       <LifecycleRoleEventGroup
@@ -141,14 +131,7 @@ export function useLifecycleSectionEditors(input: {
       </ConfigGroup>
     ),
   };
-  return {
-    rules,
-    nodeIssues,
-    bodies,
-    remove: disabled
-      ? undefined
-      : (section) => editor.setRules(withoutLifecycleRule(rules, section)),
-  };
+  return { rules, nodeIssues, bodies };
 }
 
 /**
@@ -270,10 +253,10 @@ export function LifecycleFocus({ subject, scrollToTop }: RevealBodyProps) {
 }
 
 /**
- * The Lifecycle inspector in the details column: an editable label, the
- * lifecycle policy summary, and the node's issues. Each section's Edit shows
- * that section's editor in place, and Done returns it to its summary. An issue
- * opens the section that edits what it names.
+ * The Lifecycle inspector in the details column: the Start's one form, then
+ * its label after a divider, then any of the node's issues that no rule
+ * shows beneath itself. Focus moves into a rule a person adds through the
+ * column's field request, which scrolls only when the rule is out of view.
  */
 function LifecycleEditorBody({
   node,
@@ -282,69 +265,34 @@ function LifecycleEditorBody({
   node: WorkflowNode;
   focusField: RevealBodyProps["focusField"];
 }) {
-  const { section, open, close } = useLifecycleOpenSection(node.id);
-  const show = (next: LifecycleSectionId) => {
-    if (next === "validation") {
-      return;
-    }
-    open(next);
-    focusField(lifecycleSectionHeadingId(next));
-  };
-  const catalog = useExtensionCatalog();
-  const { rules, nodeIssues, bodies, remove } = useLifecycleSectionEditors({
-    node,
-    showSection: show,
-  });
+  const issues = useAtomValue(workflowIssuesAtom);
+  const isGenerating = useAtomValue(isGeneratingAtom);
+  const { updateConfig } = useNodeConfigWriter(node.id);
+  const disabled = isGenerating || !can(WfGraphOperations.workflowUpdate.id);
+  const unplaced = issues.filter(
+    (issue) => issue.nodeId === node.id && issueFieldKey(issue) === null
+  );
 
   return (
-    <div className="pb-4">
-      <LifecycleLabelSection node={node} />
-      <LifecyclePolicySections
-        editing={{
-          onEdit: show,
-          open: section,
-          editors: bodies,
-          onDone: () => {
-            if (section !== null) {
-              close();
-              // A rule left unset hides its section, so focus moves to the
-              // start's own control.
-              const stays = lifecycleSectionShown({
-                section,
-                rules,
-                catalog,
-                issueCount: nodeIssues.length,
-              });
-              focusField(
-                lifecycleEditButtonId(stays ? section : "start-events")
-              );
-            }
-          },
-          onRemove:
-            remove &&
-            ((removed) => {
-              remove(removed);
-              focusField(lifecycleEditButtonId("start-events"));
-            }),
-        }}
-        issueCount={nodeIssues.length}
-        rules={rules}
-      />
-      {nodeIssues.length > 0 ? (
-        <Section title="Validation">
-          <NodeIssueList
-            issues={nodeIssues}
-            onSelect={(_fieldKey, issue) => show(lifecycleIssueSection(issue))}
-          />
-        </Section>
-      ) : null}
-    </div>
+    <FieldIssuesProvider nodeId={node.id}>
+      <div className="space-y-5 p-4">
+        <LifecyclePanel
+          config={node.data.config ?? EMPTY_CONFIG}
+          disabled={disabled}
+          focusTarget={focusField}
+          onUpdateConfig={updateConfig}
+        />
+        <Separator />
+        <LifecycleLabelField node={node} />
+        {unplaced.length > 0 ? <NodeIssueList issues={unplaced} /> : null}
+      </div>
+    </FieldIssuesProvider>
   );
 }
 
 /**
  * The inspector of the Lifecycle Node in the details column, keyed to the
- * node so the section editors' pickers start clean for each Lifecycle Node.
+ * node so the form's pickers start clean for each Lifecycle Node.
  */
 export function LifecycleEditor({ subject, focusField }: RevealBodyProps) {
   const nodes = useAtomValue(nodesAtom);

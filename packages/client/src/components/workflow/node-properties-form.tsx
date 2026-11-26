@@ -22,7 +22,6 @@ import {
 } from "./config/action-choice-field";
 import { ActionLinks } from "./config/action-links";
 import { FieldIssuesProvider } from "./config/field-issues";
-import { LifecyclePanel } from "./config/lifecycle-panel";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import type { NodeConfigFrame } from "./node-config-panel";
 import { NodeControls } from "./step-controls";
@@ -73,8 +72,8 @@ export function NodeDetailsFields({
 }
 
 /**
- * The complete configuration form of one node, whether a step, a Group, or the
- * Lifecycle node: its label and description, its node-specific configuration,
+ * The complete configuration form of one step or Group: its label and
+ * description, its node-specific configuration,
  * and its enable, ungroup, and delete controls. Each validation issue that
  * names a field shows beneath that field. Every value writes straight to
  * the graph store, so the form can unmount and mount again without losing an
@@ -198,23 +197,6 @@ export function NodePropertiesForm({
             several steps. Inside, steps can branch, join, and end. The Group
             continues outside from at most one outlet.
           </p>
-        ) : null}
-
-        {selectedNode.data.type === "lifecycle" ? (
-          /* The Lifecycle Rules are the whole of the entry node's configuration.
-           The payload shape is not asked for here: it belongs to the Events the
-           rules name, and the editor derives the fields it offers from them. */
-          <LifecyclePanel
-            config={selectedNode.data.config || {}}
-            disabled={isGenerating || !canUpdate}
-            // Keyed to the node, so the pickers inside start clean for the
-            // entry node being configured. The panel itself holds no state,
-            // but its comboboxes hold a search term, and opening another
-            // workflow puts its entry node in this same slot: unkeyed, the
-            // second node arrives with the first one's filter still typed in.
-            key={selectedNode.id}
-            onUpdateConfig={handleUpdateConfig}
-          />
         ) : null}
 
         {selectedNode.data.type === "action" &&
