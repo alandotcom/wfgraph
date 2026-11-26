@@ -54,7 +54,11 @@ export type WorkflowGraphUpdate = {
   workflowId: string;
   revision: number;
 };
-/** Identifies the latest complete graph replacement for viewport fitting. */
+/**
+ * The latest change that moved the whole graph: an agent's edit, a draft saved
+ * elsewhere, or Tidy layout. The canvas places its camera after each, the way
+ * it places a workflow it opens.
+ */
 export const workflowGraphUpdateAtom = atom<WorkflowGraphUpdate | null>(null);
 
 /**

@@ -302,8 +302,11 @@ not blown up, when that leaves every card at the compact form or larger, with
 its number and title. Otherwise it opens at the compact form's lowest zoom,
 0.52. The Lifecycle card sits at the top center of the usable canvas. A graph
 that fits but would clip at that anchor is centered, and a graph that does not
-fit at 0.52 runs off the bottom edge. **Fit view** still fits the whole graph,
-and the number-only form is there for a person who zooms out. A camera remembered for the view wins. When a resolved
+fit at 0.52 runs off the bottom edge. **Tidy layout**, an agent's edit and a
+draft saved elsewhere move the camera to that same placement in one animated
+move, and a change between phone and desktop with no remembered camera places
+it the same way. Only **Fit view** fits the whole graph at any zoom, and the
+number-only form is there for a person who zooms out. A camera remembered for the view wins. When a resolved
 view changes to a view with no remembered camera, the canvas places the graph
 the same way, never zooming in past the zoom it had. A run that failed, is
 waiting, or was canceled then moves the least distance that puts the step where

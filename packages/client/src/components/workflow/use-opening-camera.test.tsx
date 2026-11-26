@@ -18,6 +18,7 @@ import {
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { workflowGraphUpdateAtom } from "#src/lib/workflow-ui-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import {
   expectSteadyCamera,
@@ -176,6 +177,22 @@ async function renderOpeningCamera(input: {
     store,
     start,
     motion,
+    /**
+     * Announce a change that moved the whole graph of `workflowId`, as an
+     * agent's edit, a draft saved elsewhere or Tidy layout does.
+     */
+    updateGraph: async (workflowId = "wf_1") => {
+      await act(async () => {
+        store.set(workflowGraphUpdateAtom, {
+          workflowId,
+          revision: (store.get(workflowGraphUpdateAtom)?.revision ?? 0) + 1,
+        });
+      });
+      // The placement waits for the paint that shows the replaced graph.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    },
     /** Open the workflow, or enter a view at `zoomLimit`, as the canvas does. */
     open: async (zoomLimit: number) => {
       const placeCamera = place;
@@ -323,5 +340,67 @@ describe("useOpeningCamera", () => {
     expect(camera.motion.moves).toHaveLength(1);
     const group = screenBox(nodes[2], camera.viewport());
     expect(group.right).toBeLessThanOrEqual(CANVAS.width - REVEAL_PADDING_PX);
+  });
+
+  it("places a graph taller than the canvas after an update on titled cards, with its Lifecycle card at the top center, in one move", async () => {
+    const camera = await renderOpeningCamera({
+      nodes: LARGE_GRAPH,
+      search: {},
+    });
+
+    await camera.updateGraph();
+
+    expectSteadyCamera(camera.motion.moves, camera.start);
+    expect(camera.motion.moves).toHaveLength(1);
+    const viewport = camera.viewport();
+    // Fit view would draw every card of this graph by number alone.
+    expect(LARGE_GRAPH_FITTED_ZOOM).toBeLessThan(WORKFLOW_NUMBER_CARD_ZOOM);
+    expect(viewport.zoom).toBeGreaterThanOrEqual(WORKFLOW_NUMBER_CARD_ZOOM);
+    expect(cardTierAtZoom(viewport.zoom)).not.toBe("number");
+    const lifecycle = screenBox(LARGE_GRAPH[0], viewport);
+    expect((lifecycle.left + lifecycle.right) / 2).toBeCloseTo(
+      CANVAS.width / 2
+    );
+    expect(lifecycle.top).toBe(48);
+  });
+
+  it("keeps the whole-graph fit of a graph that fits above the floor after an update", async () => {
+    const nodes = [
+      card("lifecycle", 500, 0, { type: "lifecycle" }),
+      card("left", 0, 200),
+      card("right", 1000, 400),
+    ];
+    const camera = await renderOpeningCamera({ nodes, search: {} });
+    const fitted = getViewportForBounds(
+      getNodesBounds(nodes),
+      CANVAS.width,
+      CANVAS.height,
+      WORKFLOW_CANVAS_MIN_ZOOM,
+      WORKFLOW_FIT_VIEW_MAX_ZOOM,
+      WORKFLOW_FIT_VIEW_PADDING
+    );
+    expect(fitted.zoom).toBeGreaterThan(WORKFLOW_NUMBER_CARD_ZOOM);
+
+    await camera.updateGraph();
+
+    expect(camera.motion.moves).toHaveLength(1);
+    const viewport = camera.viewport();
+    expect(viewport.zoom).toBeCloseTo(fitted.zoom);
+    for (const node of nodes) {
+      const box = screenBox(node, viewport);
+      expect(box.left).toBeGreaterThanOrEqual(0);
+      expect(box.right).toBeLessThanOrEqual(CANVAS.width);
+    }
+  });
+
+  it("leaves the camera alone for an update to another workflow", async () => {
+    const camera = await renderOpeningCamera({
+      nodes: LARGE_GRAPH,
+      search: {},
+    });
+
+    await camera.updateGraph("wf_2");
+
+    expect(camera.motion.moves).toHaveLength(0);
   });
 });
