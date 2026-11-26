@@ -137,10 +137,38 @@ function noTestModeRefund(systems: Systems) {
   });
 }
 
+/**
+ * A mistake: the handler checks `runMode` but answers a status of its own, so
+ * the editor shows the step of a test run as a refund that succeeded.
+ */
+function unmarkedTestRefund(systems: Systems) {
+  return defineAction({
+    id: "billing/refund",
+    label: "Refund Charge",
+    description: "Refunds a charge and emails the customer.",
+    ...refundSchemas,
+    sideEffect: true,
+    handler: async ({ input, runMode, step }) => {
+      if (runMode === "test") {
+        return { refundId: "re_test", status: "not_refunded" };
+      }
+      const refundId = await step.run("refund", ({ idempotencyKey }) =>
+        systems.payments.refund(input.chargeId, idempotencyKey)
+      );
+      await step.run("email", async ({ idempotencyKey }) => {
+        await systems.mail.send(refundId, idempotencyKey);
+        return null;
+      });
+      return { refundId, status: "refunded" };
+    },
+  });
+}
+
 type RefundAction = ReturnType<typeof recommendedRefund>;
 
 /**
- * The grader. It asserts that a Draft run refunds nothing, that a live run
+ * The grader. It asserts that a Draft run refunds nothing and answers the
+ * skipped status, that a live run
  * refunds once and emails once under two different keys, that a later pass of
  * the same run calls neither system, and that the pass retrying a failed
  * email emails again without refunding again.
@@ -151,8 +179,14 @@ async function expectSafeRefund(
   const input = { chargeId: "ch_1" };
 
   const draftSystems = fakeSystems();
-  await runHostAction(build(draftSystems), { input, runMode: "test" });
+  const draft = await runHostAction(build(draftSystems), {
+    input,
+    runMode: "test",
+  });
   expect(draftSystems.payments.calls).toHaveLength(0);
+  // The editor shows a test run's step as "Skipped (test run)" only when its
+  // answer carries this status.
+  expect(actionData(draft.result)).toMatchObject({ status: "skipped" });
 
   const systems = fakeSystems();
   const action = build(systems);
@@ -192,6 +226,12 @@ describe("wfgraph-core/host-actions task check", () => {
   it("rejects a handler that ignores runMode", async () => {
     await expect(expectSafeRefund(noTestModeRefund)).rejects.toThrow(
       "expected [ { id: 'ch_1', …(1) } ] to have a length of +0 but got 1"
+    );
+  });
+
+  it("rejects a test-run answer without the skipped status", async () => {
+    await expect(expectSafeRefund(unmarkedTestRefund)).rejects.toThrow(
+      "to match object"
     );
   });
 

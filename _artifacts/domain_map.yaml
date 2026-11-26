@@ -319,10 +319,10 @@ skills:
       - Offer application-owned choices with options callbacks, including choices that depend on another field and an unavailable result.
       - Put each call to an outside system in a step.run of its own, so a retry after a later failure resumes past it, knowing the handler runs once per node of a run.
       - Pass the bag's or the step's idempotencyKey to a vendor that deduplicates by key.
-      - Check runMode so a Draft run or a Test-mode run changes nothing real.
+      - Check runMode so a Draft run or a Test-mode run changes nothing real, and answer status "skipped" so the run shows the step as Skipped (test run).
       - Mark an action that writes outside the workflow with sideEffect true.
       - Test the action with runHostAction, including a later pass from the memo an earlier one left.
-      - Link from Canvas Reveal to a host page, such as an email preview, that authorizes the reader and reads the node with app.workflows.readDraftNode.
+      - Link from the editor's details column to a host page, such as an email preview, that authorizes the reader and reads the node with app.workflows.readDraftNode.
     failure_modes:
       - mistake: Effect handler on defineAction
         mechanism: defineAction is the Promise host path; Effect handlers belong to defineIntegration.
@@ -362,6 +362,15 @@ skills:
         priority: CRITICAL
         status: active
         skills: [host-actions, mcp]
+      - mistake: A test-run answer without the skipped status
+        mechanism: The editor shows a successful step of a test run as "Skipped (test run)" only when its answer carries a top-level status of "skipped", so any other answer reads as work that was done.
+        wrong_pattern: |
+          if (runMode === "test") return { refundId: "", refunded: false }
+        correct_pattern: |
+          if (runMode === "test") return { refundId: "", status: "skipped" }
+        source: alandotcom/wfgraph:docs/embedding.md (Test runs call your handler)
+        priority: MEDIUM
+        status: active
       - mistake: Two external calls in one step
         mechanism: A throw inside step.run retries the whole step, so a failed second call repeats the first.
         wrong_pattern: |
@@ -401,6 +410,7 @@ skills:
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:docs/integrations.md
+      - alandotcom/wfgraph:packages/client/src/lib/test-run-skip.ts
 
   - name: integrations
     slug: integrations
@@ -533,7 +543,7 @@ skills:
       - publicUrl OAuth routes
       - Resend webhook Events
       - "@wfgraph/plugins/ui"
-      - per-step test settings of the Slack, PostHog, Twilio and Resend actions
+      - per-step "In test runs" settings (testBehavior) of the Slack, PostHog, Twilio and Resend actions
       - oauthRevocation on a connection delete
       - the https rule for POSTHOG_HOST
     tasks:
@@ -948,6 +958,8 @@ skills:
       - the default model gpt-6.1-terra
       - maxConcurrentTurns on a provider function and beside agent.runner
       - agent.runner, WfGraphAgentRunner and WfGraphAgentTurn
+      - WfGraphAgentTurn.selectedNodes, the steps attached to the newest message, each with its stepNumber
+      - the testRun sentence read_workflow gives each action step
       - streamAgentTurn
       - agent.use and the per-tool grants a turn checks
       - the usage part and the "Agent turn finished" record
@@ -955,7 +967,7 @@ skills:
     tasks:
       - Turn on the editor's build agent against a chosen provider or gateway, or run its turns on the host's own model, and size its turn limit and grants.
       - Choose wfOpenAiCompatible for a gateway that serves Chat Completions alone.
-      - Explain a missing chat panel, a refusal of the agent option, or a refused tool call.
+      - Explain a missing prompt line, a refusal of the agent option, or a refused tool call.
     failure_modes:
       - mistake: Anthropic or OpenRouter with no model
         mechanism: Only wfOpenAi has a default model, so wfAnthropic or wfOpenRouter given a key and a blank model throws where the host calls it.
@@ -986,7 +998,7 @@ skills:
         priority: HIGH
         status: active
       - mistake: An unset variable read as a startup check
-        mechanism: A blank key turns the agent off without an error, so a deployment missing the variable loses the panel silently.
+        mechanism: A blank key turns the agent off without an error, so a deployment missing the variable loses the agent's prompt line silently.
         wrong_pattern: |
           Rely on apiKey: process.env.ANTHROPIC_API_KEY to stop a deployment that forgot the variable
         correct_pattern: |
@@ -1011,6 +1023,7 @@ skills:
       - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openrouter.ts
       - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai-compatible.ts
       - alandotcom/wfgraph:packages/core/src/backend/agent/runner.ts
+      - alandotcom/wfgraph:packages/agent/src/tools/test-run-behavior.ts
 
 tensions:
   - name: Promise host step versus Effect integration
@@ -1089,4 +1102,8 @@ gaps:
   - skill: build-agent
     question: Which build agent claims can be checked without a live model?
     context: The task check covers the refusals and agent.enabled for the provider functions and a host runner. Whether a gateway passes streaming, tools and the cache fields through, adaptive thinking on older Claude models, and a turn's tool grants in a live turn are unverified.
+    status: open
+  - skill: integrations
+    question: Is the "In test runs" select (config key testBehavior, option log_only) a contract a vendor integration may declare?
+    context: packages/shared/src/actions/test-run-behavior.ts reads any action whose config fields hold a testBehavior select, and the Run draft dialog and the build agent's testRun sentence describe such a step from the option it holds, with log_only meaning the step does nothing. The editor marks such a step "Skipped (test run)" when its answer carries a reasonCode starting test_mode_ (packages/client/src/lib/test-run-skip.ts). docs/integrations.md states none of this, so the integrations skill does not teach it; until a maintainer decides, a third-party integration that copies the built-ins' setting gets that behavior without a documented contract.
     status: open

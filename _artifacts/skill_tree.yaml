@@ -102,6 +102,7 @@ skills:
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:docs/integrations.md
+      - alandotcom/wfgraph:packages/client/src/lib/test-run-skip.ts
     requires: []
   - name: integrations
     slug: integrations
@@ -246,19 +247,19 @@ skills:
     package: packages/core
     path: skills/wfgraph-core/mcp/SKILL.md
     description: >
-      Use when letting an MCP client, such as a coding agent or an app built on an
-      MCP SDK, author workflows in an embedded Workflow Graph app: turning on the
-      mcp option of createWfGraphApp or wfWorker with wfMcp from
+      Use when letting an MCP client, such as a coding agent or an app built on
+      an MCP SDK, author workflows in an embedded Workflow Graph app: turning on
+      the mcp option of createWfGraphApp or wfWorker with wfMcp from
       @wfgraph/core/mcp, admitting a deployed hostname with the allowedHostnames
       and allowedOriginHostnames options of wfMcp, accepting and verifying the
       client's bearer token in the auth function, advertising an OAuth
       authorization server with the authorization option of wfMcp, granting the
       operations each tool needs, or explaining a 401, a 403, a
-      workflow_draft_stale result or a refused publish from the endpoint. Also use
-      for requests such as "connect our coding agent to the workflow editor", "the
-      MCP client cannot sign in" or "let an agent publish workflows". For the
-      editor's own chat agent use wfgraph-core/build-agent; for roles and custom
-      grants in general use wfgraph-core/auth.
+      workflow_draft_stale result or a refused publish from the endpoint. Also
+      use for requests such as "connect our coding agent to the workflow
+      editor", "the MCP client cannot sign in" or "let an agent publish
+      workflows". For the editor's own chat agent use wfgraph-core/build-agent;
+      for roles and custom grants in general use wfgraph-core/auth.
     purpose: >
       Turn on and secure Workflow Graph's stateless MCP authoring endpoint: the
       mcp option built by wfMcp, Host and Origin allowlists, bearer tokens
@@ -282,20 +283,19 @@ skills:
       the build agent, in a host application: setting the agent option of
       createWfGraphApp or wfWorker with wfOpenAi, wfAnthropic, wfOpenRouter or
       wfOpenAiCompatible and their apiKey, model, reasoningEffort and baseUrl,
-      limiting maxConcurrentTurns, running turns on the host's own gateway
-      or model with agent.runner and streamAgentTurn, granting agent.use and the
-      operations the agent's tools check, or explaining why the chat panel is
-      missing, why the agent option is refused, or why a tool call is
-      refused. Also use for requests such as "add AI to the workflow editor with
-      our Anthropic key", "send the workflow agent through our LLM gateway" or
-      "the agent panel does not appear". For an external MCP client use
-      wfgraph-core/mcp; for roles and custom grants in general use
-      wfgraph-core/auth.
+      limiting maxConcurrentTurns, running turns on the host's own gateway or
+      model with agent.runner and streamAgentTurn, granting agent.use and the
+      operations the agent's tools check, or explaining why the agent's prompt
+      line is missing from the editor, why the agent option is refused, or why a
+      tool call is refused. Also use for requests such as "add AI to the
+      workflow editor with our Anthropic key", "send the workflow agent through
+      our LLM gateway" or "the agent chat does not appear in the editor". For an
+      external MCP client use wfgraph-core/mcp; for roles and custom grants in
+      general use wfgraph-core/auth.
     purpose: >
       Configure the editor's build agent: the four provider entries and their
-      defaults, gateways through baseUrl, a host runner through
-      agent.runner and streamAgentTurn, the turn limit, and the grants a turn's
-      tools check.
+      defaults, gateways through baseUrl, a host runner through agent.runner and
+      streamAgentTurn, the turn limit, and the grants a turn's tools check.
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/config.ts
@@ -304,6 +304,7 @@ skills:
       - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openrouter.ts
       - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai-compatible.ts
       - alandotcom/wfgraph:packages/core/src/backend/agent/runner.ts
+      - alandotcom/wfgraph:packages/agent/src/tools/test-run-behavior.ts
     requires:
       - wfgraph-core
 distribution:

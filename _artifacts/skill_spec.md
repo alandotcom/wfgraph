@@ -191,7 +191,7 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | 6   | A hand-written inbox insert on the default search_path | MEDIUM   | docs/events.md (Sending an Event)     | none         |
 | 7   | Schema library without JSON Schema                     | MEDIUM   | docs/events.md                        | none         |
 
-### host-actions (8 failure modes)
+### host-actions (9 failure modes)
 
 | #   | Mistake                                                | Priority | Source                                                                   | Cross-skill? |
 | --- | ------------------------------------------------------ | -------- | ------------------------------------------------------------------------ | ------------ |
@@ -203,6 +203,7 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | 6   | A key the vendor never sees                            | HIGH     | docs/embedding.md (A handler runs once per node of a run)                | none         |
 | 7   | A preview route that trusts readDraftNode to authorize | HIGH     | docs/embedding.md (Action links and draft reads)                         | none         |
 | 8   | A relative link url                                    | MEDIUM   | docs/embedding.md (Action links and draft reads)                         | none         |
+| 9   | A test-run answer without the skipped status           | MEDIUM   | docs/embedding.md (Test runs call your handler)                          | none         |
 
 ### integrations (8 failure modes)
 
@@ -284,14 +285,15 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 ## Remaining Gaps
 
-| Skill             | Question                                                                                                                                                                                                                                           | Status   |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| wfgraph-core      | Does configuring the build agent (its key, model, reasoning effort and base URL) need adopter guidance? Resolved by decision 8: the build-agent skill covers it, and decision 10 moved those options onto the provider functions.                  | resolved |
-| all               | Discovery checks have not run for any skill, and no fresh consumer session has attempted a task. Executable task checks exist for auth, observability, cloudflare-worker, host-actions, mcp and build-agent (`packages/evals/src/skills/`).        | open     |
-| build-agent       | Without a live model these claims are unverified: a gateway passing streaming, tools and the cache fields through, adaptive thinking on older Claude models, the `usage` part, and a turn's per-tool grants in a live turn.                        | open     |
-| auth              | `docs/embedding.md` ("createWfGraphApp options") says Workflow Graph refuses to start without `auth`. The code starts, and every operator request answers `500`; only the type requires the option. Resolved: the manual now states that behavior. | resolved |
-| cloudflare-worker | Without workerd and Hyperdrive, these claims are unverified: query caching, the Wrangler configuration, Node.js compatibility, the wall-time, CPU and statement limits, the tick constants as Cloudflare enforces them, and Queue delivery itself. | open     |
-| auth              | The operation table in `docs/embedding.md` ("Authentication and authorization") omits `action.configOptions`, which `WfGraphOperations` grants under `workflow.write`. Resolved: the manual's table now lists it.                                  | resolved |
+| Skill             | Question                                                                                                                                                                                                                                              | Status   |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| wfgraph-core      | Does configuring the build agent (its key, model, reasoning effort and base URL) need adopter guidance? Resolved by decision 8: the build-agent skill covers it, and decision 10 moved those options onto the provider functions.                     | resolved |
+| all               | Discovery checks have not run for any skill, and no fresh consumer session has attempted a task. Executable task checks exist for auth, observability, cloudflare-worker, host-actions, mcp and build-agent (`packages/evals/src/skills/`).           | open     |
+| build-agent       | Without a live model these claims are unverified: a gateway passing streaming, tools and the cache fields through, adaptive thinking on older Claude models, the `usage` part, and a turn's per-tool grants in a live turn.                           | open     |
+| auth              | `docs/embedding.md` ("createWfGraphApp options") says Workflow Graph refuses to start without `auth`. The code starts, and every operator request answers `500`; only the type requires the option. Resolved: the manual now states that behavior.    | resolved |
+| cloudflare-worker | Without workerd and Hyperdrive, these claims are unverified: query caching, the Wrangler configuration, Node.js compatibility, the wall-time, CPU and statement limits, the tick constants as Cloudflare enforces them, and Queue delivery itself.    | open     |
+| auth              | The operation table in `docs/embedding.md` ("Authentication and authorization") omits `action.configOptions`, which `WfGraphOperations` grants under `workflow.write`. Resolved: the manual's table now lists it.                                     | resolved |
+| integrations      | Is the "In test runs" select (`testBehavior`, option `log_only`) a contract a vendor integration may declare? The Run draft dialog and the build agent read it from any action, and `docs/integrations.md` does not state it, so no skill teaches it. | open     |
 
 ## Recommended Skill File Structure
 
@@ -341,9 +343,9 @@ Coverage of `docs/embedding.md` by section:
   backend".
 - Covered by cloudflare-worker: "Cloudflare Workers and Hyperdrive" with its
   four subsections, and the Worker use of "PostgreSQL migrations".
-- Assessed and left without a skill: "Workspaces and Canvas Reveal" and "On a
-  phone" describe the editor for the people who use it and hold no adopter code
-  task. "Package exports" is a reference table that each skill's entry points
+- Assessed and left without a skill: "Workspaces and columns" (named
+  "Workspaces and Canvas Reveal" before batch 9) and "On a phone" describe the
+  editor for the people who use it and hold no adopter code task. "Package exports" is a reference table that each skill's entry points
   already name.
 - Open: the build agent options in "createWfGraphApp options" and "API
   endpoints" (the served OpenAPI document). Neither has a maintainer decision.
@@ -711,6 +713,57 @@ sources, apart from the source checks each later batch records.
   `wfMcp`, and its localhost mistake case passes `wfMcp()` on the deployed
   hostname. Discovery and a fresh consumer session are unverified, as for
   every earlier batch.
+
+### Batch 9: the editor rebuild and its server changes (packages at 4.1.2, branch hc/r1-entity, base 3b99bc72, head c85a572c)
+
+- Source: 194 commits on `origin/main` that rebuild the editor as an outline,
+  a canvas and a details column (`.changeset/editor-ui-hill-climb.md`). Most of
+  the diff is under `packages/client/src` and teaches an adopter nothing. The
+  adopter-visible server changes are `workflow.continueWait` under
+  `run.manage`, `entity` on runs from `getExecutions`, `getExecutionsGlobal`
+  and `getExecutionLogs`, `waitType` on waits from `getExecutionLogs`,
+  `runCounts` on workflows from `getAll` and `subscribeList`, a `versionId`
+  on `compareVersion`, an Entity read failure written on the node's log row,
+  and the build agent's `stepNumber` and `testRun` fields and
+  `WfGraphAgentSelectedNode.stepNumber`. `docs/embedding.md` changed its
+  permission table, the test-run paragraph, "Workspaces and columns",
+  "Groups", "On a phone" and "The build agent".
+- host-actions: the test-run section states that a handler which does nothing
+  in a test run answers a top-level `status: "skipped"`, which the editor
+  reads to show "Skipped (test run)" (`packages/client/src/lib/test-run-skip.ts`,
+  now a source), and that the Run draft dialog and the build agent say the
+  app decides for a host action. A new MEDIUM mistake covers a test-run answer
+  with any other status. The links paragraph names the details column, which
+  replaced Canvas Reveal.
+- build-agent: the editor's agent is a prompt line on the canvas with its
+  conversation above it, so every "panel" became the prompt line or the
+  conversation, the description included. A runner's `selectedNodes` are the
+  steps attached to the newest message, each with an optional `stepNumber`.
+  The test-run section names `read_workflow`'s `testRun` sentence and routes
+  the `runMode` check to host-actions. `packages/agent/src/tools/test-run-behavior.ts`
+  is now a source.
+- wfgraph-plugins: the per-step test setting is named by its new label, "In
+  test runs", and its key `testBehavior`.
+- No change: wfgraph-core (its Group bullet still matches the version 1
+  rules), auth (the role table grants by permission, so `continueWait` reaches
+  every policy holding `run.manage`, and the skill routes to
+  `WfGraphOperationIds` for the operation list; the editor's grant snapshot
+  calls `allows` 43 times, which "about forty" still describes), mcp (no tool
+  grant changed and the skill does not describe `read_workflow`'s fields),
+  cloudflare-worker and observability (no section they teach changed). No
+  skill teaches the RPC response shapes, so `entity`, `waitType`, `runCounts`
+  and `versionId` change no guidance; the served OpenAPI document carries
+  them.
+- New open gap: the "In test runs" select as a contract for vendor
+  integrations, recorded in Remaining Gaps.
+- `library_version` stays at 4.1.1, as in batch 8.
+- Checks: `intent validate` passed for ten skills. The host-actions task check
+  `refund-action.test.ts` now asserts the skipped status of a Draft run's
+  answer and rejects a handler that answers another status. `selectedNodesOf`
+  and `stepNumber` are covered by `packages/core/src/backend/services/agent/chat.test.ts`,
+  and the `testRun` sentences by `packages/agent/src/tools/graph-read-tools.test.ts`.
+  Discovery and a fresh consumer session are unverified, as for every earlier
+  batch.
 
 ### Remaining work
 

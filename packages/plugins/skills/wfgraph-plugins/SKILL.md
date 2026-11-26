@@ -81,8 +81,9 @@ the app counts as revoked.
 ### Test runs and connection rules
 
 A Draft run, and a run of a workflow in Test mode, call every action. The
-Slack, PostHog, Twilio and Resend actions each carry a per-step test setting
-that defaults to logging the call and sending nothing. Slack and PostHog can
+Slack, PostHog, Twilio and Resend actions each carry a per-step "In test runs"
+setting (config key `testBehavior`) that defaults to logging the call and
+sending nothing. Slack and PostHog can
 be set to send for real, and Twilio and Resend to send to a test phone number
 or address. Clerk and Linear actions
 carry none, so a test run calls them for real.

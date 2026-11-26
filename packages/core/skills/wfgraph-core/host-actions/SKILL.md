@@ -27,6 +27,7 @@ metadata:
 sources:
   - alandotcom/wfgraph:docs/embedding.md
   - alandotcom/wfgraph:docs/integrations.md
+  - alandotcom/wfgraph:packages/client/src/lib/test-run-skip.ts
 ---
 
 This skill builds on wfgraph-core. For vendor integrations, load
@@ -110,6 +111,13 @@ skips nor stubs a host action in a test run, so a handler that charges,
 cancels, deletes or sends checks `runMode` and answers without doing so, or
 does it against a sandbox.
 
+A handler that does nothing in a test run answers an object whose top-level
+`status` is `"skipped"`, so declare `status` in the output schema. The editor
+reads that key on a test run's successful step and shows the step as
+"Skipped (test run)". Any other answer reads as a step that did its work. The
+catalog says nothing about what a handler does in a test run, so the Run draft
+dialog and the build agent both say that the app decides for a host action.
+
 ### sideEffect
 
 `sideEffect: true` marks a change outside the workflow (send, write, delete).
@@ -167,6 +175,19 @@ call, or send it to a sandbox in test mode.
 
 A Workflow Builder's Draft run calls the handler with real input, so a refund
 workflow tested in the editor issues a real refund.
+
+Source: alandotcom/wfgraph:docs/embedding.md (Test runs call your handler)
+
+### MEDIUM A test-run answer without the skipped status
+
+Wrong: `if (runMode === "test") return { refundId: "", refunded: false }`.
+
+Correct: `if (runMode === "test") return { refundId: "", status: "skipped" }`,
+with `status` in the output schema.
+
+The run log shows a successful step as Successful unless its answer carries
+`status: "skipped"`, so a Workflow Builder reading the test run sees a refund
+that never happened.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Test runs call your handler)
 
