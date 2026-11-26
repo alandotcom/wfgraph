@@ -29,11 +29,11 @@ import {
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 
 /**
- * The Label and Notes inputs of one node, with the element ids `label` and
- * `description`; Notes edits the node's stored description. Each keystroke
- * writes to the graph store.
+ * The Notes input of one node, with the element id `description`, which edits
+ * the node's stored description. Each keystroke writes to the graph store.
+ * The node's name is edited in the Inspector's title.
  */
-export function NodeDetailsFields({
+export function NodeNotesField({
   node,
   disabled,
 }: {
@@ -42,34 +42,20 @@ export function NodeDetailsFields({
 }) {
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="label">Label</Label>
-        <Input
-          disabled={disabled}
-          id="label"
-          onChange={(event) =>
-            updateNodeData({ id: node.id, data: { label: event.target.value } })
-          }
-          value={node.data.label}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="description">Notes</Label>
-        <Input
-          disabled={disabled}
-          id="description"
-          onChange={(event) =>
-            updateNodeData({
-              id: node.id,
-              data: { description: event.target.value },
-            })
-          }
-          placeholder="Optional"
-          value={node.data.description || ""}
-        />
-      </div>
+    <div className="space-y-2">
+      <Label htmlFor="description">Notes</Label>
+      <Input
+        disabled={disabled}
+        id="description"
+        onChange={(event) =>
+          updateNodeData({
+            id: node.id,
+            data: { description: event.target.value },
+          })
+        }
+        placeholder="Optional"
+        value={node.data.description || ""}
+      />
     </div>
   );
 }
@@ -77,8 +63,8 @@ export function NodeDetailsFields({
 /**
  * The complete form of one step: what it does ("Does"), the settings that
  * action takes, each with the issues that name it beneath it, the action's
- * links, then its Label and Notes after a divider, and last any issue no
- * field on screen shows. It holds settings only: disabling, duplicating and deleting
+ * links, then its Notes after a divider, and last any issue no field on
+ * screen shows. The step's name is edited in the Inspector's title. It holds settings only: disabling, duplicating and deleting
  * the step are commands of the Inspector header's ⋯ menu and the context menu.
  * Every value writes straight to the graph store, so the form can unmount and
  * mount again without losing an edit or skipping autosave.
@@ -113,7 +99,7 @@ export function NodePropertiesForm({
     handleUpdateConfig({ actionType });
     setChoosingFor(null);
     // The list leaves with the choice, so focus moves to the first field the
-    // chosen action needs, or to the label.
+    // chosen action needs, or to the step's name in the title.
     requestEditFocus({
       nodeId: selectedNode.id,
       targetId: newStepFocusTarget(
@@ -206,7 +192,7 @@ export function NodePropertiesForm({
 
         <Separator />
 
-        <NodeDetailsFields
+        <NodeNotesField
           disabled={isGenerating || !canUpdate}
           node={selectedNode}
         />

@@ -2,7 +2,7 @@ import { useAtomValue, useStore } from "jotai";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
-import { NodeDetailsFields } from "#src/components/workflow/node-properties-form";
+import { NodeNotesField } from "#src/components/workflow/node-properties-form";
 import { can } from "#src/lib/authorization";
 import {
   EVENT_SPLIT_HEADING,
@@ -213,7 +213,7 @@ function OutletsSection({ nodeId }: { nodeId: string }) {
 /**
  * Browse for an Event Split: where its outlets come from with the action that
  * opens that source, every outlet with its Event identity and destination,
- * its issues, then its Label and Notes after a divider. Browse is its only
+ * its issues, then its Notes after a divider. Browse is its only
  * level, because its outlets follow the graph above it.
  */
 export function EventSplitBrowse({ subject }: RevealBodyProps) {
@@ -240,7 +240,7 @@ export function EventSplitBrowse({ subject }: RevealBodyProps) {
       ) : null}
 
       <div className="space-y-4 border-t px-4 pt-4">
-        <NodeDetailsFields disabled={isGenerating || !canUpdate} node={node} />
+        <NodeNotesField disabled={isGenerating || !canUpdate} node={node} />
       </div>
     </div>
   );

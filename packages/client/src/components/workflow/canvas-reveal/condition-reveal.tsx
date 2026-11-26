@@ -1,9 +1,7 @@
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
 import {
   ConditionFields,
   useUpstreamConditionFields,
@@ -15,15 +13,11 @@ import {
   FieldIssuesProvider,
   UnclaimedFieldIssues,
 } from "#src/components/workflow/config/field-issues";
-import { NodeDetailsFields } from "#src/components/workflow/node-properties-form";
+import { NodeNotesField } from "#src/components/workflow/node-properties-form";
 import { PhoneStepToggle } from "#src/components/workflow/step-controls";
 import { can } from "#src/lib/authorization";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
-import {
-  edgesAtom,
-  nodesAtom,
-  updateNodeDataAtom,
-} from "#src/lib/workflow-graph-store";
+import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
@@ -189,8 +183,7 @@ function RulesSummary({
 }
 
 /**
- * The summary sheet of a Condition on a phone: an editable label, its rules as
- * sentences, where True and False lead, the values its rules can compare, its
+ * The summary sheet of a Condition on a phone: its rules as sentences, where True and False lead, the values its rules can compare, its
  * issues, and its enable toggle. The rule builder is in the full-screen editor,
  * which the sheet header's Edit rules opens.
  */
@@ -199,29 +192,13 @@ export function ConditionSummarySheet({
   focusField,
 }: RevealBodyProps) {
   const { nodeId } = subject;
-  const { node, fields, branches, issues, disabled } =
-    useConditionContext(nodeId);
-  const updateNodeData = useSetAtom(updateNodeDataAtom);
+  const { node, fields, branches, issues } = useConditionContext(nodeId);
   if (!node || nodeId === null) {
     return null;
   }
 
   return (
     <div className="pb-4">
-      <Section title="Label">
-        <Label className="sr-only" htmlFor="reveal-condition-label">
-          Label
-        </Label>
-        <Input
-          disabled={disabled}
-          id="reveal-condition-label"
-          onChange={(event) =>
-            updateNodeData({ id: nodeId, data: { label: event.target.value } })
-          }
-          value={node.data.label}
-        />
-      </Section>
-
       <Section title="Continue when">
         <RulesSummary config={node.data.config} fields={fields} />
       </Section>
@@ -279,8 +256,8 @@ export function ConditionSummarySheet({
 /**
  * The inspector of a Condition: one sentence saying when it takes True, the
  * rules edited in place beneath it with the issues that name them under them,
- * both branch destinations, every available input, then its Label and Notes
- * after a divider. Every edit writes to the graph store. Disabling and
+ * both branch destinations, every available input, then its Notes after a
+ * divider. Its name is edited in the Inspector's title. Every edit writes to the graph store. Disabling and
  * deleting it are commands of the Inspector header's ⋯ menu and the context menu.
  */
 export function ConditionEditor({ subject }: RevealBodyProps) {
@@ -351,7 +328,7 @@ export function ConditionEditor({ subject }: RevealBodyProps) {
         </Section>
 
         <div className="space-y-4 border-t px-4 pt-4">
-          <NodeDetailsFields disabled={disabled} node={node} />
+          <NodeNotesField disabled={disabled} node={node} />
         </div>
       </div>
     </FieldIssuesProvider>

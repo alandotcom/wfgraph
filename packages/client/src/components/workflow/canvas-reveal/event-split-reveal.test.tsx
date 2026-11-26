@@ -255,6 +255,10 @@ describe("Event Split Browse", () => {
 
     expect(aside()?.dataset.level).toBe("browse");
     expect(view.getByRole("heading", { name: "Split" })).toBeTruthy();
+    // Its name is edited in the title, and its form keeps only Notes.
+    expect(view.getByRole("textbox", { name: "Name" })).toBeTruthy();
+    expect(view.queryByLabelText("Label")).toBeNull();
+    expect(view.getByLabelText("Notes")).toBeTruthy();
     expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
     expect(aside()?.textContent).toContain(
       "Its outlets are the Events that reach it from the start Events"

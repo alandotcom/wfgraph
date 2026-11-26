@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { compact } from "es-toolkit/array";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
 import { ActionLinks } from "#src/components/workflow/config/action-links";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
@@ -12,10 +10,9 @@ import { PhoneStepToggle } from "#src/components/workflow/step-controls";
 import { can } from "#src/lib/authorization";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
-import { nodesAtom, updateNodeDataAtom } from "#src/lib/workflow-graph-store";
+import { nodesAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
-import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
@@ -137,8 +134,8 @@ export function StepEditor({ subject }: RevealBodyProps) {
 }
 
 /**
- * The summary sheet of an ordinary step on a phone: an editable label, the
- * step's action and connection, its settings as label and value pairs, its
+ * The summary sheet of an ordinary step on a phone: the step's action and
+ * connection, its settings as label and value pairs, its
  * validation issues, and its enable toggle. An issue opens the full-screen
  * editor on the field it names. A step with no action chosen shows the action
  * picker.
@@ -147,9 +144,6 @@ export function StepSummarySheet({ subject, focusField }: RevealBodyProps) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
-  const isGenerating = useAtomValue(isGeneratingAtom);
-  const updateNodeData = useSetAtom(updateNodeDataAtom);
-  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   const { data: connections } = useQuery({
     ...integrationsQueryOptions(),
     enabled: can(WfGraphOperations.integrationGetAll.id),
@@ -173,24 +167,9 @@ export function StepSummarySheet({ subject, focusField }: RevealBodyProps) {
   const connection = connections?.find((item) => item.id === connectionId);
   const nodeIssues = issues.filter((issue) => issue.nodeId === nodeId);
   const isWait = actionType === BUILT_IN_ACTION_IDS.wait;
-  const disabled = isGenerating || !canUpdate;
 
   return (
     <div className="pb-4">
-      <Section title="Label">
-        <Label className="sr-only" htmlFor="reveal-step-label">
-          Label
-        </Label>
-        <Input
-          disabled={disabled}
-          id="reveal-step-label"
-          onChange={(event) =>
-            updateNodeData({ id: nodeId, data: { label: event.target.value } })
-          }
-          value={node.data.label}
-        />
-      </Section>
-
       <Section title="Action">
         <p className="text-sm">
           {compact([

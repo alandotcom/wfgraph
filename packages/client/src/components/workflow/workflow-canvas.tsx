@@ -585,8 +585,8 @@ export function WorkflowCanvas() {
   // only closes or deselects, so that key press stops here. Escape on a
   // selected node still reaches React Flow, which deselects it.
   // Enter on a focused Draft object inspects it the way a click does, and the
-  // inspector then takes keyboard focus into the object's label, since the
-  // keyboard is how the object was chosen.
+  // inspector then takes keyboard focus into the object's name in its title,
+  // since the keyboard is how the object was chosen.
   const onCanvasKeyDownCapture = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (!(event.target instanceof Element)) {

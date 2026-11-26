@@ -1,8 +1,5 @@
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { Input } from "#src/components/ui/input";
-import { Label } from "#src/components/ui/label";
-import { Separator } from "#src/components/ui/separator";
 import {
   FieldIssuesProvider,
   UnclaimedFieldIssues,
@@ -11,7 +8,7 @@ import { LifecyclePanel } from "#src/components/workflow/config/lifecycle-panel"
 import { trackedEntityLabel } from "#src/components/workflow/config/lifecycle-policy-summary";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
 import { can } from "#src/lib/authorization";
-import { nodesAtom, updateNodeDataAtom } from "#src/lib/workflow-graph-store";
+import { nodesAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
@@ -38,29 +35,9 @@ import { NodeIssueList, Section } from "./reveal-sections";
 
 const EMPTY_CONFIG: Record<string, unknown> = {};
 
-/** The Lifecycle Node's label, which writes to the graph store as it is typed. */
-function LifecycleLabelField({ node }: { node: WorkflowNode }) {
-  const isGenerating = useAtomValue(isGeneratingAtom);
-  const updateNodeData = useSetAtom(updateNodeDataAtom);
-  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
-  return (
-    <div className="space-y-2">
-      <Label htmlFor="label">Label</Label>
-      <Input
-        disabled={isGenerating || !canUpdate}
-        id="label"
-        onChange={(event) =>
-          updateNodeData({ id: node.id, data: { label: event.target.value } })
-        }
-        value={node.data.label}
-      />
-    </div>
-  );
-}
-
 /**
- * The Lifecycle Node's editor: the Start's one form, then its label after a
- * divider, then any issue no rule on screen shows. It is the Inspector's body at `md` and wider and the phone's
+ * The Lifecycle Node's editor: the Start's one form, then any issue no rule on
+ * screen shows. Its name is edited in the Inspector's title. It is the Inspector's body at `md` and wider and the phone's
  * full-screen inspector, so both show the same form. Focus moves into a rule
  * a person adds through the shell's field request, which scrolls only when the
  * rule is out of view.
@@ -84,8 +61,6 @@ function LifecycleEditorBody({
           focusTarget={focusField}
           onUpdateConfig={updateConfig}
         />
-        <Separator />
-        <LifecycleLabelField node={node} />
         <UnclaimedFieldIssues />
       </div>
     </FieldIssuesProvider>
