@@ -20,7 +20,7 @@ import {
   openNodeRevealFromOriginAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import {
   requestRevealPlacementAtom,
   revealFieldRequestAtom,
@@ -36,16 +36,16 @@ type RunNodeInspection = {
 
 /**
  * The inspector actions of the viewport's form factor. At `md` and wider they
- * act on the details column, which is always present, so most of them only
- * write a selection there; below `md` they act on the mobile Reveal
+ * act on the Inspector, which opens by itself when the selection gives it a
+ * subject, so most of them only write a selection; below `md` they act on the mobile Reveal
  * sequence and the configuration sheet. Each action names the address it acts
  * on.
  */
 export type RevealNavigation = {
   /**
-   * Select the node `nodeId` alone and show its inspector: the details
-   * column, floating over the canvas where it is not docked, or on a phone the
-   * summary sheet, or the full-screen inspector for `level` "focus". An `origin` records where a desktop jump started, which Back
+   * Select the node `nodeId` alone and show its inspector: the Inspector
+   * card, opened again if its Close had closed it, or on a phone the summary
+   * sheet, or the full-screen inspector for `level` "focus". An `origin` records where a desktop jump started, which Back
    * returns to. On desktop a jump with no origin also asks the camera to show
    * the node, which moves it only when the node is not fully in view.
    */
@@ -69,14 +69,14 @@ export type RevealNavigation = {
     origin?: InspectedOrigin | undefined;
   }) => void;
   /**
-   * Show the inspector of `address`: its sheet below `md`. The details column
-   * is always present, so on desktop this does nothing.
+   * Show the inspector of `address`: its sheet below `md`. The Inspector
+   * follows the selection, so on desktop this does nothing.
    */
   openInspector: (address: WorkspaceAddress) => void;
   /**
    * Show the inspector of the Runs workspace just switched to at `address`.
    * Below `md` the sheets are not remembered across a switch, so every switch
-   * opens the inspector. The details column needs nothing.
+   * opens the inspector. The Inspector needs nothing.
    */
   showSwitchedWorkspace: (input: {
     address: WorkspaceAddress;
@@ -84,14 +84,14 @@ export type RevealNavigation = {
   }) => void;
   /**
    * Show the inspector for a selection just written to `address`, where the
-   * form factor does not show it by itself. The details column follows the
+   * form factor does not show it by itself. The Inspector follows the
    * selection, so on desktop this does nothing.
    */
   followSelection: (address: WorkspaceAddress) => void;
   /**
    * Show a node pressed on a canvas outside a run, or chosen elsewhere, once
    * the selection is written. Below `md` the address opens its inspector. The
-   * details column already shows the selection.
+   * Inspector already shows the selection.
    */
   showPressedNode: (input: {
     address: WorkspaceAddress;
@@ -99,7 +99,7 @@ export type RevealNavigation = {
   }) => void;
   /**
    * Record which run node a run address shows. With `opensEvidence` the node's
-   * evidence shows: the details column at Focus, or the evidence inspector
+   * evidence shows: the Inspector at Focus, or the evidence inspector
    * over the run's address sheet. Without it the run's Browse shows, which
    * below `md` opens the run's address sheet.
    */
@@ -191,7 +191,7 @@ export function useRevealNavigation(): RevealNavigation {
       nodeId,
       origin,
     }) => {
-      store.set(detailsFloatOpenAtom, true);
+      store.set(inspectorOpenAtom, true);
       if (origin !== undefined) {
         store.set(openNodeRevealFromOriginAtom, { address, nodeId, origin });
         return;

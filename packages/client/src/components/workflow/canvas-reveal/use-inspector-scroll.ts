@@ -10,7 +10,7 @@ import {
 import { useKeptScroll } from "./use-kept-scroll";
 
 /**
- * Keeps a details column body's scroll in the scope's desktop presentation,
+ * Keeps an Inspector body's scroll in the scope's desktop presentation,
  * per address, inspected object, and level. `input` is null while the body
  * keeps no such scroll. A null `inspectedId` keeps the scroll of an address
  * that inspects no object, which is how Runs stores its body scroll whatever

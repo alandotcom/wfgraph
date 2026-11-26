@@ -116,7 +116,7 @@ async function renderEditorInRuns(input: {
   );
   await view.findByTestId("canvas");
   const inspector = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="details-float"]');
+    view.container.querySelector<HTMLElement>('[data-slot="inspector-card"]');
   const title = () =>
     inspector()?.querySelector('[data-slot="reveal-title"]')?.textContent ??
     undefined;

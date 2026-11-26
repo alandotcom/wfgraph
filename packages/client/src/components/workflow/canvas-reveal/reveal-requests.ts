@@ -1,5 +1,5 @@
 /**
- * Requests other surfaces make of the canvas camera and the details column:
+ * Requests other surfaces make of the canvas camera and the Inspector:
  * show nodes in the usable rectangle, focus an element of a node's inspector,
  * and focus the details title. The canvas camera answers each placement once;
  * the details panel clears a field or title request once it has moved focus.
@@ -24,7 +24,7 @@ export const requestRevealPlacementAtom = atom(
 );
 
 /**
- * An element the details column focuses once it shows the node `nodeId` names, or
+ * An element the Inspector focuses once it shows the node `nodeId` names, or
  * once a phone shows that node's full-screen editor. `targetId` is the element
  * id: a field's config key, which is also its control's id, or a section
  * heading's id.
@@ -34,7 +34,7 @@ export type RevealFieldRequest = { nodeId: string; targetId: string };
 export const revealFieldRequestAtom = atom<RevealFieldRequest | null>(null);
 
 /**
- * A node whose details title takes focus once the column shows that node. A
+ * A node whose details title takes focus once the Inspector shows that node. A
  * surface that selects a step and then closes, such as the command palette,
  * asks for this, because the control that had focus is gone.
  */

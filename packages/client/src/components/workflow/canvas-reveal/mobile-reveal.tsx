@@ -137,7 +137,7 @@ export function MobileReveal() {
   const fieldRequest = useAtomValue(revealFieldRequestAtom);
   const setFieldRequest = useSetAtom(revealFieldRequestAtom);
   const { hasOverlays } = useOverlay();
-  // Narrowing past the breakpoint hides the details column. Draft's sheets
+  // Narrowing past the breakpoint hides the Inspector. Draft's sheets
   // follow the same selection by themselves. In Runs the run's sheet picks the
   // selected node up, so one inspector is on screen at any width.
   useAfterCommit(isMobile, () => {

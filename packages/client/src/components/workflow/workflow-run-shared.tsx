@@ -426,7 +426,7 @@ function findOutputComponent(
  * The one grid a run's label and value pairs sit on: the run summary, a
  * step's record in the run, its input and output, and exit and executor
  * details. One label column and one value size, so their pairs line up when
- * the details column shows them one under another.
+ * the Inspector shows them one under another.
  */
 export const RUN_FIELD_COLUMNS = "grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3";
 export const RUN_FIELD_LABEL = "text-muted-foreground text-xs leading-5";

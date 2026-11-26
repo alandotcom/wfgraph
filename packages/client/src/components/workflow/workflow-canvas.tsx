@@ -101,7 +101,7 @@ import {
   useClearWorkflowNodeInspection,
   useWorkflowNodeInspection,
 } from "./use-workflow-node-inspection";
-import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import {
   contextMenuAtom,
   useContextMenuHandlers,
@@ -167,7 +167,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const comparison = useAtomValue(reviewDisplayGraphAtom);
   const comparisonActive = comparison !== null;
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
-  const openInspector = useSetAtom(detailsFloatOpenAtom);
+  const openInspector = useSetAtom(inspectorOpenAtom);
   const workspaceView = useAtomValueRawSync(workflowWorkspaceViewAtom);
   const isGenerating = useAtomValue(isGeneratingAtom);
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
@@ -664,7 +664,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   );
 
   return (
-    // Size comes from the canvas box between the outline and details columns.
+    // Size comes from the canvas box, which fills the editor below the toolbar.
     // Nothing animates that size, because React Flow observes the parent box
     // and a transition on it produces ResizeObserver loop warnings.
     <div

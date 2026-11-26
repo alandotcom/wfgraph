@@ -2,7 +2,7 @@ import type { RefObject } from "react";
 import { useDomEvent } from "#src/hooks/effects";
 
 /**
- * Whether an Escape belongs to a control inside the details column that closes
+ * Whether an Escape belongs to a control inside the Inspector that closes
  * something of its own first: an open select, combobox, menu, template
  * autocomplete, or an element marked `data-owns-escape`, such as a step's open
  * list of actions.

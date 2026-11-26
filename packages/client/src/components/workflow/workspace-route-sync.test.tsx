@@ -396,7 +396,7 @@ describe("WorkspaceRouteSync", () => {
     expect(store.get(selectedNodeAtom)).toBe("run_step");
   });
 
-  it("selects the step a field issue names and asks the details column to focus that field", async () => {
+  it("selects the step a field issue names and asks the Inspector to focus that field", async () => {
     stubServer();
     const { store, search, click } = await renderEditorRoute(
       "/workflows/workflow_1?view=runs&executionId=run_1"

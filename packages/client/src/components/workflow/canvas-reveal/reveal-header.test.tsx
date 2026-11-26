@@ -4,7 +4,7 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -52,7 +52,7 @@ function renderHeader() {
   });
   showWorkspaceRoute(store, {});
   act(() => store.set(selectOnlyNodeAtom, "send"));
-  store.set(detailsFloatOpenAtom, true);
+  store.set(inspectorOpenAtom, true);
   render(
     <JotaiProvider store={store}>
       <QueryClientProvider client={new QueryClient()}>
@@ -108,6 +108,6 @@ describe("RevealHeader", () => {
   it("closes the Inspector on Close and keeps the selection", () => {
     const store = renderHeader();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(store.get(detailsFloatOpenAtom)).toBe(false);
+    expect(store.get(inspectorOpenAtom)).toBe(false);
   });
 });

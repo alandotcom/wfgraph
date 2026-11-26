@@ -280,9 +280,9 @@ describe("useRevealCamera", () => {
     expect(camera.moves).toEqual([]);
   });
 
-  it("shows a requested step beside floating details, and leaves one already beside it", async () => {
+  it("shows a requested step beside the Inspector, and leaves one already beside it", async () => {
     const float = document.createElement("section");
-    float.dataset.slot = "details-float";
+    float.dataset.slot = "inspector-card";
     float.dataset.coversWidth = "408";
     document.body.append(float);
     try {

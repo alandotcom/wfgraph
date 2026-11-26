@@ -86,7 +86,7 @@ export function ActionChoiceField({
       {open ? (
         <div
           className="flex min-h-0 flex-1 flex-col"
-          // Escape in the list closes it, ahead of the details column's own
+          // Escape in the list closes it, ahead of the Inspector's own
           // Escape, which would leave the step.
           data-owns-escape={actionId !== undefined ? "true" : undefined}
           id={listId}

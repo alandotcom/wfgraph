@@ -322,7 +322,7 @@ skills:
       - Check runMode so a Draft run or a Test-mode run changes nothing real, and answer status "skipped" so the run shows the step as Skipped (test run).
       - Mark an action that writes outside the workflow with sideEffect true.
       - Test the action with runHostAction, including a later pass from the memo an earlier one left.
-      - Link from the editor's details column to a host page, such as an email preview, that authorizes the reader and reads the node with app.workflows.readDraftNode.
+      - Link from the editor's Inspector to a host page, such as an email preview, that authorizes the reader and reads the node with app.workflows.readDraftNode.
     failure_modes:
       - mistake: Effect handler on defineAction
         mechanism: defineAction is the Promise host path; Effect handlers belong to defineIntegration.

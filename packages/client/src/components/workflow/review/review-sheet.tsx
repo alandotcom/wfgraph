@@ -1,7 +1,7 @@
 /**
  * The review sheet: one document for deciding to publish, and the same
  * document read-only for what a past version changed. On desktop it covers
- * the details column and reaches over the right of the canvas, which stays
+ * the Inspector and reaches over the right of the canvas, which stays
  * on screen beside it; below `md` it covers the screen. Only its own header
  * and footer stay put while its body scrolls as one surface.
  */
@@ -154,7 +154,7 @@ export function ReviewSheet() {
         "z-30 flex flex-col overflow-clip bg-sidebar",
         isMobile
           ? "fixed inset-0 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
-          : // It covers the details column and reaches over the canvas from
+          : // It covers the Inspector and reaches over the canvas from
             // the editor's right edge, 8px inside it, at a width that fits
             // its one column of differences.
             "absolute inset-y-2 right-2 w-[min(40rem,calc(100%-1rem))] rounded-xl border shadow-sm"

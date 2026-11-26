@@ -43,7 +43,7 @@ import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { RevealLevel } from "#src/lib/workflow-navigation-state";
 import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
-import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 
 /**
  * The Inspector's contents. It shows the selected object's editor, or in Runs
@@ -58,7 +58,7 @@ export function DetailsPanel() {
   // Workspace synchronization can write these before normal subscriptions mount.
   const reveal = useAtomValueRawSync(canvasRevealAtom);
   const showLevel = useSetAtom(showCanvasRevealLevelAtom);
-  const closeDetailsFloat = useSetAtom(detailsFloatOpenAtom);
+  const closeInspector = useSetAtom(inspectorOpenAtom);
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
   const catalog = useExtensionCatalog();
@@ -70,10 +70,10 @@ export function DetailsPanel() {
     revealTitleFocusRequestAtom
   );
   const { hasOverlays } = useOverlay();
-  // Below `md` the details column is not on screen, and the mobile Reveal
+  // Below `md` the Inspector is not on screen, and the mobile Reveal
   // sheets answer Escape and field requests.
   const isMobile = useIsMobile();
-  // The review sheet covers the details column while it shows. The column
+  // The review sheet covers the Inspector while it shows. The Inspector
   // keeps its subject beneath it and comes back as it was when the sheet
   // closes.
   const coveredByReview = useAtomValue(isReviewSheetShownAtom);
@@ -123,9 +123,8 @@ export function DetailsPanel() {
     const next = unwoundLevel(level);
     if (next === null) {
       returnFocus();
-      // Details floating over the canvas slides away once focus has left it.
-      // A docked details column ignores this.
-      closeDetailsFloat(false);
+      // The Inspector card slides away once focus has left it.
+      closeInspector(false);
       return;
     }
     showLevel(next);
@@ -203,7 +202,7 @@ export function DetailsPanel() {
     }
   );
 
-  // A title request is answered once the column shows the node it names,
+  // A title request is answered once the Inspector shows the node it names,
   // after the palette or menu that asked has given focus back.
   useAfterPaint(`${titleFocusRequest ?? ""}|${subject?.key ?? ""}`, () => {
     if (
@@ -272,7 +271,7 @@ export function DetailsPanel() {
       className="flex min-h-0 flex-1 flex-col"
       data-level={level}
       data-slot="details-panel"
-      // The review sheet covers the column while it shows, so nothing under
+      // The review sheet covers the Inspector while it shows, so nothing under
       // it takes focus.
       inert={coveredByReview}
       // Leaving a field ends its run of typing, so the next edit is an undo

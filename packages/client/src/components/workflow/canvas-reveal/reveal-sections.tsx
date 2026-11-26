@@ -1,5 +1,5 @@
 /**
- * The pieces every details column body is built from: a titled section and the
+ * The pieces every Inspector body is built from: a titled section and the
  * validation issue list of one node.
  */
 

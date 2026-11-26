@@ -250,7 +250,7 @@ afterEach(() => {
 });
 
 describe("an issue's Edit on the editor route", () => {
-  it("keeps the step it selects from the details column in Draft", async () => {
+  it("keeps the step it selects from the Inspector in Draft", async () => {
     const { view, search } = await renderEditorRoute("");
     // The router counts a loader's data stale only after time has passed.
     await settle();

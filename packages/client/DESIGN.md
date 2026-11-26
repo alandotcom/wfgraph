@@ -424,7 +424,7 @@ Event Split. No header control changes a level. A step's editor is one form
 that holds settings only: first what it does, then its Connection and every
 setting as its field, each under one label, and after a divider its editable
 **Label** and **Notes**, which is the step's description. Disabling,
-duplicating and deleting the step are commands of the details header's menu and
+duplicating and deleting the step are commands of the Inspector header's ⋯ menu and
 the context menu. A field's help sits behind an info icon on its label when it
 runs longer than one short line. What it does is one field, **Does**, that names the action with its category,
 such as "Appointments · Send Patient Message", or the action alone for a
@@ -657,7 +657,7 @@ Escape select the Event Split again. The way back lasts while the source stays
 selected alone; selecting anything else ends it, and Back is then no longer
 offered. For a run node's evidence the step back is the run, and for a run it
 is the run list. In Runs, opening Focus moves focus to the title. The inspected
-step and the inspector's scroll position are remembered separately for Draft,
+step and the Inspector's scroll position are remembered separately for Draft,
 each Group view, the run list, and each run.
 Levels add no browser history.
 

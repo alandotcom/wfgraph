@@ -454,7 +454,7 @@ describe("canvas selection", () => {
 });
 
 describe("an empty workflow", () => {
-  // Each starting move has one place: what starts it in the details column,
+  // Each starting move has one place: what starts it in the Inspector,
   // a step from the outline's Add a step row and the start card's +, and the
   // agent from its prompt line. The canvas draws no block of its own.
   it("draws no starting block on the canvas", async () => {

@@ -43,7 +43,7 @@ import {
 } from "#src/lib/workflow-workspace-navigation";
 import { Input } from "#src/components/ui/input";
 import {
-  detailsFloatOpenAtom,
+  inspectorOpenAtom,
   outlineFilterFocusRequestAtom,
 } from "#src/components/workflow/columns/editor-columns-store";
 import { useIsMobile } from "#src/hooks/use-mobile";
@@ -115,7 +115,7 @@ const NO_NODE_IDS: ReadonlySet<string> = new Set();
 /** Pixels each level of nesting indents a row. */
 const INDENT_PX = 14;
 
-/** The DOM id of an outline row, so another column can return focus to it. */
+/** The DOM id of an outline row, so another surface can return focus to it. */
 export function outlineRowElementId(key: string): string {
   return `workflow-outline-row-${encodeURIComponent(key)}`;
 }
@@ -410,7 +410,7 @@ export function WorkflowOutline({
     }
     // Pressing a row opens the Inspector again after its X or Escape closed
     // it with the step still selected.
-    store.set(detailsFloatOpenAtom, true);
+    store.set(inspectorOpenAtom, true);
     if (view === "runs") {
       // On a run the row shows the step's evidence on the one canvas, and
       // Back and Escape return to the row. A step in a Group the viewer

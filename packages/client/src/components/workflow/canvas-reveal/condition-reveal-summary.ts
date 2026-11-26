@@ -1,5 +1,5 @@
 /**
- * What the details column says about a Condition node, as pure functions: its rules
+ * What the Inspector says about a Condition node, as pure functions: its rules
  * read back as a model, the logic joining them as one sentence, and the steps
  * each of its True and False outlets leads to.
  */

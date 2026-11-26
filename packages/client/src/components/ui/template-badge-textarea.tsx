@@ -99,7 +99,7 @@ export function TemplateBadgeTextarea({
           aria-required={required || undefined}
           className="w-full whitespace-pre-wrap break-words outline-none"
           contentEditable={!disabled}
-          // The details column leaves Escape to the autocomplete menu while it shows.
+          // The Inspector leaves Escape to the autocomplete menu while it shows.
           data-autocomplete-open={isMenuShown || undefined}
           id={id}
           onBlur={handleBlur}

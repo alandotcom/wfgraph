@@ -686,7 +686,7 @@ export function ConditionBuilderRow({
                           to "is greater than". Where the rule has 28rem, one
                           line per rule: the field and the value share what
                           the operator leaves, and the remove button keeps its
-                          own slot at the end. In a narrower details column the
+                          own slot at the end. In a narrower Inspector the
                           field takes the first line beside the remove button,
                           and the operator and the value share the second. */}
                           <div

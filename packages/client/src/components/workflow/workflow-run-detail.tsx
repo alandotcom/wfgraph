@@ -197,7 +197,8 @@ export function waitingSummary(
 
 /**
  * The overview of one run: its summary, active waits, exit details, failure
- * summary, and activity. The run's steps are its outline in the left column.
+ * summary, and activity. The run's steps are its outline, floating over the
+ * canvas.
  * A node's own evidence is shown by the frame around it, which `onSelectLog`
  * asks for.
  */

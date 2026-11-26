@@ -1,5 +1,5 @@
 /**
- * What the details column says about an Event Split node, as pure functions: the
+ * What the Inspector says about an Event Split node, as pure functions: the
  * Event sources its outlets come from, the row for each Event name a stored
  * edge or the reachable set names, and the connections that leave by no outlet.
  */

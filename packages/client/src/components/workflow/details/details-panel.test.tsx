@@ -14,7 +14,7 @@ import {
   type WorkflowIssuesOverlayInput,
 } from "#src/components/overlays/workflow-issues-overlay";
 import { OverlayContainer } from "#src/components/overlays/overlay-container";
-import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { inspectorOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { useGoToStep } from "#src/hooks/use-workflow-issues";
 import {
   groupWorkflowIssuesForOverlay,
@@ -630,16 +630,16 @@ describe("details panel keyboard and focus", () => {
     expect(level()).toBe("browse");
     expect(document.activeElement).toBe(card);
 
-    // Details floating over the canvas slides away on that same Escape.
+    // The Inspector card slides away on that same Escape.
     await act(async () => {
-      store.set(detailsFloatOpenAtom, true);
+      store.set(inspectorOpenAtom, true);
     });
     const label = view.getByLabelText("Label");
     label.focus();
     await escape(label);
     expect(level()).toBe("browse");
     expect(document.activeElement).toBe(card);
-    expect(store.get(detailsFloatOpenAtom)).toBe(false);
+    expect(store.get(inspectorOpenAtom)).toBe(false);
     expect(store.get(activeSelectionAtom)).toEqual({
       nodeIds: ["send"],
       edgeIds: [],

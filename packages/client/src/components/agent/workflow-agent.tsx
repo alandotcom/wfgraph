@@ -3,7 +3,7 @@
  * conversation, which opens as a panel directly above it. At rest the prompt
  * is a one-line pill; focus grows it upward into the full prompt line. The
  * agent works on the whole workflow, so it sits with the workflow rather than
- * in the details column, which is about one step. A step the person selected
+ * in the Inspector, which is about one step. A step the person selected
  * is offered as a chip they may attach to the message; nothing is attached
  * unless they attach it.
  *

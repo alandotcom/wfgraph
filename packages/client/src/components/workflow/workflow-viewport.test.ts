@@ -247,7 +247,7 @@ describe("workflow viewport policy", () => {
   });
 
   it("opens the seeded 16-step workflow on titled cards, with the Lifecycle card at the top centre", () => {
-    // The canvas between the outline and the details column of a 1512 by 982
+    // The canvas left clear of the outline and the Inspector in a 1512 by 982
     // window, where the 16-step workflow with its Group drawn in place fits
     // whole only at about 0.37, which would draw every card by number alone.
     const usable = { x: 0, y: 0, width: 770, height: 872 };

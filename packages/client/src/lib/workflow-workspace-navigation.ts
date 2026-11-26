@@ -1,7 +1,7 @@
 /**
  * The workspace address the editor route names, and the navigation each
  * address remembers. The route is the system of record for the active address;
- * the selection, details column state, and cameras stored here per address are
+ * the selection, Inspector state, and cameras stored here per address are
  * the system of record for those values. The UI and graph stores read this module.
  */
 
@@ -190,7 +190,7 @@ export const activeSelectionAtom = atom(
 /**
  * Set the selection of a named address, which need not be the active one. In a
  * workspace that follows its selection, a selection that comes to hold one
- * object becomes the object the details column inspects.
+ * object becomes the object the Inspector inspects.
  */
 export const setWorkspaceSelectionAtom = atom(
   null,
@@ -225,7 +225,7 @@ export const clearDraftSelectionsAtom = atom(
 );
 
 /**
- * The level the desktop details column shows the active address at. An address
+ * The level the desktop Inspector shows the active address at. An address
  * that never set one shows Browse.
  */
 export const activeDesktopRevealLevelAtom = atom(
@@ -233,12 +233,12 @@ export const activeDesktopRevealLevelAtom = atom(
     get(activeWorkspaceNavigationAtom).desktop.revealLevel ?? "browse"
 );
 
-/** The desktop details column state stored for the active address. */
+/** The desktop Inspector state stored for the active address. */
 export const activeRevealPresentationAtom = atom(
   (get): DesktopPresentation => get(activeWorkspaceNavigationAtom).desktop
 );
 
-/** Set the desktop details column level of a named address. */
+/** Set the desktop Inspector level of a named address. */
 export const setWorkspaceRevealLevelAtom = atom(
   null,
   (_get, set, input: { address: WorkspaceAddress; level: RevealLevel }) => {
@@ -358,7 +358,7 @@ export const activeChosenExecutionAtom = atom(
  * write. `selectsNode` selects the node alone, and otherwise the selection is
  * emptied, for a node the address's canvas cannot select. A non-null
  * `executionLogId` records that execution as the chosen one. `opensFocus` shows
- * the node's evidence in the details column.
+ * the node's evidence in the Inspector.
  */
 export const inspectRunNodeAtom = atom(
   null,

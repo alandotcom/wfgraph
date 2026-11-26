@@ -137,7 +137,7 @@ function useWorkspaceRouteSync(): void {
     presentedGraph: store.get(presentedGraphAtom),
   });
 
-  // Selected ids, and the object the details column inspects, that the
+  // Selected ids, and the object the Inspector inspects, that the
   // presented graph no longer holds are dropped. The key names only the graph
   // structure, so moving a node does not run it again.
   const renderedGraph = recoveryGraph(renderedInputs);
