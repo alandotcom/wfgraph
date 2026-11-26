@@ -51,6 +51,12 @@ import {
   unreadableDraft,
 } from "#src/lib/workflow-save-test-support";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { contextMenuAtom } from "#src/components/workflow/workflow-context-menu";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   createSerializedWorkflowGraph,
@@ -356,6 +362,64 @@ describe("WorkflowOutline", () => {
       expect(call[0]).toEqual({ preventScroll: true });
     }
     vi.restoreAllMocks();
+  });
+
+  describe("gestures a row shares with its card", () => {
+    afterEach(resetAuthorizationGrantsForTests);
+
+    it("extends the selection with Shift-click and toggles a step with Cmd-click", async () => {
+      installAuthorizationGrantsForTests(WfGraphOperationIds);
+      const { store } = renderOutline();
+      await tree();
+
+      fireEvent.click(row("Send booking confirmation"));
+      fireEvent.click(row("Release the slot"), { shiftKey: true });
+      expect(store.get(activeSelectionAtom).nodeIds).toEqual([
+        "Send booking confirmation",
+        "Release the slot",
+      ]);
+      expect(
+        row("Send booking confirmation").getAttribute("aria-selected")
+      ).toBe("true");
+      expect(row("Release the slot").getAttribute("aria-selected")).toBe(
+        "true"
+      );
+
+      fireEvent.click(row("Send booking confirmation"), { metaKey: true });
+      expect(store.get(activeSelectionAtom).nodeIds).toEqual([
+        "Release the slot",
+      ]);
+    });
+
+    it("opens the card's context menu on right-click, keeping a selection that holds the row", async () => {
+      installAuthorizationGrantsForTests(WfGraphOperationIds);
+      const { store } = renderOutline();
+      await tree();
+
+      // A row outside the selection becomes the selection.
+      fireEvent.contextMenu(row("Release the slot"), {
+        clientX: 40,
+        clientY: 80,
+      });
+      expect(store.get(activeSelectionAtom).nodeIds).toEqual([
+        "Release the slot",
+      ]);
+      expect(store.get(contextMenuAtom)).toMatchObject({
+        type: "node",
+        nodeId: "Release the slot",
+        position: { x: 40, y: 80 },
+      });
+
+      // A row inside a selection of two keeps both, so the menu offers the
+      // commands for both.
+      fireEvent.click(row("Send booking confirmation"), { shiftKey: true });
+      fireEvent.contextMenu(row("Send booking confirmation"));
+      expect(store.get(activeSelectionAtom).nodeIds).toHaveLength(2);
+      expect([...(store.get(contextMenuAtom)?.selectedIds ?? [])]).toEqual([
+        "Release the slot",
+        "Send booking confirmation",
+      ]);
+    });
   });
 
   it("offers Add a step at every open end, which opens the picker on that outlet", async () => {

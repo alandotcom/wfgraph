@@ -1,5 +1,5 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { atom, useAtomValue, useSetAtom } from "jotai";
 import { ClipboardPaste, Link2Off, Plus } from "lucide-react";
 import { useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -47,6 +47,12 @@ export type ContextMenuState = {
   /** Selection frozen at right-pointer-down, before React Flow collapses it. */
   selectedIds?: ReadonlySet<string>;
 } | null;
+
+/**
+ * The open context menu, or null. The canvas and the outline both open it, so
+ * a row and its card answer a right-click with the same menu.
+ */
+export const contextMenuAtom = atom<ContextMenuState>(null);
 
 type WorkflowContextMenuProps = {
   canEdit: boolean;

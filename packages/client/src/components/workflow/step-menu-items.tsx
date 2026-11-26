@@ -25,6 +25,7 @@ import {
 } from "#src/lib/collapsed-groups";
 import { canUngroup } from "#src/lib/node-group";
 import { currentPlatform, isApplePlatform } from "#src/lib/shortcut-label";
+import { deleteCanvasSelectionAtom } from "#src/lib/workflow-group-store";
 import {
   copySelectionAtom,
   deleteGroupWithMembersAtom,
@@ -37,7 +38,11 @@ import {
   ungroupNodeAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
-import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
 import { editFocusTarget } from "./canvas-reveal/reveal-edit-target";
@@ -70,13 +75,19 @@ function chord(key: string): string {
   return isApplePlatform(currentPlatform()) ? `⌘${key}` : `Ctrl+${key}`;
 }
 
+/** "1 step" or "N steps". */
+function stepsNoun(count: number): string {
+  return count === 1 ? "1 step" : `${count} steps`;
+}
+
 /**
  * The commands for one step, Group or the Lifecycle node, as the canvas's
- * context menu and the Inspector's ⋯ menu both offer them: Edit, Disable or
- * Enable, Add step after on each outlet, Copy, Duplicate, Group, Ungroup,
- * Collapse or Expand a Group, and Delete. `selectedIds` is the selection the
- * Group row would group. Each item only runs its command; the menu closes
- * itself.
+ * context menu, an outline row's context menu and the Inspector's ⋯ menu all
+ * offer them: Edit, Disable or Enable, Add step after on each outlet, Copy,
+ * Duplicate, Group, Ungroup, Collapse or Expand a Group, and Delete. When
+ * `selectedIds` holds `nodeId` and at least one other node, the commands are
+ * the ones that apply to the whole selection, each naming its count. Each item
+ * only runs its command; the menu closes itself.
  */
 export function useStepMenuItems(input: {
   nodeId: string | undefined;
@@ -105,9 +116,54 @@ export function useStepMenuItems(input: {
   const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
 
+  const deleteCanvasSelection = useSetAtom(deleteCanvasSelectionAtom);
+
   const node = nodes.find((item) => item.id === input.nodeId);
   if (!(input.canEdit && node)) {
     return [];
+  }
+  if (input.selectedIds.size > 1 && input.selectedIds.has(node.id)) {
+    const selected = nodes.filter((item) => input.selectedIds.has(item.id));
+    // The selection the menu was opened on, which React Flow may have
+    // collapsed to the pressed card since, is the selection each command acts
+    // on.
+    const restoreSelection = () =>
+      store.set(activeSelectionAtom, {
+        nodeIds: selected.map((item) => item.id),
+        edgeIds: [],
+      });
+    return bulkItems({
+      selected,
+      canInsert: input.canInsert,
+      grouping: analyzeGroupableSelection({
+        nodes,
+        edges,
+        selectedIds: input.selectedIds,
+      }),
+      group: () => groupSelected({ selectedIds: input.selectedIds }),
+      copy: () => {
+        restoreSelection();
+        copySelection();
+      },
+      duplicate: () => {
+        restoreSelection();
+        showGraphEditRefusal(duplicateSelection());
+      },
+      setEnabled: (enabled) =>
+        // One undo step for the whole selection: only the first write
+        // records history.
+        selected.forEach((item, index) =>
+          updateNodeData({
+            id: item.id,
+            data: { enabled },
+            recordHistory: index === 0,
+          })
+        ),
+      remove: () => {
+        restoreSelection();
+        deleteCanvasSelection();
+      },
+    });
   }
   const nodeId = node.id;
   const nodeLabel = node.data.label || "Step";
@@ -243,6 +299,84 @@ export function useStepMenuItems(input: {
           run: () => deleteNode(nodeId),
         }
   );
+  return items;
+}
+
+/**
+ * The commands that apply to every node of a multiple selection: Group,
+ * Duplicate, Copy, Disable or Enable, and Delete, each naming the count. A
+ * selection holding the Lifecycle node offers no Duplicate, Copy or Delete,
+ * and one holding anything but steps offers no Disable or Enable.
+ */
+function bulkItems(input: {
+  selected: readonly WorkflowNode[];
+  canInsert: boolean;
+  grouping: ReturnType<typeof analyzeGroupableSelection>;
+  group: () => void;
+  copy: () => void;
+  duplicate: () => void;
+  setEnabled: (enabled: boolean) => void;
+  remove: () => void;
+}): readonly StepMenuItem[] {
+  const { selected, grouping } = input;
+  const count = stepsNoun(selected.length);
+  const holdsLifecycle = selected.some(
+    (item) => item.data.type === "lifecycle"
+  );
+  const allSteps = selected.every((item) => item.data.type === "action");
+  const allDisabled = selected.every((item) => item.data.enabled === false);
+  const items: StepMenuItem[] = [
+    {
+      id: "group",
+      label: `Group ${count}`,
+      icon: <Group />,
+      group: "arrange",
+      shortcut: chord("G"),
+      disabled: !grouping.ok,
+      hint: grouping.ok ? undefined : grouping.error,
+      run: input.group,
+    },
+  ];
+  if (!holdsLifecycle) {
+    items.push(
+      {
+        id: "duplicate",
+        label: `Duplicate ${count}`,
+        icon: <CopyPlus />,
+        group: "arrange",
+        shortcut: chord("D"),
+        disabled: !input.canInsert,
+        run: input.duplicate,
+      },
+      {
+        id: "copy",
+        label: "Copy",
+        icon: <Copy />,
+        group: "arrange",
+        shortcut: chord("C"),
+        run: input.copy,
+      }
+    );
+  }
+  if (allSteps) {
+    items.push({
+      id: "toggle-enabled",
+      label: `${allDisabled ? "Enable" : "Disable"} ${count}`,
+      icon: allDisabled ? <Eye /> : <EyeOff />,
+      group: "edit",
+      run: () => input.setEnabled(allDisabled),
+    });
+  }
+  if (!holdsLifecycle) {
+    items.push({
+      id: "delete",
+      label: `Delete ${count}`,
+      icon: <Trash2 />,
+      group: "delete",
+      destructive: true,
+      run: input.remove,
+    });
+  }
   return items;
 }
 

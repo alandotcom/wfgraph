@@ -14,6 +14,7 @@ import {
 import {
   type FocusEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   useMemo,
   useRef,
@@ -29,9 +30,16 @@ import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-ori
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { useInspectRunNode } from "#src/components/workflow/use-run-node-evidence";
 import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
+import { contextMenuAtom } from "#src/components/workflow/workflow-context-menu";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
 import { expandGroupAtom } from "#src/lib/collapsed-groups";
-import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { Input } from "#src/components/ui/input";
 import {
   detailsFloatOpenAtom,
@@ -47,6 +55,7 @@ import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import { inactiveBranch } from "#src/lib/inactive-branch";
 import { editOfNode, workflowEdits } from "#src/lib/workflow-edits";
 import {
+  canvasEditingLockedAtom,
   canvasSelectionAtom,
   edgesAtom,
   executionOverlayGraphAtom,
@@ -201,6 +210,16 @@ export function WorkflowOutline({
   const testSkipped = openRun?.testSkipped ?? NO_NODE_IDS;
 
   const editing = view === "draft" && !reviewShown;
+  const locked = useAtomValue(canvasEditingLockedAtom);
+  const topologyAuthoring = useTopologyAuthoring();
+  const setContextMenu = useSetAtom(contextMenuAtom);
+  // Whether a row answers right-click, Shift-click and Cmd-click the way its
+  // canvas card does: in an editable Draft, where the canvas offers them.
+  const authoring =
+    editing &&
+    !locked &&
+    topologyAuthoring &&
+    can(WfGraphOperations.workflowUpdate.id);
   // While the review sheet shows, the graph holds removed steps too, and the
   // rows keep the draft's numbers so they match the cards.
   const draftNumbers = useMemo(
@@ -417,6 +436,51 @@ export function WorkflowOutline({
     }
   };
 
+  /**
+   * Shift-click adds the row's step to the selection and Cmd-click or
+   * Ctrl-click adds or removes it, as on the canvas. Answers whether the
+   * click was one of those.
+   */
+  const extendSelection = (row: OutlineDisplayRow, event: MouseEvent) => {
+    if (
+      !(authoring && isNodeRow(row)) ||
+      !(event.shiftKey || event.metaKey || event.ctrlKey)
+    ) {
+      return false;
+    }
+    const current = store.get(activeSelectionAtom).nodeIds;
+    const holds = current.includes(row.nodeId);
+    const nodeIds =
+      holds && !event.shiftKey
+        ? current.filter((id) => id !== row.nodeId)
+        : holds
+          ? current
+          : [...current, row.nodeId];
+    store.set(activeSelectionAtom, { nodeIds, edgeIds: [] });
+    return true;
+  };
+
+  /**
+   * Right-click opens the step's context menu, the one its canvas card opens.
+   * A row outside the selection becomes the selection first; a row inside it
+   * keeps the selection, so the menu offers the commands for all of it.
+   */
+  const openRowMenu = (row: OutlineDisplayRow, event: MouseEvent) => {
+    if (!(authoring && isNodeRow(row))) return;
+    event.preventDefault();
+    const current = store.get(activeSelectionAtom).nodeIds;
+    const keeps = current.includes(row.nodeId);
+    if (!keeps) {
+      store.set(activeSelectionAtom, { nodeIds: [row.nodeId], edgeIds: [] });
+    }
+    setContextMenu({
+      type: "node",
+      position: { x: event.clientX, y: event.clientY },
+      nodeId: row.nodeId,
+      selectedIds: new Set(keeps ? current : [row.nodeId]),
+    });
+  };
+
   const point = (row: OutlineDisplayRow) => {
     const nodeId = nodeIdOf(row);
     if (nodeId !== null) setHighlight(nodeId);
@@ -625,6 +689,7 @@ export function WorkflowOutline({
         ) : (
           <div
             aria-label="Outline"
+            aria-multiselectable={authoring}
             onKeyDown={onTreeKeyDown}
             ref={treeRef}
             role="tree"
@@ -665,14 +730,16 @@ export function WorkflowOutline({
                     }
                     outcome={run?.outcomes.get(row.key)}
                     showsTime={timedRowKeys.has(row.key)}
-                    onChoose={() => {
+                    onChoose={(event) => {
                       focusRow(row.key);
+                      if (extendSelection(row, event)) return;
                       if (row.kind === "add") {
                         addStepAt(row);
                       } else {
                         choose(row);
                       }
                     }}
+                    onContextMenu={(event) => openRowMenu(row, event)}
                     onFocus={() => {
                       setFocusedKey(row.key);
                       point(row);
@@ -681,7 +748,9 @@ export function WorkflowOutline({
                     onPoint={() => point(row)}
                     onToggle={() => toggleFold(row.key)}
                     row={row}
-                    selected={row.key === selectedKey}
+                    selected={
+                      isNodeRow(row) && selectedIds.includes(row.nodeId)
+                    }
                   />
                 ))}
               </div>
@@ -763,6 +832,7 @@ function OutlineRowView({
   outcome,
   showsTime,
   onChoose,
+  onContextMenu,
   onFocus,
   onLeave,
   onPoint,
@@ -785,7 +855,8 @@ function OutlineRowView({
    * from the row before, since a run's steps often finish within one second.
    */
   showsTime: boolean;
-  onChoose: () => void;
+  onChoose: (event: MouseEvent) => void;
+  onContextMenu: (event: MouseEvent) => void;
   onFocus: () => void;
   onLeave: () => void;
   onPoint: () => void;
@@ -888,6 +959,7 @@ function OutlineRowView({
       data-node-id={nodeRow.nodeId}
       id={outlineRowElementId(row.key)}
       onClick={onChoose}
+      onContextMenu={onContextMenu}
       onPointerEnter={onPoint}
       onPointerLeave={onLeave}
       role="treeitem"
