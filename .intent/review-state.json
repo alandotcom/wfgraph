@@ -7949,15 +7949,16 @@
       ]
     },
     "source:packages/client/src/components/ui/template-badge-dom.ts": {
-      "fingerprint": "18a39c5ded48c11b1534e58a38bc01cc2cd9ac4f9cf04466c404454cc76813a6",
+      "fingerprint": "437c59597d9034005f92d353461f60dace8a8eebed5900f03f6961acd791582d",
       "snapshot": {
-        "packages/client/src/components/ui/template-badge-dom.ts": "b74b83809eb005e930fd37d04f535adb1e191e2804e302b364d224e347045dcf"
+        "packages/client/src/components/ui/template-badge-dom.ts": "af7807b0b46deb49f7efc9bf4a3ce8681955b60b94d89a9e318f82ef0752db26"
       },
-      "head": "0e28c68d7e2a767dfd41d2efe9ac71cf6d600490",
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (outline, canvas, details column, overlays, review sheet, styles, tests and product or design notes). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change. The one client contract a host action depends on, the skipped status in test-run-skip.ts, is a host-actions source.",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
       "evidence": [
-        "git diff 3b99bc72..0e28c68d -- packages/client/src/components/ui/template-badge-dom.ts"
+        "packages/client/src/components/ui/template-badge-dom.ts",
+        "skills grep for placeholder and template field at cccb8f05"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/canvas-reveal.test.tsx": {
@@ -9113,16 +9114,16 @@
       ]
     },
     "source:packages/client/DESIGN.md": {
-      "fingerprint": "bfd71d1869f8eb53fb72c561b958a01c24428eedb98495afc77d00764ade76f3",
+      "fingerprint": "047420d65cc4c6089ff707a4c09ecac68b728ed14d3886b764f453b35a770d69",
       "snapshot": {
-        "packages/client/DESIGN.md": "b3087cd5c113179e54eb97281f9334693a7b91df9814c3503f236e3ef3c2bb52"
+        "packages/client/DESIGN.md": "f3e9fe5659199675dbd46cd31d127797547782cbab6a9d179a3b7ae997576f1f"
       },
-      "head": "d4b84535445900a3306327eda3f3e28a13769163",
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
       "outcome": "out-of-scope",
-      "reason": "A client source file of the editor's hideable build agent box. No published skill teaches the editor's controls, shortcuts or UI preferences, so the change is outside every skill's scope; the one skill sentence it made incomplete is recorded on the build-agent skill item.",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
       "evidence": [
-        "packages/client/DESIGN.md is not among any published skill's sources; the only client file a skill lists is packages/client/src/lib/test-run-skip.ts, in host-actions",
-        "git show c07dca24 --stat lists this file in the client feature commit"
+        "packages/client/DESIGN.md",
+        "skills grep for placeholder and template field at cccb8f05"
       ]
     },
     "source:packages/client/PRODUCT.md": {
@@ -9757,29 +9758,29 @@
       ]
     },
     "source:packages/client/src/components/ui/template-badge-input.tsx": {
-      "fingerprint": "6a1b9f4e7f338fdf06d2c0516b6c8d6d69af310d38d921fd099b526f814942ec",
+      "fingerprint": "a79b3363de09ab991850cc169fa05e3fb69f7a83c4c1a6566e4c20ab7ac913b1",
       "snapshot": {
-        "packages/client/src/components/ui/template-badge-input.tsx": "d452be28a8a8d4512e4d9a32c249a9e3faa7ed7c3d8deaaedd7af598424ce95f"
+        "packages/client/src/components/ui/template-badge-input.tsx": "1be139f9c77188ea1aa77cfa3b1116d650c19c451da35de9b0af4734aaf199b2"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
       "evidence": [
-        "packages/client/src/components/ui/template-badge-input.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/ui/template-badge-input.tsx",
+        "skills grep for placeholder and template field at cccb8f05"
       ]
     },
     "source:packages/client/src/components/ui/template-badge-textarea.tsx": {
-      "fingerprint": "35597f8c3cdae9bd3de7e1279f35084500786e32e7f7a9db4b884700773fa50f",
+      "fingerprint": "c615ad7167aa558f01523875091d9e00b9971ef09c37978caaf8fbe2c3e24fdf",
       "snapshot": {
-        "packages/client/src/components/ui/template-badge-textarea.tsx": "f91505f3328debd67889b75315866fd8e1b122c536b13b615717d69432623f9c"
+        "packages/client/src/components/ui/template-badge-textarea.tsx": "9a2f0b9e79f315d71e0e061d1336cff756a5010493cad3fcc143751f0515980b"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
       "evidence": [
-        "packages/client/src/components/ui/template-badge-textarea.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/ui/template-badge-textarea.tsx",
+        "skills grep for placeholder and template field at cccb8f05"
       ]
     },
     "source:packages/client/src/components/ui/textarea.tsx": {
@@ -10618,29 +10619,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/action-config-renderer.test.tsx": {
-      "fingerprint": "429c424887d0723f240b8ab085c5fa58f133d7a73bfaeabd7e6f6d13639460d3",
+      "fingerprint": "380c70a8125d0972d8fd0e978993c63bd549c85589dd532b6dedac9c6155f415",
       "snapshot": {
-        "packages/client/src/components/workflow/config/action-config-renderer.test.tsx": "07e9055f2df1010fa6c1fccceb90821e9b669dca1d0728b082bf4cf98598086b"
+        "packages/client/src/components/workflow/config/action-config-renderer.test.tsx": "b2c7b14ecbb35d952f379b2d739b75b2aef3609b31dc3eddb268040cbdba4797"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
       "evidence": [
-        "packages/client/src/components/workflow/config/action-config-renderer.test.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/action-config-renderer.test.tsx",
+        "skills grep for placeholder and template field at cccb8f05"
       ]
     },
     "source:packages/client/src/components/workflow/config/action-config-renderer.tsx": {
-      "fingerprint": "deef4e46afeb2d708d0727db24cefb78beba1f16f9b3fef4fdc542c13cfd0b11",
+      "fingerprint": "455b3907bab9355c8ab5745bcf9883252eb0a9cd126cccb9228028f4d64d21e0",
       "snapshot": {
-        "packages/client/src/components/workflow/config/action-config-renderer.tsx": "51739c51e22fc7018e1c1ee29a22a20023c4d91841c6d63e5811feee3b98b593"
+        "packages/client/src/components/workflow/config/action-config-renderer.tsx": "a5782c64d001472fa430903560d70d4097f2f38cb9bf243152e6f5944a83e84a"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
       "evidence": [
-        "packages/client/src/components/workflow/config/action-config-renderer.tsx is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/components/workflow/config/action-config-renderer.tsx",
+        "skills grep for placeholder and template field at cccb8f05"
       ]
     },
     "source:packages/client/src/components/workflow/config/action-grid.tsx": {
@@ -13445,16 +13446,16 @@
       ]
     },
     "source:packages/client/src/routes/globals.css": {
-      "fingerprint": "168d4ffb9feb97caab695a91ba748a70b76aae779b2902ea7f4693f411f8306e",
+      "fingerprint": "d1d503cd8513c206e17ef9d7f4eb103e349c493a8e6ec2dccce70aab8970b500",
       "snapshot": {
-        "packages/client/src/routes/globals.css": "e759c4ff93ac67a5bfd504c6b43853882a034c66e341a9f7669529ac31f087bc"
+        "packages/client/src/routes/globals.css": "33d7f2408d92a44a6b4e4e3b2c05b1ec572174dee77ca3b8b0016c5908290ead"
       },
-      "head": "32942500b3cab62694b00fd4c5b60d229aacf839",
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
       "outcome": "out-of-scope",
-      "reason": "Editor internals of @wfgraph/client (floating outline, Inspector card, canvas, Start form, info-icon help, agent prompt pill, layout renames and their tests). Maintainer decision 2 gives @wfgraph/client no skill, and an adopter only passes clientBundle, which did not change.",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
       "evidence": [
-        "packages/client/src/routes/globals.css is no skill's source in _artifacts/skill_tree.yaml",
-        "docs/embedding.md describes the editor layout for its users in \"Workspaces and the canvas\", which the skill spec assesses as holding no adopter code task"
+        "packages/client/src/routes/globals.css",
+        "skills grep for placeholder and template field at cccb8f05"
       ]
     },
     "source:packages/client/src/routes/workflows/[workflowId]/editor-open-focus.test.tsx": {
@@ -14533,6 +14534,32 @@
       "evidence": [
         "packages/shared/src/lifecycle/start-filters.test.ts",
         "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+      ]
+    },
+    "source:packages/client/src/components/ui/template-badge-autocomplete.test.tsx": {
+      "fingerprint": "16653738de08e7ae3301a842904c3699ecb40d1afc8be2f6c14249bac242b3f1",
+      "snapshot": {
+        "packages/client/src/components/ui/template-badge-autocomplete.test.tsx": "744e5e42198073b2ccc899e6009cf1df80b6369b8d5c4272e24aef4871eec3e8"
+      },
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
+      "outcome": "out-of-scope",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
+      "evidence": [
+        "packages/client/src/components/ui/template-badge-autocomplete.test.tsx",
+        "skills grep for placeholder and template field at cccb8f05"
+      ]
+    },
+    "source:packages/client/src/components/ui/use-template-badge-field.ts": {
+      "fingerprint": "247ab61a4c6f6ddbe20879a1abe4210c4056d90a17a731f9e23ad1e5c8ee4662",
+      "snapshot": {
+        "packages/client/src/components/ui/use-template-badge-field.ts": "13b7be52dfe72c542dee965725d12bbfe9b5d2a0ca977412bfcca5cb77089c4a"
+      },
+      "head": "cccb8f05bcdb6e5dbf89e3b28a5a6c5e1bac03a9",
+      "outcome": "out-of-scope",
+      "reason": "A template field draws its placeholder over the editor, the placeholder is one short line with the full hint in the field's help, and phone template fields meet the 44px target. No published skill describes the editor's field styling or placeholders.",
+      "evidence": [
+        "packages/client/src/components/ui/use-template-badge-field.ts",
+        "skills grep for placeholder and template field at cccb8f05"
       ]
     }
   }
