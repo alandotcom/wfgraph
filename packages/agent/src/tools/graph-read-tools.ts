@@ -172,6 +172,27 @@ function readableNodeSummary(node: WorkflowNode, graph: GraphContext) {
   });
 }
 
+/**
+ * Every numbered step of `document` as `{ id, stepNumber, label }`, in run
+ * order. The numbers and labels are the ones `read_workflow` answers for the
+ * same draft, and the Lifecycle Node, a Group and an Add node are left out
+ * because the outline gives them no number.
+ */
+function numberedSteps(document: AgentDocument, catalog: ExtensionCatalog) {
+  const nodesById = new Map(document.nodes.map((node) => [node.id, node]));
+  // `workflowStepNumbers` lists its entries in the order the outline numbers
+  // them, which is run order.
+  const stepNumbers = workflowStepNumbers({
+    nodes: document.nodes,
+    edges: document.edges,
+    catalog,
+  });
+  return [...stepNumbers].flatMap(([id, stepNumber]) => {
+    const node = nodesById.get(id);
+    return node ? [{ id, stepNumber, label: node.data.label }] : [];
+  });
+}
+
 function readableNodeDetail(node: WorkflowNode, graph: GraphContext) {
   return { ...readableNodeSummary(node, graph), config: readableConfig(node) };
 }
@@ -236,7 +257,7 @@ export const ReadNodes = Tool.make("read_nodes", {
 
 export const ValidateWorkflow = Tool.make("validate_workflow", {
   description:
-    "Check the draft: whether it can be saved, and whether it can be published. Run this after edits and before describing completion.",
+    "Check the draft: whether it can be saved, and whether it can be published. It also lists every step with its current stepNumber and label. Run this after edits and before describing completion.",
   success: Schema.Struct({
     canSave: Schema.Boolean.annotate({
       description:
@@ -256,6 +277,16 @@ export const ValidateWorkflow = Tool.make("validate_workflow", {
     warnings: Schema.Array(issueSchema).annotate({
       description:
         "Problems worth fixing that the canonical publication gate permits.",
+    }),
+    steps: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        stepNumber: Schema.Number,
+        label: Schema.String,
+      })
+    ).annotate({
+      description:
+        "Every numbered step of the draft as it stands now, in run order: its node id, the stepNumber the editor's outline and canvas print, and its label. Name a step in the reply with the stepNumber and label from this list.",
     }),
   }),
 }).annotateMerge(readHints("Validate the workflow"));
@@ -325,6 +356,7 @@ export const graphReadToolHandlers = Effect.gen(function* () {
             validation.draftValid && validation.publishBlockers.length === 0,
           publishBlockers: validation.publishBlockers,
           warnings: validation.warnings,
+          steps: numberedSteps(document, draft.catalog),
         };
       }),
   };

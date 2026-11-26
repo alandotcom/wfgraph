@@ -343,7 +343,9 @@ read_workflow gives it as stepNumber. A person who says "step 7" means the step
 whose stepNumber is 7. Name a step by its number and the label it carries on the
 canvas, such as step 7 "Wait for deposit", so the user can find what you are
 talking about, and leave the internal words out of it. An edit can renumber the
-steps, so after a write take a number from a read_workflow made after it.
+steps, so after a write take each number from the steps field of the
+validate_workflow call made after your last write, which lists every step's
+current stepNumber and label.
 
 Two things you do not do: you never choose where a node sits, because Workflow
 Graph lays the graph out, and you never invent an action, an Event or a field path that

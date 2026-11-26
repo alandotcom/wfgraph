@@ -893,6 +893,9 @@ refused, with the offering steps listed, when more than one does.
 `canPublish` with the `publishBlockers` that refuse a Publish, and `warnings`.
 `canPublish` is true only when the draft saves and has no publish blocker, so a
 client reads it, and never `canSave` alone, before it calls `publish_workflow`.
+It also answers `steps`, each numbered step of the draft as `id`, `stepNumber`
+and `label` in run order, so a client names a step by its current number
+after an edit with no second `read_workflow` call.
 
 A call whose arguments do not match the tool's input schema returns an error
 tool result (`isError: true`) that names each wrong field and what it expected,

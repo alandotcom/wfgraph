@@ -435,6 +435,7 @@ describe("validate_workflow", () => {
         canPublish: false,
         publishBlockers: blockers,
         warnings,
+        steps: [],
       });
     })
   );
@@ -456,6 +457,51 @@ describe("validate_workflow", () => {
         saveIssues: ["Graph contains duplicate edge IDs"],
         canPublish: false,
       });
+    })
+  );
+
+  it.effect("lists each step with the number read_workflow gives it", () =>
+    Effect.gen(function* () {
+      const { nodes, edges } = heroGraph();
+      const { tools } = yield* agentToolsFor({
+        nodes,
+        edges,
+        catalog: outlineTestCatalog,
+      });
+
+      const topology = yield* tools.read_workflow({ limit: 50 });
+      const { steps } = yield* tools.validate_workflow();
+
+      const numberedInTopology = topology.nodes
+        .flatMap(({ id, stepNumber, label }) =>
+          stepNumber === undefined ? [] : [{ id, stepNumber, label }]
+        )
+        .toSorted((left, right) => left.stepNumber - right.stepNumber);
+
+      expect(steps).toHaveLength(16);
+      expect(steps).toEqual(numberedInTopology);
+    })
+  );
+
+  it.effect("numbers a step inserted earlier in the same turn", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycle, slackNode],
+        edges: [entryToSlack],
+        catalog,
+      });
+
+      const inserted = yield* tools.insert_node_on_edge({
+        edgeId: entryToSlack.id,
+        actionId: BUILT_IN_ACTION_IDS.wait,
+        label: "Wait a day",
+      });
+      const { steps } = yield* tools.validate_workflow();
+
+      expect(steps).toEqual([
+        { id: inserted.nodeId, stepNumber: 1, label: "Wait a day" },
+        { id: "notify", stepNumber: 2, label: "Notify the team" },
+      ]);
     })
   );
 });

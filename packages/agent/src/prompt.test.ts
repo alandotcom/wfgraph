@@ -58,7 +58,7 @@ describe("buildSystemPrompt", () => {
       "Name a step by its number and the label it carries on the canvas"
     );
     expect(prompt).toContain(
-      "after a write take a number from a read_workflow made after it"
+      "after a write take each number from the steps field of the validate_workflow call made after your last write"
     );
   });
 

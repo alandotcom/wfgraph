@@ -125,8 +125,9 @@ No tool returns or decrypts a Connection's credentials.
   `sourceNodeId` is refused when more than one step above the Condition offers
   its path.
 - `validate_workflow` answers `canSave`, `canPublish`, `saveIssues`,
-  `publishBlockers` and `warnings`. `publish_workflow` refuses a draft with
-  blockers and lists every one.
+  `publishBlockers`, `warnings` and `steps`, each numbered step's `id`,
+  `stepNumber` and `label` as the draft stands. `publish_workflow` refuses a
+  draft with blockers and lists every one.
 - `restore_version` replaces the draft with a published version, which is a
   client's undo. MCP writes leave the published version alone until
   `publish_workflow`.
