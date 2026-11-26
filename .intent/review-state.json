@@ -9113,16 +9113,16 @@
       ]
     },
     "source:packages/client/DESIGN.md": {
-      "fingerprint": "3493dd79306edab1bbeac425e51e0bed21c9a2bdd29e3ec02a98f45a7b398423",
+      "fingerprint": "20bfb6c9bcf6d4394d36ce8db220604b9679432ce98a2fbdbe5e80d33e7708b2",
       "snapshot": {
-        "packages/client/DESIGN.md": "5b5c8e8d0d9340ae7cddf210a54f8629b0c57ab4ea7a347697d1c18c95472b98"
+        "packages/client/DESIGN.md": "c3a79c64f0f8a905127de0f9e92cddc45c6eb2355ed5ae40c682ecc94f2f43c5"
       },
-      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "head": "d1b76d7350ca193ea9952595ce3aa3ced5b2ce62",
       "outcome": "out-of-scope",
-      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "reason": "The reveal camera now leaves a selected step or Start in place when it is already clear of the outline, the Inspector and the prompt line. No published skill describes the editor's camera.",
       "evidence": [
         "packages/client/DESIGN.md",
-        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+        "skills grep for camera and selection at d1b76d73"
       ]
     },
     "source:packages/client/PRODUCT.md": {
@@ -12104,29 +12104,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-viewport.test.ts": {
-      "fingerprint": "83ddae6da76aa465f1ad6ee51bf79cb7d27d4bf368527f4556d6b52cb0acff7b",
+      "fingerprint": "0db88875cee4dc4ea93ad0fe5712aa321976435161fd492b9f4038faa9526ebf",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-viewport.test.ts": "e51f01c5b27cb2c57fcbbeaa8342b0f1e4fdb5b2b9f7ff320ae9c1fd7c998e54"
+        "packages/client/src/components/workflow/workflow-viewport.test.ts": "517c78cbaefdabe0695ab8917aafa3ceeff53ef632831c8094012abb9ba3c591"
       },
-      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "head": "d1b76d7350ca193ea9952595ce3aa3ced5b2ce62",
       "outcome": "out-of-scope",
-      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "reason": "The reveal camera now leaves a selected step or Start in place when it is already clear of the outline, the Inspector and the prompt line. No published skill describes the editor's camera.",
       "evidence": [
         "packages/client/src/components/workflow/workflow-viewport.test.ts",
-        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+        "skills grep for camera and selection at d1b76d73"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-viewport.ts": {
-      "fingerprint": "f3389540d054ba1fee576a216238d44eb8052fec09dd581626acdda11c3442c6",
+      "fingerprint": "2b823905957efbe736d17507956b3ce485f437de001cf59e765c61f18c7fc512",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-viewport.ts": "3e55fb11e768d84279a23ee3a44aba42eff466a99479bba95f7a016181fd64f4"
+        "packages/client/src/components/workflow/workflow-viewport.ts": "a1c2f4fdd7c79addfcfcbf3a78ef924aeb11c63124e1c50dbc116c16b000d209"
       },
-      "head": "d879bfbdc43a1f75b24027f920a54336db7cecfb",
+      "head": "d1b76d7350ca193ea9952595ce3aa3ced5b2ce62",
       "outcome": "out-of-scope",
-      "reason": "Reviewed the editor fixes after the redesign (readable opening zoom on automatic fits, fixed prompt line placement, step picker highlight, rename from the Inspector title with the Label form field removed, Start filter row wrapping, refusal timing and wording, shared filter seed). No published skill describes these editor controls or quotes the refusal text; the node label property and the prompt line the skills name are unchanged.",
+      "reason": "The reveal camera now leaves a selected step or Start in place when it is already clear of the outline, the Inspector and the prompt line. No published skill describes the editor's camera.",
       "evidence": [
         "packages/client/src/components/workflow/workflow-viewport.ts",
-        "skills grep for Label, rename, prompt line, refusal wording at d879bfbd"
+        "skills grep for camera and selection at d1b76d73"
       ]
     },
     "source:packages/client/src/components/workflow/workspace-route-sync.test.tsx": {
