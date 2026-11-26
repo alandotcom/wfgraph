@@ -11,7 +11,6 @@ import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   detailsFloatOpenAtom,
-  outlineFilterFocusRequestAtom,
   phoneShowsMapAtom,
 } from "./editor-columns-store";
 import {
@@ -47,15 +46,16 @@ function inspectorHasSubject(reveal: CanvasRevealState): boolean {
 
 /**
  * The outline floating at the top left of the canvas: plain rows over the
- * canvas, capped at the canvas height less the zoom controls' room and
- * scrolling inside itself. It takes the pointer only where its rows are, so
- * the canvas around them stays usable.
+ * canvas, with no box, capped at the canvas height less the zoom controls'
+ * room and scrolling inside itself. A soft shadow in the canvas colour behind
+ * its text keeps it legible over cards and connections. It takes the pointer
+ * only where its rows are, so the canvas around them stays usable.
  */
 function FloatingOutline({ children }: { children: ReactNode }) {
   return (
     <section
       aria-label="Outline"
-      className="pointer-events-none absolute top-3 left-3 z-10 flex w-72 flex-col"
+      className="pointer-events-none absolute top-3 left-3 z-10 flex w-72 flex-col [text-shadow:0_0_2px_var(--background),0_0_6px_var(--background)]"
       data-column="outline"
       data-slot="floating-outline"
       style={{
@@ -252,19 +252,6 @@ export function EditorLayout({
   const showsMap = useAtomValue(phoneShowsMapAtom);
   useOutlineShortcut(controls);
   useFindStepShortcut(controls);
-  // "Find a step" may have just brought the outline into view, so its filter
-  // field is looked up after the commit that mounted it.
-  const filterFocusRequest = useAtomValue(outlineFilterFocusRequestAtom);
-  useAfterCommit(filterFocusRequest, () => {
-    if (filterFocusRequest === 0) {
-      return;
-    }
-    const field = document.querySelector<HTMLInputElement>(
-      '[data-column="outline"] input[aria-label="Filter steps"]'
-    );
-    field?.focus({ preventScroll: true });
-    field?.select();
-  });
   const inspectorOpen = useInspectorFollowsSubject({ enabled: !isMobile });
   if (isMobile) {
     return (

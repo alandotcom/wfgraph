@@ -29,8 +29,8 @@ export const outlineHiddenAtom = atom(false);
 export const detailsFloatOpenAtom = atom(false);
 
 /**
- * How many times "Find a step" has asked for the outline's filter field. The
- * outline focuses the field after each request commits, once it has shown the
- * field.
+ * Whether Cmd+F or "Find a step" has asked for the outline's filter field and
+ * the outline has not answered yet. The outline shows the field, puts the
+ * cursor in it, and clears the request.
  */
-export const outlineFilterFocusRequestAtom = atom(0);
+export const outlineFilterFocusRequestAtom = atom(false);

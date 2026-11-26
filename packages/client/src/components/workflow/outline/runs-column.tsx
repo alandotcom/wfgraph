@@ -141,7 +141,7 @@ export function RunsColumn() {
         // Each version numbers its own steps, so a run of an earlier version
         // can number a step differently from the draft.
         <p
-          className="shrink-0 border-b px-3 py-1.5 text-muted-foreground text-xs"
+          className="shrink-0 px-2 py-1 text-muted-foreground text-xs"
           data-slot="run-steps-version"
         >
           Steps as of v{openRun.versionNumber}, so a number can differ from the
@@ -158,7 +158,9 @@ export function RunsColumn() {
         ) : null}
         {screen.kind === "list" ? (
           <div
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1"
+            // The rows float over the canvas like the outline's, so each is
+            // marked by its fill alone, with no rule between them.
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 [&_button[data-testid=workflow-run-summary-row]]:rounded-md [&_button[data-testid=workflow-run-summary-row]]:border-b-0"
             data-slot="runs-list-scroller"
             onScroll={onScroll}
             onScrollEnd={onScrollEnd}

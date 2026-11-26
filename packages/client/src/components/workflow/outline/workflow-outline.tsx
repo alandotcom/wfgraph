@@ -1,4 +1,4 @@
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   ChevronDown,
   ChevronRight,
@@ -33,7 +33,11 @@ import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
 import { expandGroupAtom } from "#src/lib/collapsed-groups";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { Input } from "#src/components/ui/input";
-import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
+import {
+  detailsFloatOpenAtom,
+  outlineFilterFocusRequestAtom,
+} from "#src/components/workflow/columns/editor-columns-store";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
 import { isRunInProgress } from "#src/lib/execution-logs";
@@ -150,7 +154,7 @@ function outlineSections(input: {
 }
 
 /**
- * The workflow in run order, one row per step, for the editor's left column.
+ * The workflow in run order, one row per step, floating over the canvas.
  * It reads the graph the active workspace presents, the canvas selection and
  * the extension catalog from the editor's stores, so it takes no props. It
  * fills its container and scrolls inside it. The list is one Tab stop: arrow
@@ -159,7 +163,8 @@ function outlineSections(input: {
  * the step picker to add a step after the row's step, and Alt+Up and Alt+Down
  * move the step within its sequence. Pointing at
  * or focusing a row puts the pointed tint on its card without moving the
- * camera. Cmd+F or Ctrl+F focuses the filter field.
+ * camera. Cmd+F or Ctrl+F shows the filter field at the top of the list and
+ * focuses it; Escape, or leaving it empty, hides it again.
  */
 export function WorkflowOutline({
   openRun,
@@ -270,6 +275,14 @@ export function WorkflowOutline({
 
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [filter, setFilter] = useState("");
+  // The filter field shows only while it is in use, except on a phone, where
+  // the outline is the screen and keeps its field at the top.
+  const isMobile = useIsMobile();
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterRequested, setFilterRequested] = useAtom(
+    outlineFilterFocusRequestAtom
+  );
+  const filterShown = isMobile || filterOpen || filterRequested;
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -322,6 +335,15 @@ export function WorkflowOutline({
     }
   });
 
+  // Cmd+F and "Find a step" show the filter field in place at the top of the
+  // list, and the cursor goes into it once it has rendered.
+  useAfterCommit(filterRequested, () => {
+    if (!filterRequested) return;
+    setFilterRequested(false);
+    setFilterOpen(true);
+    filterRef.current?.focus({ preventScroll: true });
+    filterRef.current?.select();
+  });
   useDomEvent(document, "keydown", (event) => {
     if (
       event.key.toLowerCase() === "f" &&
@@ -331,8 +353,7 @@ export function WorkflowOutline({
       editorChordAllowed(event, { inTextFields: true })
     ) {
       event.preventDefault();
-      filterRef.current?.focus({ preventScroll: true });
-      filterRef.current?.select();
+      setFilterRequested(true);
     }
   });
 
@@ -537,14 +558,15 @@ export function WorkflowOutline({
     showGraphEditRefusal(applyMoveStep({ nodeId: row.nodeId, direction }));
   };
 
+  // Escape clears the filter, hides the field and returns to the rows. Down
+  // moves to the rows and keeps the filter.
   const onFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape" && filter !== "") {
+    if (event.key === "Escape") {
       event.preventDefault();
       setFilter("");
-    } else if (
-      (event.key === "Escape" || event.key === "ArrowDown") &&
-      activeKey !== null
-    ) {
+      setFilterOpen(false);
+      if (activeKey !== null) focusRow(activeKey);
+    } else if (event.key === "ArrowDown" && activeKey !== null) {
       event.preventDefault();
       focusRow(activeKey);
     }
@@ -568,18 +590,24 @@ export function WorkflowOutline({
       className="flex h-full min-h-0 w-full flex-col"
       data-slot="workflow-outline"
     >
-      <div className="shrink-0 border-b px-2 py-2">
-        <Input
-          aria-keyshortcuts="Meta+F Control+F"
-          aria-label="Filter steps"
-          onChange={(event) => setFilter(event.target.value)}
-          onKeyDown={onFilterKeyDown}
-          placeholder="Filter steps"
-          ref={filterRef}
-          type="search"
-          value={filter}
-        />
-      </div>
+      {filterShown ? (
+        <div className="shrink-0 px-1.5 pt-1 pb-1">
+          <Input
+            aria-keyshortcuts="Meta+F Control+F"
+            aria-label="Filter steps"
+            // Leaving an empty field hides it again.
+            onBlur={() => {
+              if (filter === "") setFilterOpen(false);
+            }}
+            onChange={(event) => setFilter(event.target.value)}
+            onKeyDown={onFilterKeyDown}
+            placeholder="Filter steps"
+            ref={filterRef}
+            type="search"
+            value={filter}
+          />
+        </div>
+      ) : null}
       <div
         className="min-h-0 flex-1 overflow-y-auto px-1.5 pt-1 pb-3"
         ref={scrollerRef}
@@ -798,12 +826,12 @@ function OutlineRowView({
     },
     onFocus,
   };
+  // Fills alone mark a row: a faint one under the pointer and a stronger one
+  // when selected, with no border or edge bar.
   const rowClass = cn(
     "flex min-h-6 cursor-default items-center gap-1.5 rounded-md py-1 pr-2 text-xs outline-none",
     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-    selected
-      ? "bg-selection/10 shadow-[inset_2px_0_0_var(--selection)]"
-      : "hover:bg-muted"
+    selected ? "bg-selection/20" : "hover:bg-foreground/[0.06]"
   );
 
   if (row.kind === "add") {

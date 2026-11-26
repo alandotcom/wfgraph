@@ -319,6 +319,13 @@ review.
 
 The outline floats 12px inside the canvas's top left corner, capped at the
 canvas height less the room the zoom controls need, and scrolls inside itself.
+It is plain rows over the canvas with no box, border, background or header; a
+soft shadow in the canvas colour behind its text keeps it legible over cards
+and connections. A row shows a faint fill under the pointer and a stronger
+Selection Blue fill when selected, with no edge bar. Cmd+F (Ctrl+F) shows a
+"Filter steps" field at the top of the list and puts the cursor in it; Escape
+clears and hides it, and leaving it empty hides it. On a phone the field stays
+at the top of the outline. The run list's rows float the same way.
 `[` hides and shows it from anywhere outside a text field, and the command
 palette offers the same command. In Runs with no run open it is the run list,
 which always shows, because it is the only way to open a run. Hiding it is not

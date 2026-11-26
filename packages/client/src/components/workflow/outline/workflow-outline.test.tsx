@@ -381,13 +381,18 @@ describe("WorkflowOutline", () => {
     expect(document.activeElement).toBe(otherwise);
   });
 
-  it("filters rows by text, and Cmd+F focuses the filter", async () => {
+  it("shows the filter only on Cmd+F, filters rows by text, and hides it again on Escape", async () => {
     renderOutline();
     await tree();
-    const filter = screen.getByRole("searchbox", { name: "Filter steps" });
+    expect(
+      screen.queryByRole("searchbox", { name: "Filter steps" })
+    ).toBeNull();
 
     fireEvent.keyDown(document, { key: "f", metaKey: true });
-    expect(document.activeElement).toBe(filter);
+    const filter = await screen.findByRole("searchbox", {
+      name: "Filter steps",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(filter));
 
     fireEvent.change(filter, { target: { value: "intake" } });
     const names = screen
@@ -399,6 +404,38 @@ describe("WorkflowOutline", () => {
       names.some((text) => text.includes("Deposit covers the visit?"))
     ).toBe(true);
     expect(names.some((text) => text.includes("Release the slot"))).toBe(false);
+
+    // Escape clears the filter, hides the field and returns to the rows.
+    fireEvent.keyDown(filter, { key: "Escape" });
+    expect(
+      screen.queryByRole("searchbox", { name: "Filter steps" })
+    ).toBeNull();
+    expect(row("Release the slot")).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("role")).toBe("treeitem")
+    );
+
+    // Leaving the field empty hides it too.
+    fireEvent.keyDown(document, { key: "f", metaKey: true });
+    const again = await screen.findByRole("searchbox", {
+      name: "Filter steps",
+    });
+    fireEvent.blur(again);
+    expect(
+      screen.queryByRole("searchbox", { name: "Filter steps" })
+    ).toBeNull();
+  });
+
+  it("marks a row with fills alone, with no edge bar", async () => {
+    const { store } = renderOutline();
+    await tree();
+    act(() => store.set(selectOnlyNodeAtom, "Release the slot"));
+    const selected = row("Release the slot");
+    expect(selected.className).toContain("bg-selection/20");
+    expect(selected.className).not.toContain("shadow-[inset");
+    expect(row("Send booking confirmation").className).toContain(
+      "hover:bg-foreground/[0.06]"
+    );
   });
 
   it("marks changed rows while the review sheet shows and scrolls the sheet to a pressed edit", async () => {
