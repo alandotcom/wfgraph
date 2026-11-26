@@ -8,7 +8,7 @@ import { Label } from "#src/components/ui/label";
 import { ActionLinks } from "#src/components/workflow/config/action-links";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
-import { NodeControls } from "#src/components/workflow/step-controls";
+import { PhoneStepToggle } from "#src/components/workflow/step-controls";
 import { can } from "#src/lib/authorization";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { getEventConditionFields } from "#src/lib/upstream-node-fields";
@@ -139,15 +139,11 @@ export function StepEditor({ subject }: RevealBodyProps) {
 /**
  * The summary sheet of an ordinary step on a phone: an editable label, the
  * step's action and connection, its settings as label and value pairs, its
- * validation issues, and its node controls. An issue opens the full-screen
+ * validation issues, and its enable toggle. An issue opens the full-screen
  * editor on the field it names. A step with no action chosen shows the action
  * picker.
  */
-export function StepSummarySheet({
-  subject,
-  frame,
-  focusField,
-}: RevealBodyProps) {
+export function StepSummarySheet({ subject, focusField }: RevealBodyProps) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
@@ -251,7 +247,7 @@ export function StepSummarySheet({
         />
       </Section>
 
-      <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
+      <PhoneStepToggle className="border-t px-4 pt-3" node={node} />
     </div>
   );
 }

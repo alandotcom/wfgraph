@@ -247,7 +247,7 @@ function GroupSummarySections({
 /**
  * The inspector of a Group: its summary, its steps and boundary, any issues,
  * then its Label and Notes after a divider. Ungroup and Delete Group and steps
- * are commands of the details header's menu and the context menu.
+ * are commands of the Inspector header's ⋯ menu and the context menu.
  */
 export function GroupEditor({ subject, focusField }: RevealBodyProps) {
   const nodes = useAtomValue(nodesAtom);
@@ -276,9 +276,9 @@ export function GroupEditor({ subject, focusField }: RevealBodyProps) {
 }
 
 /**
- * The summary sheet of a Group on a phone: its description and its summary.
- * The full-screen editor holds the label, description, Ungroup, and Delete
- * Group and steps.
+ * The summary sheet of a Group on a phone: its notes and its summary. The
+ * full-screen editor holds its Label and Notes; a phone offers no Ungroup or
+ * Delete, which are topology edits.
  */
 export function GroupSummarySheet({ subject, focusField }: RevealBodyProps) {
   const nodes = useAtomValue(nodesAtom);

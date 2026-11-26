@@ -18,7 +18,7 @@ import {
   NodeDetailsFields,
   UnplacedNodeIssues,
 } from "#src/components/workflow/node-properties-form";
-import { NodeControls } from "#src/components/workflow/step-controls";
+import { PhoneStepToggle } from "#src/components/workflow/step-controls";
 import { can } from "#src/lib/authorization";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
 import {
@@ -193,12 +193,11 @@ function RulesSummary({
 /**
  * The summary sheet of a Condition on a phone: an editable label, its rules as
  * sentences, where True and False lead, the values its rules can compare, its
- * issues, and its node controls. The rule builder is in the full-screen editor,
+ * issues, and its enable toggle. The rule builder is in the full-screen editor,
  * which the sheet header's Edit rules opens.
  */
 export function ConditionSummarySheet({
   subject,
-  frame,
   focusField,
 }: RevealBodyProps) {
   const { nodeId } = subject;
@@ -274,7 +273,7 @@ export function ConditionSummarySheet({
         <NodeIssueList issues={issues} onSelect={focusIssueField(focusField)} />
       </Section>
 
-      <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
+      <PhoneStepToggle className="border-t px-4 pt-3" node={node} />
     </div>
   );
 }
