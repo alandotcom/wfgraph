@@ -2186,16 +2186,16 @@
       ]
     },
     "source:.claude/skills/verify-durable-executor/SKILL.md": {
-      "fingerprint": "2e60e2f2ce49bd99ef62fe1bb370a3db0c9841bbf337b01ef71261df007a5312",
+      "fingerprint": "f9a41698a999586dc8832e552b06435d943e9961a1df9398e1c81bcf57d4a9c2",
       "snapshot": {
-        ".claude/skills/verify-durable-executor/SKILL.md": "05d370ec83bb0f26548127d26775b162cb017832244e8cbf3e3284fe2cc76326"
+        ".claude/skills/verify-durable-executor/SKILL.md": "23732a17ea5d9e25f0b968c9fc09af5c3761243aa0bafaf943a854454bbc28ab"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "f44f7bdddcec0391ded96ce53381ed2f387f8dc6",
       "outcome": "out-of-scope",
-      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "reason": "The repository-internal verify-durable-executor skill now runs its TLA+ models with everystate@0.4.1 in place of tla-ts@0.0.8. No published skill names the executor models or their checker.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        ".claude/skills/verify-durable-executor/SKILL.md",
+        "skills grep for tla-ts, everystate, TLA+ and verify-durable at f44f7bdd finds none in packages/core/skills or packages/plugins/skills"
       ]
     },
     "source:.claude/skills/verify-durable-executor/model/DurableExecutor.tla": {
@@ -2848,16 +2848,16 @@
       ]
     },
     "source:.claude/skills/verify-durable-executor/mutations.sh": {
-      "fingerprint": "30c1cf92909040aced9b5f8bdc97535bd47d0308f1776316ebbd17fd459f4cab",
+      "fingerprint": "2aa94fc360b802696c43860720d137f3a1c6075be35c4529c5e6531a8e543b8c",
       "snapshot": {
-        ".claude/skills/verify-durable-executor/mutations.sh": "10d62bcbae02969862a340f821e81a40078c832da6d41403e887c45c015a7d3b"
+        ".claude/skills/verify-durable-executor/mutations.sh": "2c0afb2efc62f9193b8069bc36b6f0848cfe51bbcfedc6128790d13c9b4c3b01"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "f44f7bdddcec0391ded96ce53381ed2f387f8dc6",
       "outcome": "out-of-scope",
-      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "reason": "The repository-internal verify-durable-executor skill now runs its TLA+ models with everystate@0.4.1 in place of tla-ts@0.0.8. No published skill names the executor models or their checker.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        ".claude/skills/verify-durable-executor/mutations.sh",
+        "skills grep for tla-ts, everystate, TLA+ and verify-durable at f44f7bdd finds none in packages/core/skills or packages/plugins/skills"
       ]
     },
     "source:packages/core/drizzle/20261109062647_schedule_leased_index/migration.sql": {
@@ -14564,6 +14564,19 @@
       "evidence": [
         "packages/client/src/components/ui/use-template-badge-field.ts",
         "skills grep for placeholder and template field at cccb8f05"
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/check.sh": {
+      "fingerprint": "d53da9e692cbfc71ed5139ed5bab4f2963fe9ce88981ac968eb34810265e461b",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/check.sh": "99a37e72fe4c15c7a741095ba93508202bed4b34d5ccdafedb04a543625628d0"
+      },
+      "head": "f44f7bdddcec0391ded96ce53381ed2f387f8dc6",
+      "outcome": "out-of-scope",
+      "reason": "The repository-internal verify-durable-executor skill now runs its TLA+ models with everystate@0.4.1 in place of tla-ts@0.0.8. No published skill names the executor models or their checker.",
+      "evidence": [
+        ".claude/skills/verify-durable-executor/check.sh",
+        "skills grep for tla-ts, everystate, TLA+ and verify-durable at f44f7bdd finds none in packages/core/skills or packages/plugins/skills"
       ]
     }
   }
