@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the database executor that replaces Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, cron schedule timers and how Publish and pause rewrite them, the inbox and run-history retention sweeps, or the drivers' leases, heartbeats, polling and Worker platform limits, when a change touches the executor's code (packages/core/src/backend/executor, the Worker's tick driver in packages/core/src/backend/worker.ts, the schedule, step memo and fenced writes in services/executions/repo and persistence/sqlite/executions, the engine's parked Waits), or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, endRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the database executor that replaces Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by everystate. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, cron schedule timers and how Publish and pause rewrite them, the inbox and run-history retention sweeps, or the drivers' leases, heartbeats, polling and Worker platform limits, when a change touches the executor's code (packages/core/src/backend/executor, the Worker's tick driver in packages/core/src/backend/worker.ts, the schedule, step memo and fenced writes in services/executions/repo and persistence/sqlite/executions, the engine's parked Waits), or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, endRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -11,8 +11,9 @@ a step memo, producers that wake a Wait by writing its wait row, and an inbox
 whose deliveries run on the same executor. The order in which those writes land
 decides whether a run is stranded, woken twice, opened twice, or run after it
 ended. No unit test explores every order. This skill checks every order, up to
-stated bounds, with nine TLA+ models and `tla-ts`, a TLC-compatible model
-checker that runs on Node with no JVM.
+stated bounds, with nine TLA+ models and `everystate`, a TLC-compatible model
+checker written in Rust whose npm package ships a native binary, so it needs no
+JVM.
 
 Read this whole file before running anything.
 
@@ -89,7 +90,7 @@ commit against the coverage record before you rely on a pass.
 .claude/skills/verify-durable-executor/mutations.sh
 ```
 
-`check.sh` checks each rule in its own `tla-ts` run, so a rule that breaks never
+`check.sh` checks each rule in its own `everystate` run, so a rule that breaks never
 hides another. For each model it prints the state count, then one line per
 check:
 
@@ -101,9 +102,10 @@ check:
   by mistake, and a pass from that model checks less than it claims.
 
 It exits 0 when everything holds and is reached, 1 otherwise, and 2 when
-`tla-ts` cannot check a model. The whole run takes about ten minutes on a
-many-core machine, most of it the `Intake` model, whose arrival order puts it
-near 1.6 million states, and the `Arrivals` model.
+`everystate` cannot check a model. The whole run takes about ten minutes on a
+four-core machine, nine and a half of them the `Intake` model, whose arrival
+order puts it near 1.6 million states. Every other model takes under twenty
+seconds.
 
 `mutations.sh` first checks the models as written. Then it removes one guard of
 the design at a time and requires the rules named beside that guard to break.
@@ -113,10 +115,12 @@ reaches, `STALE` for a recorded finding that no longer reproduces, `NEW` for
 a rule that breaks and is not a recorded finding, and `AMBIGUOUS` when a
 mutation's text occurs more than once in its model, since the mutation would
 then change only the first occurrence. Any of those fails the suite.
-It takes about twelve minutes.
+It takes about thirteen minutes on a four-core machine.
 
-Both scripts run `tla-ts@0.0.8` through `pnpm dlx` on every core, so nothing is
-installed into the workspace. `MODEL_DIR` points `check.sh` at a copy of the
+Both scripts run `everystate@0.4.1` through `pnpm dlx` on every core, so nothing
+is installed into the workspace. The package carries native binaries for Linux and
+macOS on x64 and arm64 and for Windows on x64; on any other platform it falls back to a WebAssembly build
+that prints only JSON, and `check.sh` then reports `error`. `MODEL_DIR` points `check.sh` at a copy of the
 models, and `RULES` limits it to named rules.
 
 To see a result as a chart in plain words, use the pstack `/statechart` skill

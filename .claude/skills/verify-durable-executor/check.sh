@@ -1,5 +1,5 @@
 #!/bin/sh
-# Checks the durable executor models with tla-ts, one rule per run so a rule
+# Checks the durable executor models with everystate, one rule per run so a rule
 # that breaks never hides another.
 #
 #   .claude/skills/verify-durable-executor/check.sh             every model
@@ -17,12 +17,12 @@
 #
 # Output, one line per check: `holds`, `breaks` or `unreached`, the model, the
 # rule. A rule that breaks is followed by its shortest path as action names.
-# Exit 0 when everything holds and is reached, 1 otherwise, 2 when tla-ts
+# Exit 0 when everything holds and is reached, 1 otherwise, 2 when everystate
 # cannot check a model.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 models_dir=${MODEL_DIR:-$here/model}
-tla_ts="pnpm --silent dlx tla-ts@0.0.8"
+checker="pnpm --silent dlx everystate@0.4.1"
 workers="-workers auto"
 
 work=$(mktemp -d)
@@ -36,12 +36,12 @@ fi
 status=0
 path_of() { printf '%s\n' "$1" | sed -n 's/^State \([0-9]*\): <\([^ >]*\).*/        \1. \2/p; s/^State \([0-9]*\): Stuttering/        \1. (stays here forever)/p; s/^State \([0-9]*\): Back to state \([0-9]*\).*/        \1. (back to step \2, forever)/p'; }
 
-# check MODEL NAME KIND OPERATOR SPEC [tla-ts flags]
+# check MODEL NAME KIND OPERATOR SPEC [everystate flags]
 check() {
   model=$1; name=$2; kind=$3; op=$4; spec=$5; shift 5
   grep -v -e '^INVARIANT' -e '^PROPERTY' -e '^SPECIFICATION' "$models_dir/$model.cfg" > "$work/$name.cfg"
   printf 'SPECIFICATION %s\n%s %s\n' "$spec" "$kind" "$op" >> "$work/$name.cfg"
-  out=$(cd "$work" && $tla_ts "Check$model.tla" -config "$name.cfg" $workers "$@" 2>&1 || true)
+  out=$(cd "$work" && $checker "Check$model.tla" -config "$name.cfg" $workers "$@" 2>&1 || true)
 }
 
 for model in $models; do
@@ -58,7 +58,7 @@ for model in $models; do
   if [ -z "${RULES:-}" ]; then
   # Deadlock: every state other than an ended run has a step out.
   grep -v -e '^INVARIANT' -e '^PROPERTY' "$models_dir/$model.cfg" > "$work/deadlock.cfg"
-  out=$(cd "$work" && $tla_ts "Check$model.tla" -config deadlock.cfg $workers 2>&1 || true)
+  out=$(cd "$work" && $checker "Check$model.tla" -config deadlock.cfg $workers 2>&1 || true)
   if printf '%s\n' "$out" | grep -q 'No error has been found'; then
     printf '%s\n' "$out" | sed -n "s/^[0-9]* states generated, \([0-9]*\) distinct states found.*/model   $model: \1 distinct states/p"
     echo "holds   $model NoDeadlock"

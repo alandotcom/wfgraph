@@ -138,7 +138,7 @@ while IFS='|' read -r model name from to rules; do
   FROM=$from TO=$to perl -0pi -e 's/\Q$ENV{FROM}\E/$ENV{TO}/' "$work/models/$model.tla"
   result=$(MODEL_DIR=$work/models RULES=$rules "$here/check.sh" "$model" 2>&1) || true
   if printf '%s\n' "$result" | grep -q '^error'; then
-    echo "ERROR    $model $name: tla-ts could not check the mutated model"
+    echo "ERROR    $model $name: everystate could not check the mutated model"
     printf '%s\n' "$result" | grep -A5 '^error'; failed=1; continue
   fi
   for rule in $rules; do
