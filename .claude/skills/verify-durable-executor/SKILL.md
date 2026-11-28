@@ -103,8 +103,9 @@ check:
 
 It exits 0 when everything holds and is reached, 1 otherwise, and 2 when
 `everystate` cannot check a model. The whole run takes about ten minutes on a
-many-core machine, most of it the `Intake` model, whose arrival order puts it
-near 1.6 million states, and the `Arrivals` model.
+four-core machine, nine and a half of them the `Intake` model, whose arrival
+order puts it near 1.6 million states. Every other model takes under twenty
+seconds.
 
 `mutations.sh` first checks the models as written. Then it removes one guard of
 the design at a time and requires the rules named beside that guard to break.
@@ -114,7 +115,7 @@ reaches, `STALE` for a recorded finding that no longer reproduces, `NEW` for
 a rule that breaks and is not a recorded finding, and `AMBIGUOUS` when a
 mutation's text occurs more than once in its model, since the mutation would
 then change only the first occurrence. Any of those fails the suite.
-It takes about twelve minutes.
+It takes about thirteen minutes on a four-core machine.
 
 Both scripts run `everystate@0.4.1` through `pnpm dlx` on every core, so nothing
 is installed into the workspace. The package carries native binaries for Linux and
